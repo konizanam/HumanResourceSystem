@@ -171,7 +171,7 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div className="loginFooter">Human Resource System</div>
+        <div className="loginFooter">© 2026 Human Resource System</div>
       </div>
 
       <div className="loginAside">

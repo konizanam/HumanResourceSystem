@@ -1,12 +1,15 @@
 :root {
-  --bg0: #f8fafc;
+  --bg0: #fdfefe;
   --bg1: #ffffff;
   --card: #ffffff;
-  --card2: #f8fafc;
-  --text: #0f172a;
-  --muted: #475569;
-  --stroke: #e2e8f0;
-  --primary: #0f172a;
+  --card2: #f9fbff;
+  --text: #334155;
+  --heading: #1e293b;
+  --muted: #7c8aa0;
+  --icon: #7c8aa0;
+  --stroke: #e7edf5;
+  --primary: #4f46e5;
+  --accent-soft: #eef2ff;
   --danger: #dc2626;
 }
 
@@ -24,6 +27,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--text);
   background: linear-gradient(180deg, var(--bg0), var(--bg1));
+  font-size: 14px;
 }
 
 a {
@@ -39,20 +43,22 @@ a {
   border: 1px solid var(--stroke);
   background: transparent;
   color: var(--text);
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
+  font-size: 13px;
 }
 
 .btnPrimary {
-  border-color: #0f172a;
+  border-color: #4f46e5;
   background: var(--primary);
   color: #ffffff;
 }
 
 .btnGhost {
   background: var(--card2);
+  color: var(--muted);
 }
 
 .icon {
@@ -78,16 +84,17 @@ a {
 
 .input {
   width: 100%;
-  padding: 11px 12px;
+  padding: 9px 10px;
   border-radius: 8px;
   border: 1px solid var(--stroke);
   background: var(--card);
   color: var(--text);
   outline: none;
+  font-size: 13px;
 }
 
 .input:focus {
-  border-color: #94a3b8;
+  border-color: #a5b4fc;
 }
 
 .loginPage {
@@ -104,7 +111,7 @@ a {
   border-radius: 14px;
   border: 1px solid var(--stroke);
   background: var(--card);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 24px rgba(148, 163, 184, 0.15);
 }
 
 .loginHeader {
@@ -136,10 +143,11 @@ a {
 }
 
 .loginTitle {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-align: center;
+  color: #312e81;
 }
 
 .loginSubtitle {
@@ -159,7 +167,7 @@ a {
 }
 
 .fieldLabel {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -193,7 +201,7 @@ a {
 }
 
 .linkBtn:hover {
-  color: var(--text);
+  color: #4338ca;
 }
 
 .hintBox {
@@ -256,7 +264,7 @@ a {
   padding: 10px 12px;
   border: 1px dashed var(--stroke);
   border-radius: 14px;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
 }
 
 .appShell {
@@ -278,10 +286,10 @@ a {
 .sidebar {
   border-right: 1px solid var(--stroke);
   background: #ffffff;
-  padding: 14px;
+  padding: 10px;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sidebarHeader {
@@ -293,6 +301,7 @@ a {
 .brand {
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: #312e81;
 }
 
 .brandMono {
@@ -301,40 +310,53 @@ a {
 
 .nav {
   display: grid;
-  gap: 6px;
+  gap: 0;
+  align-content: start;
+  grid-auto-rows: min-content;
   min-height: 0;
   overflow: auto;
-  padding-right: 2px;
+  padding-right: 0;
 }
 
 .navItem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 6px;
+  padding: 4px 6px;
   border-radius: 8px;
   border: 1px solid transparent;
-  color: var(--muted);
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.2;
+  min-height: 30px;
 }
 
 .navItemIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: #6366f1;
 }
 
 .navItem:hover {
-  background: var(--card2);
+  background: #f6f9fd;
 }
 
 .navItemActive {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-  color: var(--text);
+  border-color: #c7d2fe;
+  background: var(--accent-soft);
+  color: #312e81;
+}
+
+.navItemActive .navItemIcon {
+  color: #4338ca;
 }
 
 .sidebarFooter {
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid var(--stroke);
 }
 
@@ -388,15 +410,17 @@ a {
 
 .pageTitle {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: #312e81;
 }
 
 .pageText {
   margin-top: 10px;
   color: var(--muted);
   line-height: 1.6;
+  font-size: 13px;
 }
 
 /* Responsive navigation (mobile) */
