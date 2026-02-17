@@ -1,0 +1,33 @@
+{
+  "name": "humanresourcesystem",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently -n api,web \"npm -w apps/api run dev\" \"npm -w apps/web run dev\"",
+    "dev:web": "npm -w apps/web run dev",
+    "dev:api": "npm -w apps/api run dev",
+    "build": "npm -w apps/api run build && npm -w apps/web run build",
+    "typecheck": "npm -w apps/api run typecheck && npm -w apps/web run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kondjaboytjie/HumanResourceSystem.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kondjaboytjie/HumanResourceSystem/issues"
+  },
+  "homepage": "https://github.com/kondjaboytjie/HumanResourceSystem#readme",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ]
+}
