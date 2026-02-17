@@ -23,6 +23,20 @@ Monorepo (npm workspaces) with:
 
 `npm run dev`
 
+## Start the apps
+
+- Start both frontend + backend:
+
+`npm run dev`
+
+- Start backend only (API):
+
+`npm run dev:api`
+
+- Start frontend only (Web):
+
+`npm run dev:web`
+
 ## Useful scripts (root)
 
 - Dev (API + Web): `npm run dev`
