@@ -16,6 +16,10 @@ export function LoginPage() {
   const [step, setStep] = useState<"credentials" | "twoFactor">("credentials");
   const [pending, setPending] = useState<{ accessToken: string; userEmail: string } | null>(null);
   const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState(0);
 
   const redirectTo = useMemo(() => {
     const state = location.state as { from?: string } | null;
@@ -31,6 +35,30 @@ export function LoginPage() {
     }
   }, [accessToken, navigate, redirectTo]);
 
+  useEffect(() => {
+    if (!twoFactorExpiresAt || step !== "twoFactor") {
+      setCountdownSeconds(0);
+      return;
+    }
+
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((twoFactorExpiresAt - Date.now()) / 1000));
+      setCountdownSeconds(remaining);
+    };
+
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [twoFactorExpiresAt, step]);
+
+  const countdownLabel = useMemo(() => {
+    const minutes = Math.floor(countdownSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const seconds = (countdownSeconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  }, [countdownSeconds]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -42,6 +70,15 @@ export function LoginPage() {
         setPending(result);
         setStep("twoFactor");
         setCode("");
+        setTwoFactorExpiresAt(Date.now() + 10 * 60 * 1000);
+        return;
+      }
+
+      if (!twoFactorExpiresAt || Date.now() > twoFactorExpiresAt) {
+        setError("Authentication code expired. Please sign in again.");
+        setStep("credentials");
+        setPending(null);
+        setTwoFactorExpiresAt(null);
         return;
       }
 
@@ -87,46 +124,103 @@ export function LoginPage() {
         <form onSubmit={onSubmit} className="form">
           {step === "credentials" ? (
             <>
-              <label className="field">
-                <span className="fieldLabel">Email</span>
-                <input
-                  className="input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  autoComplete="username"
-                  required
-                />
-              </label>
+              {!showForgot ? (
+                <>
+                  <label className="field">
+                    <span className="fieldLabel">Email</span>
+                    <input
+                      className="input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      type="email"
+                      autoComplete="username"
+                      required
+                    />
+                  </label>
 
-              <label className="field">
-                <span className="fieldLabel">Password</span>
-                <input
-                  className="input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
+                  <label className="field">
+                    <span className="fieldLabel">Password</span>
+                    <input
+                      className="input"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                    />
+                  </label>
 
-              <div className="loginRow">
-                <button type="button" className="linkBtn" onClick={() => setShowForgot((v) => !v)}>
-                  Forgot password?
-                </button>
-              </div>
+                  <div className="loginRow">
+                    <button
+                      type="button"
+                      className="linkBtn"
+                      onClick={() => {
+                        setShowForgot(true);
+                        setForgotMessage(null);
+                      }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="field">
+                    <span className="fieldLabel">Recovery email</span>
+                    <input
+                      className="input"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      type="email"
+                      autoComplete="email"
+                      placeholder="name@company.com"
+                    />
+                  </label>
 
-              {showForgot ? (
-                <div className="hintBox" role="note">
-                  Contact your administrator to reset your password.
-                </div>
-              ) : null}
+                  <div className="loginRow">
+                    <button
+                      type="button"
+                      className="linkBtn"
+                      onClick={() => {
+                        setShowForgot(false);
+                        setForgotMessage(null);
+                      }}
+                    >
+                      Back to sign in
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btnPrimary fullActionBtn"
+                    onClick={() => {
+                      const value = forgotEmail.trim();
+                      if (!value || !value.includes("@")) {
+                        setForgotMessage("Enter a valid email address.");
+                        return;
+                      }
+                      setForgotMessage(`A reset code has been sent to ${value}.`);
+                    }}
+                  >
+                    Send reset link
+                  </button>
+
+                  {forgotMessage ? (
+                    <div className="hintBox" role="note">
+                      {forgotMessage}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </>
           ) : (
             <>
               <div className="hintBox" role="note">
-                Enter the 6-digit authentication code.
+                Enter the 6-digit authentication code sent to {pending?.userEmail ?? email}.
+                <br />
+                {countdownSeconds > 0
+                  ? `Code expires in ${countdownLabel}.`
+                  : "Code expired. Please sign in again."}
               </div>
               <label className="field">
                 <span className="fieldLabel">Authentication code</span>
@@ -141,18 +235,19 @@ export function LoginPage() {
                 />
               </label>
 
-              <div className="loginRow loginRowSplit">
+              <div className="loginRow">
                 <button
                   type="button"
-                  className="btn btnGhost"
+                  className="linkBtn"
                   onClick={() => {
                     setStep("credentials");
                     setPending(null);
+                    setTwoFactorExpiresAt(null);
                     setError(null);
                   }}
                   disabled={busy}
                 >
-                  Back
+                  Back to sign in
                 </button>
               </div>
             </>
@@ -160,18 +255,20 @@ export function LoginPage() {
 
           {error ? <div className="errorBox">{error}</div> : null}
 
-          <button className="btn btnPrimary" disabled={busy} type="submit">
-            {busy
-              ? step === "credentials"
-                ? "Signing in…"
-                : "Verifying…"
-              : step === "credentials"
-                ? "Continue"
-                : "Verify"}
-          </button>
+          {!(step === "credentials" && showForgot) ? (
+            <button className="btn btnPrimary" disabled={busy} type="submit">
+              {busy
+                ? step === "credentials"
+                  ? "Signing in…"
+                  : "Verifying…"
+                : step === "credentials"
+                  ? "Continue"
+                  : "Verify"}
+            </button>
+          ) : null}
         </form>
 
-        <div className="loginFooter">© 2026 Human Resource System</div>
+        <div className="loginFooter">© 2026 Human Resource System. All rights received.</div>
       </div>
 
       <div className="loginAside">
