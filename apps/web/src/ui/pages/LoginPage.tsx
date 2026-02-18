@@ -112,11 +112,8 @@ export function LoginPage() {
     <div className="loginPage">
       <div className="loginCard">
         <div className="loginHeader">
-          <div className="loginLogo" aria-hidden="true">
-            <svg className="loginLogoSvg" viewBox="0 0 48 48" aria-hidden="true">
-              <rect x="6" y="6" width="36" height="36" rx="10" />
-              <path d="M17 30V18h3v4h8v-4h3v12h-3v-5h-8v5h-3z" />
-            </svg>
+          <div className="loginLogo">
+            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
           </div>
           <div className="loginTitle">Welcome</div>
         </div>
