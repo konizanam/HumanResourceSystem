@@ -4,6 +4,7 @@ import helmet from "helmet";
 
 import { authRouter } from "./routes/auth";
 import { meRouter } from "./routes/me";
+import { jobSeekerRouter } from "./routes/job-seeker";
 import { createOpenApiSpec } from "./swagger";
 import swaggerUi from "swagger-ui-express";
 import { notFoundHandler, errorHandler } from "./errors";
@@ -15,7 +16,7 @@ export function createApp() {
   app.use(
     cors({
       origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
-      credentials: false,
+      credentials: true,
     })
   );
   app.use(express.json({ limit: "1mb" }));
@@ -26,6 +27,7 @@ export function createApp() {
 
   app.use("/api/auth", authRouter);
   app.use("/api", meRouter);
+  app.use("/api/job-seeker", jobSeekerRouter);
 
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(createOpenApiSpec()));
 

@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 const STATIC_2FA_CODE = import.meta.env.VITE_STATIC_2FA_CODE ?? "123456";
@@ -268,7 +268,13 @@ export function LoginPage() {
           ) : null}
         </form>
 
-        <div className="loginFooter">© 2026 Human Resource System. All rights received.</div>
+        <div className="loginFooter">
+          Don't have an account?{" "}
+          <Link to="/register" className="linkBtn">
+            Sign up
+          </Link>
+          <div className="loginCopyright">© 2026 Human Resource System. All rights reserved.</div>
+        </div>
       </div>
 
       <div className="loginAside">
