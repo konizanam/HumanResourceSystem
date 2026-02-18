@@ -59,4 +59,4 @@ exports.authRouter.post("/login", async (req, res, next) => {
         return next(err);
     }
 });
-//# sourceMappingURL=auth.js.map
+//# sourceMappingURL=auth.routes.js.map
