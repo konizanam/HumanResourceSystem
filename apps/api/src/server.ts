@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 
-import { authRouter } from "./routes/auth";
+import { authRouter } from "./routes/auth.routes";
 import { meRouter } from "./routes/me";
 import { jobSeekerRouter } from "./routes/job-seeker";
 import { createOpenApiSpec } from "./swagger";
