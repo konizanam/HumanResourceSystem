@@ -495,14 +495,31 @@ export function SignupPage() {
                 required
               />
               {form.email.trim() && (
-                <span className="hintText">
-                  {emailChecking
-                    ? "Checking email availability…"
-                    : emailAvailable === true
-                      ? "Email is available"
+                <span
+                  className={
+                    "hintText" +
+                    (emailAvailable === true
+                      ? " hintTextOk"
                       : emailAvailable === false
-                        ? "Email is already registered"
-                        : ""}
+                        ? " hintTextBad"
+                        : "")
+                  }
+                >
+                  {emailChecking ? (
+                    "Checking email availability…"
+                  ) : emailAvailable === true ? (
+                    <>
+                      <span aria-hidden>✓</span>
+                      Email is available
+                    </>
+                  ) : emailAvailable === false ? (
+                    <>
+                      <span aria-hidden>✕</span>
+                      Email is already registered
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </span>
               )}
               {fieldErrors.email && (

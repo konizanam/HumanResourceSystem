@@ -1029,4 +1029,18 @@ a {
 }
 
 .btnDanger {
-  border-color: #fca5a5
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.btnDanger:hover {
+  background: #fee2e2;
+}
+
+.emptyState {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px 12px;
+  font-size: 13px;
+}
