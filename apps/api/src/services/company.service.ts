@@ -10,17 +10,22 @@ export class CompanyService {
   }
 
   async getAllCompanies(userId: string) {
-    // Get user's permissions
-    const userPermissions = await this.db.getUserPermissions(userId);
-    
-    // Get companies based on permissions
+    // Determine admin via roles (permissions list does not include role names).
+    const userRoles = await this.db.getUserRoles(userId);
+
+    // Get companies based on role / association
     let companies;
-    if (userPermissions.includes('ADMIN')) {
+    if (userRoles.includes('ADMIN')) {
       // Admin sees all companies - use query directly
       companies = await query(
         `SELECT c.*, 
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
-          u.first_name || ' ' || u.last_name as created_by_name
+          (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+             FROM company_users cu2
+             JOIN users u2 ON u2.id = cu2.user_id
+            WHERE cu2.company_id = c.id) as user_names,
+          u.first_name || ' ' || u.last_name as created_by_name,
+           COALESCE(c.status, 'active') as status
          FROM companies c
          LEFT JOIN users u ON c.created_by = u.id
          ORDER BY c.created_at DESC`
@@ -30,7 +35,12 @@ export class CompanyService {
       companies = await query(
         `SELECT c.*, 
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
-          u.first_name || ' ' || u.last_name as created_by_name
+          (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+             FROM company_users cu2
+             JOIN users u2 ON u2.id = cu2.user_id
+            WHERE cu2.company_id = c.id) as user_names,
+          u.first_name || ' ' || u.last_name as created_by_name,
+          COALESCE(c.status, 'active') as status
          FROM companies c
          LEFT JOIN users u ON c.created_by = u.id
          WHERE c.id IN (
@@ -53,7 +63,13 @@ export class CompanyService {
 
     const result = await query(
       `SELECT c.*, 
-        u.first_name || ' ' || u.last_name as created_by_name
+        (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+        (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+           FROM company_users cu2
+           JOIN users u2 ON u2.id = cu2.user_id
+          WHERE cu2.company_id = c.id) as user_names,
+        u.first_name || ' ' || u.last_name as created_by_name,
+        COALESCE(c.status, 'active') as status
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -68,16 +84,16 @@ export class CompanyService {
   }
 
   async createCompany(userId: string, companyData: any) {
-    const { name, industry, description, website, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
+    const { name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
 
     // Create company
     const result = await query(
       `INSERT INTO companies (
-        name, industry, description, website, contact_email, contact_phone,
+        name, industry, description, website, logo_url, contact_email, contact_phone,
         address_line1, address_line2, city, country, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
-      [name, industry, description, website, contact_email, contact_phone, address_line1, address_line2, city, country, userId]
+      [name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country, userId]
     );
 
     const company = result.rows[0];
@@ -88,12 +104,28 @@ export class CompanyService {
       [company.id, userId]
     );
 
-    return company;
+    // Return enriched company (created_by_name, user_names, user_count, status)
+    const enriched = await query(
+      `SELECT c.*,
+        (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+        (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+           FROM company_users cu2
+           JOIN users u2 ON u2.id = cu2.user_id
+          WHERE cu2.company_id = c.id) as user_names,
+        u.first_name || ' ' || u.last_name as created_by_name,
+        COALESCE(c.status, 'active') as status
+       FROM companies c
+       LEFT JOIN users u ON c.created_by = u.id
+       WHERE c.id = $1`,
+      [company.id]
+    );
+
+    return enriched.rows[0] ?? company;
   }
 
   async updateCompany(companyId: string, userId: string, updates: any) {
     // Check if user has edit permission
-    const hasEditPermission = await this.checkCompanyPermission(companyId, userId, 'EDIT_COMPANY');
+    const hasEditPermission = await this.checkCompanyPermission(companyId, userId, 'MANAGE_COMPANY');
     if (!hasEditPermission) {
       throw new ForbiddenError('You do not have permission to edit this company');
     }
@@ -135,14 +167,16 @@ export class CompanyService {
 
   async deactivateCompany(companyId: string, userId: string) {
     // Check if user has deactivate permission
-    const hasDeactivatePermission = await this.checkCompanyPermission(companyId, userId, 'DEACTIVATE_COMPANY');
+    const hasDeactivatePermission = await this.checkCompanyPermission(companyId, userId, 'MANAGE_COMPANY');
     if (!hasDeactivatePermission) {
       throw new ForbiddenError('You do not have permission to deactivate this company');
     }
 
-    // First, check if company exists
     const result = await query(
-      'SELECT * FROM companies WHERE id = $1',
+      `UPDATE companies
+         SET status = 'deactivated'
+       WHERE id = $1
+       RETURNING id`,
       [companyId]
     );
 
@@ -150,9 +184,22 @@ export class CompanyService {
       throw new NotFoundError('Company not found');
     }
 
-    // Update company status (you'll need to add a status column to companies table)
-    // For now, we'll just return the company with a deactivated flag
-    return { ...result.rows[0], status: 'deactivated' };
+    const enriched = await query(
+      `SELECT c.*,
+        (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+        (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+           FROM company_users cu2
+           JOIN users u2 ON u2.id = cu2.user_id
+          WHERE cu2.company_id = c.id) as user_names,
+        u.first_name || ' ' || u.last_name as created_by_name,
+        COALESCE(c.status, 'active') as status
+       FROM companies c
+       LEFT JOIN users u ON c.created_by = u.id
+       WHERE c.id = $1`,
+      [companyId]
+    );
+
+    return enriched.rows[0];
   }
 
   async reactivateCompany(companyId: string, userId: string) {
@@ -163,7 +210,10 @@ export class CompanyService {
     }
 
     const result = await query(
-      'SELECT * FROM companies WHERE id = $1',
+      `UPDATE companies
+         SET status = 'active'
+       WHERE id = $1
+       RETURNING id`,
       [companyId]
     );
 
@@ -171,7 +221,22 @@ export class CompanyService {
       throw new NotFoundError('Company not found');
     }
 
-    return { ...result.rows[0], status: 'active' };
+    const enriched = await query(
+      `SELECT c.*,
+        (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+        (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+           FROM company_users cu2
+           JOIN users u2 ON u2.id = cu2.user_id
+          WHERE cu2.company_id = c.id) as user_names,
+        u.first_name || ' ' || u.last_name as created_by_name,
+        COALESCE(c.status, 'active') as status
+       FROM companies c
+       LEFT JOIN users u ON c.created_by = u.id
+       WHERE c.id = $1`,
+      [companyId]
+    );
+
+    return enriched.rows[0];
   }
 
   async getCompanyUsers(companyId: string, userId: string) {
@@ -249,13 +314,14 @@ export class CompanyService {
   }
 
   private async checkCompanyPermission(companyId: string, userId: string, permission: string): Promise<boolean> {
-    // Check if user is admin
-    const userPermissions = await this.db.getUserPermissions(userId);
-    if (userPermissions.includes('ADMIN')) {
+    // Check if user is admin via roles
+    const userRoles = await this.db.getUserRoles(userId);
+    if (userRoles.includes('ADMIN')) {
       return true;
     }
 
     // Check if user has specific permission and is associated with company
+    const userPermissions = await this.db.getUserPermissions(userId);
     if (!userPermissions.includes(permission)) {
       return false;
     }

@@ -8,6 +8,17 @@ export class CompanyController {
 
   constructor() {
     this.companyService = new CompanyService();
+
+    // Bind handlers so `this.companyService` is available when passed to Express.
+    this.getAllCompanies = this.getAllCompanies.bind(this);
+    this.getCompanyById = this.getCompanyById.bind(this);
+    this.createCompany = this.createCompany.bind(this);
+    this.updateCompany = this.updateCompany.bind(this);
+    this.deactivateCompany = this.deactivateCompany.bind(this);
+    this.reactivateCompany = this.reactivateCompany.bind(this);
+    this.getCompanyUsers = this.getCompanyUsers.bind(this);
+    this.addUserToCompany = this.addUserToCompany.bind(this);
+    this.removeUserFromCompany = this.removeUserFromCompany.bind(this);
   }
 
   // Get all companies

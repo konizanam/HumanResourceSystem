@@ -167,11 +167,41 @@ export function AppLayout({
 }: {
   menuItems: readonly { path: string; title: string; icon: IconName }[];
 }) {
-  const { accessToken, logout } = useAuth();
+  const { accessToken, logout, userName, userEmail } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const displayName = useMemo(() => {
+    const name = (userName ?? "").trim();
+    if (name) return name;
+    const email = (userEmail ?? "").trim();
+    if (email) return email;
+
+    if (!accessToken) return "";
+    try {
+      const [, payload] = accessToken.split(".");
+      if (!payload) return "";
+      const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+      const json = atob(padded);
+      const parsed = JSON.parse(json) as { name?: unknown; email?: unknown };
+      if (typeof parsed.name === "string" && parsed.name.trim()) return parsed.name.trim();
+      if (typeof parsed.email === "string" && parsed.email.trim()) return parsed.email.trim();
+      return "";
+    } catch {
+      return "";
+    }
+  }, [accessToken, userEmail, userName]);
+
+  const displayInitials = useMemo(() => {
+    const raw = displayName.trim();
+    if (!raw) return "";
+    const parts = raw.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [displayName]);
 
   const roles = useMemo(() => {
     if (!accessToken) return [] as string[];
@@ -278,6 +308,18 @@ export function AppLayout({
         </nav>
 
         <div className="sidebarFooter">
+          {displayName ? (
+            collapsed ? (
+              <div className="sidebarUserBadge" title={displayName} aria-label={displayName}>
+                {displayInitials}
+              </div>
+            ) : (
+              <div className="sidebarUserName" title={displayName}>
+                {displayName}
+              </div>
+            )
+          ) : null}
+
           <button
             className={collapsed ? "btn btnGhost logoutBtn logoutBtnCollapsed" : "btn btnGhost logoutBtn"}
             onClick={logout}

@@ -27,10 +27,24 @@ const authenticate = async (req, res, next) => {
         const roles = Array.isArray(decoded?.roles)
             ? decoded.roles
             : [];
+        const preActivation = Boolean(decoded?.preActivation);
         // Check if user still exists and is active
         const result = await (0, database_1.query)('SELECT id, email, is_active FROM users WHERE id = $1', [userId]);
-        if (result.rows.length === 0 || !result.rows[0].is_active) {
+        const userRow = result.rows[0];
+        if (result.rows.length === 0) {
             throw new errors_1.UnauthorizedError('User not found or inactive');
+        }
+        const active = Boolean(userRow?.is_active);
+        if (!active) {
+            // Allow a limited pre-activation token to complete profile onboarding.
+            // This is used by the signup wizard before email activation.
+            const fullPath = `${req.baseUrl ?? ''}${req.path ?? ''}`;
+            const allowed = preActivation &&
+                typeof fullPath === 'string' &&
+                fullPath.startsWith('/api/v1/profile');
+            if (!allowed) {
+                throw new errors_1.UnauthorizedError('User not found or inactive');
+            }
         }
         // Get user permissions
         let permissions = [];

@@ -6,6 +6,7 @@ import companyRoutes  from './company.routes';
 import documentRoutes from './document.routes';
 import { meRouter } from './me';
 import { geoRouter } from './geo.routes';
+import emailTemplatesRoutes from './emailTemplates.routes';
 const router = Router();
 
 router.use('/auth', authRouter);
@@ -14,6 +15,7 @@ router.use('/companies', companyRoutes);
 router.use('/documents', documentRoutes);
 router.use('/users', meRouter);
 router.use('/geo', geoRouter);
+router.use('/email-templates', emailTemplatesRoutes);
 // Health check
 router.get('/health', (req, res) => {
   res.json({

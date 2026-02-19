@@ -13,7 +13,7 @@ CREATE TABLE users (
     password_reset_token TEXT,
     password_reset_expires_at TIMESTAMP,
     password_reset_requested_at TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,6 +66,7 @@ CREATE TABLE companies (
     address_line2 VARCHAR(255),
     city VARCHAR(100),
     country VARCHAR(100),
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

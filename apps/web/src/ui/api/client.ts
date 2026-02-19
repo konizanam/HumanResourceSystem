@@ -14,9 +14,14 @@ async function safeJson(res: Response) {
 }
 
 function apiError(res: Response, body: any, fallbackMessage: string) {
+  const validationMessage = Array.isArray(body?.errors)
+    ? (body.errors[0]?.msg ?? body.errors[0]?.message)
+    : undefined;
+
   const message =
     body?.error?.message ??
     body?.message ??
+    validationMessage ??
     fallbackMessage;
 
   return Object.assign(new Error(message), { status: res.status });
@@ -83,6 +88,59 @@ export type IpLocation = {
   city: string | null;
 };
 
+export type Company = {
+  id: string;
+  name: string;
+  industry?: string | null;
+  description?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  country?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
+  user_count?: number | string | null;
+  user_names?: string | null;
+  status?: string | null;
+};
+
+export type UserSearchResult = {
+  id: string;
+  name: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+export type EmailTemplateKey =
+  | "registration_activation"
+  | "application_success"
+  | "interview_invitation"
+  | "application_rejected"
+  | "job_alert";
+
+export type EmailTemplate = {
+  key: string;
+  title: string;
+  description: string;
+  subject: string;
+  body_text: string;
+  body_html: string;
+  placeholders: string[];
+  updated_at?: string;
+};
+
+type ApiEnvelope<T> = {
+  status: string;
+  data: T;
+  message?: string;
+};
+
 /* ------------------------------------------------------------------ */
 /*  Geo                                                               */
 /* ------------------------------------------------------------------ */
@@ -94,6 +152,212 @@ export async function getIpLocation(): Promise<IpLocation> {
     throw apiError(res, body, "Failed to determine location");
   }
   return (await res.json()) as IpLocation;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Companies                                                          */
+/* ------------------------------------------------------------------ */
+
+export type CompanyUpsertPayload = {
+  name: string;
+  industry?: string;
+  description?: string;
+  website?: string;
+  logo_url?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  country?: string;
+};
+
+export async function listCompanies(token: string): Promise<Company[]> {
+  const res = await fetch(`${API_BASE}/companies`, {
+    headers: authHeaders(token),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to load companies");
+  }
+
+  const envelope = body as ApiEnvelope<Company[]>;
+  return Array.isArray(envelope?.data) ? envelope.data : [];
+}
+
+export async function createCompany(
+  token: string,
+  payload: CompanyUpsertPayload,
+): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to create company");
+  }
+
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
+export async function updateCompany(
+  token: string,
+  id: string,
+  payload: CompanyUpsertPayload,
+): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to update company");
+  }
+
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
+export async function deactivateCompany(token: string, id: string): Promise<Company> {
+  const res = await fetch(
+    `${API_BASE}/companies/${encodeURIComponent(id)}/deactivate`,
+    {
+      method: "PATCH",
+      headers: authHeaders(token),
+    },
+  );
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to deactivate company");
+  }
+
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
+export async function reactivateCompany(token: string, id: string): Promise<Company> {
+  const res = await fetch(
+    `${API_BASE}/companies/${encodeURIComponent(id)}/reactivate`,
+    {
+      method: "PATCH",
+      headers: authHeaders(token),
+    },
+  );
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to reactivate company");
+  }
+
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
+export async function addUserToCompany(
+  token: string,
+  companyId: string,
+  userId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/companies/${encodeURIComponent(companyId)}/users`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ userId }),
+    },
+  );
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to assign user to company");
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Users                                                             */
+/* ------------------------------------------------------------------ */
+
+export async function searchUsers(token: string, q: string): Promise<UserSearchResult[]> {
+  const url = new URL(`${API_BASE}/users/search`);
+  url.searchParams.set("q", q);
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to search users");
+  }
+
+  const envelope = body as ApiEnvelope<UserSearchResult[]>;
+  return Array.isArray(envelope?.data) ? envelope.data : [];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Email Templates                                                    */
+/* ------------------------------------------------------------------ */
+
+export async function getEmailTemplates(token: string): Promise<EmailTemplate[]> {
+  const res = await fetch(`${API_BASE}/email-templates`, {
+    headers: authHeaders(token),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to load email templates");
+  }
+
+  const envelope = body as ApiEnvelope<EmailTemplate[]>;
+  return Array.isArray(envelope?.data) ? envelope.data : [];
+}
+
+export async function createEmailTemplate(
+  token: string,
+  payload: Pick<EmailTemplate, "key" | "title" | "description" | "subject" | "body_text" | "placeholders">,
+): Promise<EmailTemplate> {
+  const res = await fetch(`${API_BASE}/email-templates`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to create email template");
+  }
+
+  const envelope = body as ApiEnvelope<EmailTemplate>;
+  return envelope.data;
+}
+
+export async function updateEmailTemplate(
+  token: string,
+  key: string,
+  payload: Pick<EmailTemplate, "subject" | "body_text" | "placeholders"> &
+    Partial<Pick<EmailTemplate, "title" | "description">>,
+): Promise<EmailTemplate> {
+  const res = await fetch(`${API_BASE}/email-templates/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to update email template");
+  }
+
+  const envelope = body as ApiEnvelope<EmailTemplate>;
+  return envelope.data;
 }
 
 /* ------------------------------------------------------------------ */
@@ -251,14 +515,23 @@ export async function updateProfile(
   token: string,
   data: Record<string, unknown>
 ) {
+  // Backend expects snake_case keys. Accept either shape.
+  const d: any = data ?? {};
+  const payload: Record<string, unknown> = {
+    professional_summary: d.professional_summary ?? d.professionalSummary,
+    field_of_expertise: d.field_of_expertise ?? d.fieldOfExpertise,
+    qualification_level: d.qualification_level ?? d.qualificationLevel,
+    years_experience: d.years_experience ?? d.yearsExperience,
+  };
+
   const res = await fetch(`${API_BASE}/profile`, {
     method: "PATCH",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to update profile");
+    throw apiError(res, body, "Failed to update profile");
   }
   return res.json();
 }
@@ -299,13 +572,25 @@ export async function saveAddress(
   data: Record<string, unknown>,
   id?: string
 ) {
+  // Backend expects snake_case keys. Accept either shape.
+  const d: any = data ?? {};
+  const payload = {
+    address_line1: d.address_line1 ?? d.addressLine1,
+    address_line2: d.address_line2 ?? d.addressLine2,
+    city: d.city,
+    state: d.state,
+    country: d.country,
+    postal_code: d.postal_code ?? d.postalCode,
+    is_primary: d.is_primary ?? d.isPrimary,
+  };
+
   const url = id
     ? `${API_BASE}/profile/addresses/${id}`
     : `${API_BASE}/profile/addresses`;
   const res = await fetch(url, {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);
@@ -319,8 +604,10 @@ export async function deleteAddress(token: string, id: string) {
     method: "DELETE",
     headers: authHeaders(token),
   });
-  if (!res.ok) throw new Error("Failed to delete address");
-  return res.json();
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to delete address");
+  }
 }
 
 export async function saveEducation(
@@ -328,13 +615,27 @@ export async function saveEducation(
   data: Record<string, unknown>,
   id?: string
 ) {
+  const d: any = data ?? {};
+  const payload = {
+    institution_name: (d.institution_name ?? d.institutionName ?? "").toString(),
+    qualification: (d.qualification ?? "").toString(),
+    field_of_study: (d.field_of_study ?? d.fieldOfStudy ?? "").toString(),
+    start_date: (d.start_date ?? d.startDate ?? "").toString(),
+    end_date:
+      Boolean(d.is_current ?? d.isCurrent)
+        ? undefined
+        : (d.end_date ?? d.endDate ?? "").toString() || undefined,
+    is_current: Boolean(d.is_current ?? d.isCurrent),
+    grade: (d.grade ?? "").toString() || undefined,
+  };
+
   const url = id
     ? `${API_BASE}/profile/education/${id}`
     : `${API_BASE}/profile/education`;
   const res = await fetch(url, {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);
@@ -348,8 +649,10 @@ export async function deleteEducation(token: string, id: string) {
     method: "DELETE",
     headers: authHeaders(token),
   });
-  if (!res.ok) throw new Error("Failed to delete education");
-  return res.json();
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to delete education");
+  }
 }
 
 export async function saveExperience(
@@ -357,17 +660,37 @@ export async function saveExperience(
   data: Record<string, unknown>,
   id?: string
 ) {
+  // Backend expects snake_case keys. Accept either shape.
+  const d: any = data ?? {};
+  const isCurrent = Boolean(d.is_current ?? d.isCurrent);
+  const payload = {
+    company_name: (d.company_name ?? d.companyName ?? "").toString(),
+    job_title: (d.job_title ?? d.jobTitle ?? "").toString(),
+    employment_type: (d.employment_type ?? d.employmentType ?? "").toString(),
+    start_date: (d.start_date ?? d.startDate ?? "").toString() || undefined,
+    end_date:
+      isCurrent
+        ? undefined
+        : ((d.end_date ?? d.endDate ?? "").toString() || undefined),
+    is_current: isCurrent,
+    responsibilities: (d.responsibilities ?? "").toString(),
+    salary:
+      d.salary === undefined || d.salary === null || d.salary === ""
+        ? undefined
+        : Number(d.salary),
+  };
+
   const url = id
     ? `${API_BASE}/profile/experience/${id}`
     : `${API_BASE}/profile/experience`;
   const res = await fetch(url, {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save experience");
+    throw apiError(res, body, "Failed to save experience");
   }
   return res.json();
 }
@@ -377,8 +700,10 @@ export async function deleteExperience(token: string, id: string) {
     method: "DELETE",
     headers: authHeaders(token),
   });
-  if (!res.ok) throw new Error("Failed to delete experience");
-  return res.json();
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to delete experience");
+  }
 }
 
 export async function saveReference(
@@ -386,17 +711,27 @@ export async function saveReference(
   data: Record<string, unknown>,
   id?: string
 ) {
+  // Backend expects snake_case keys. Accept either shape.
+  const d: any = data ?? {};
+  const payload = {
+    full_name: (d.full_name ?? d.fullName ?? "").toString(),
+    relationship: (d.relationship ?? "").toString(),
+    company: (d.company ?? "").toString(),
+    email: (d.email ?? "").toString(),
+    phone: (d.phone ?? "").toString(),
+  };
+
   const url = id
     ? `${API_BASE}/profile/references/${id}`
     : `${API_BASE}/profile/references`;
   const res = await fetch(url, {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save reference");
+    throw apiError(res, body, "Failed to save reference");
   }
   return res.json();
 }
@@ -406,6 +741,8 @@ export async function deleteReference(token: string, id: string) {
     method: "DELETE",
     headers: authHeaders(token),
   });
-  if (!res.ok) throw new Error("Failed to delete reference");
-  return res.json();
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to delete reference");
+  }
 }

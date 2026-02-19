@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth"; // Use your existing auth middleware
 import { query } from "../config/database";
+import { ForbiddenError } from "../utils/errors";
 
 export const meRouter = Router();
 
@@ -59,6 +60,51 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
         roles,
         permissions
       } 
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+meRouter.get("/search", authenticate, async (req, res, next) => {
+  try {
+    const userRoles = req.user?.roles ?? [];
+    if (!userRoles.includes("ADMIN") && !userRoles.includes("HR_MANAGER")) {
+      throw new ForbiddenError("You do not have permission to search users");
+    }
+
+    const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
+    if (q.length < 2) {
+      return res.json({ status: "success", data: [] });
+    }
+
+    const like = `%${q}%`;
+    const result = await query(
+      `SELECT id, first_name, last_name, email
+       FROM users
+       WHERE is_active = true
+         AND (
+           first_name ILIKE $1
+           OR last_name ILIKE $1
+           OR email ILIKE $1
+           OR (first_name || ' ' || last_name) ILIKE $1
+         )
+       ORDER BY first_name ASC, last_name ASC
+       LIMIT 10`,
+      [like],
+    );
+
+    const users = result.rows.map((u: any) => ({
+      id: u.id,
+      first_name: u.first_name,
+      last_name: u.last_name,
+      email: u.email,
+      name: `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim(),
+    }));
+
+    return res.json({
+      status: "success",
+      data: users,
     });
   } catch (err) {
     return next(err);

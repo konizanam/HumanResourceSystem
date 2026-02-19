@@ -26,10 +26,17 @@ const poolConfig = {
   connectionTimeoutMillis: 2000,
 };
 
-console.log('📊 Database configuration:', {
-  ...poolConfig,
-  password: '********'
-});
+const LOG_DB_CONFIG = process.env.DB_LOG_CONFIG === 'true';
+const LOG_DB_QUERIES = process.env.DB_LOG_QUERIES === 'true';
+const LOG_DB_SLOW_QUERIES = process.env.DB_LOG_SLOW_QUERIES === 'true';
+const SLOW_QUERY_MS = Number(process.env.DB_SLOW_QUERY_MS ?? 100);
+
+if (LOG_DB_CONFIG) {
+  console.log('📊 Database configuration:', {
+    ...poolConfig,
+    password: '********',
+  });
+}
 
 // Create the pool
 export const pool = new Pool(poolConfig);
@@ -40,7 +47,9 @@ pool.connect((err, client, release) => {
     console.error('❌ Error acquiring client from pool:', err.stack);
     return;
   }
-  console.log('✅ Connected to PostgreSQL database successfully');
+  if (LOG_DB_CONFIG) {
+    console.log('✅ Connected to PostgreSQL database successfully');
+  }
   release();
 });
 
@@ -56,11 +65,11 @@ export const query = async (text: string, params?: any[]) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    
-    if (duration > 100) {
-      console.warn('⚠️ Slow query:', { text, duration, rows: res.rowCount });
-    } else {
+
+    if (LOG_DB_QUERIES) {
       console.log('📝 Query executed:', { text, duration, rows: res.rowCount });
+    } else if (LOG_DB_SLOW_QUERIES && duration > SLOW_QUERY_MS) {
+      console.warn('⚠️ Slow query:', { text, duration, rows: res.rowCount });
     }
     
     return res;

@@ -1,6 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
 import {
   checkEmailAvailable,
   getIpLocation,
@@ -164,7 +163,6 @@ const DEV_PREFILL: Partial<FormData> = {
 };
 
 export function SignupPage() {
-  const { setSession } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(() =>
@@ -432,8 +430,11 @@ export function SignupPage() {
         years_experience: Number(form.yearsExperience.trim()),
       });
 
-      setSession(token, userEmail);
-      navigate("/app/job-seekers", { replace: true });
+      // Activation required: do not create a logged-in session.
+      // Redirect user to login after successful registration.
+      window.setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 0);
     } catch (err) {
       const status = (err as any)?.status;
       const message = err instanceof Error ? err.message : "Registration failed";

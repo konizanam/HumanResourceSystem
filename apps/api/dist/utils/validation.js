@@ -67,12 +67,24 @@ exports.addressValidation = [
     (0, express_validator_1.body)('is_primary').optional().isBoolean(),
 ];
 exports.educationValidation = [
-    (0, express_validator_1.body)('institution_name').notEmpty().withMessage('Institution name is required'),
-    (0, express_validator_1.body)('qualification').notEmpty().withMessage('Qualification is required'),
-    (0, express_validator_1.body)('field_of_study').optional().trim(),
-    (0, express_validator_1.body)('start_date').optional().isISO8601().toDate(),
-    (0, express_validator_1.body)('end_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.body)('institution_name').notEmpty().withMessage('Institution name is required').trim(),
+    (0, express_validator_1.body)('qualification').notEmpty().withMessage('Qualification is required').trim(),
+    (0, express_validator_1.body)('field_of_study').notEmpty().withMessage('Field of study is required').trim(),
+    (0, express_validator_1.body)('start_date')
+        .notEmpty()
+        .withMessage('Start date is required')
+        .isISO8601()
+        .toDate(),
     (0, express_validator_1.body)('is_current').optional().isBoolean(),
+    (0, express_validator_1.body)('end_date').custom((value, { req }) => {
+        const isCurrent = Boolean(req.body?.is_current);
+        if (isCurrent)
+            return true;
+        if (!value) {
+            throw new Error('End date is required');
+        }
+        return true;
+    }).isISO8601().toDate(),
     (0, express_validator_1.body)('grade').optional().trim(),
 ];
 exports.experienceValidation = [

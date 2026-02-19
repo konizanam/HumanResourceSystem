@@ -5,6 +5,8 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { AppLayout } from "./layout/AppLayout";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { JobSeekerProfilePage } from "./pages/JobSeekerProfilePage";
+import { CompaniesPage } from "./pages/CompaniesPage";
+import { EmailTemplatesPage } from "./pages/EmailTemplatesPage";
 
 const menu = [
   { path: "global-settings", title: "Global Settings", icon: "settings" },
@@ -40,8 +42,19 @@ export function App() {
         {/* Job Seeker has a real page instead of placeholder */}
         <Route path="job-seekers" element={<JobSeekerProfilePage />} />
 
+        {/* Companies has a real page instead of placeholder */}
+        <Route path="companies" element={<CompaniesPage />} />
+
+        {/* Email Templates has a real page instead of placeholder */}
+        <Route path="email-templates" element={<EmailTemplatesPage />} />
+
         {menu
-          .filter((m) => m.path !== "job-seekers")
+          .filter(
+            (m) =>
+              m.path !== "job-seekers" &&
+              m.path !== "companies" &&
+              m.path !== "email-templates",
+          )
           .map((m) => (
             <Route
               key={m.path}

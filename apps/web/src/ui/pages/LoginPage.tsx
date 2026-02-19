@@ -74,7 +74,7 @@ export function LoginPage() {
           return;
         }
 
-        setSession(result.accessToken, result.user.email);
+        setSession(result.accessToken, result.user.email, result.user.name);
         navigate(redirectTo, { replace: true });
         return;
       }
@@ -100,7 +100,7 @@ export function LoginPage() {
       }
 
       const result = await verifyTwoFactor(pending.challengeId, normalized);
-      setSession(result.accessToken, result.user.email);
+      setSession(result.accessToken, result.user.email, result.user.name);
       navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

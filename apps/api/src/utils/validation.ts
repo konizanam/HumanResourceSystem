@@ -71,12 +71,23 @@ export const addressValidation = [
 ];
 
 export const educationValidation = [
-  body('institution_name').notEmpty().withMessage('Institution name is required'),
-  body('qualification').notEmpty().withMessage('Qualification is required'),
-  body('field_of_study').optional().trim(),
-  body('start_date').optional().isISO8601().toDate(),
-  body('end_date').optional().isISO8601().toDate(),
+  body('institution_name').notEmpty().withMessage('Institution name is required').trim(),
+  body('qualification').notEmpty().withMessage('Qualification is required').trim(),
+  body('field_of_study').notEmpty().withMessage('Field of study is required').trim(),
+  body('start_date')
+    .notEmpty()
+    .withMessage('Start date is required')
+    .isISO8601()
+    .toDate(),
   body('is_current').optional().isBoolean(),
+  body('end_date').custom((value, { req }) => {
+    const isCurrent = Boolean(req.body?.is_current);
+    if (isCurrent) return true;
+    if (!value) {
+      throw new Error('End date is required');
+    }
+    return true;
+  }).isISO8601().toDate(),
   body('grade').optional().trim(),
 ];
 

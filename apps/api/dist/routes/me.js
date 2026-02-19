@@ -4,6 +4,7 @@ exports.meRouter = void 0;
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth"); // Use your existing auth middleware
 const database_1 = require("../config/database");
+const errors_1 = require("../utils/errors");
 exports.meRouter = (0, express_1.Router)();
 // Use your existing authenticate middleware
 exports.meRouter.get("/me", auth_1.authenticate, async (req, res, next) => {
@@ -42,6 +43,44 @@ exports.meRouter.get("/me", auth_1.authenticate, async (req, res, next) => {
                 roles,
                 permissions
             }
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+});
+exports.meRouter.get("/search", auth_1.authenticate, async (req, res, next) => {
+    try {
+        const userRoles = req.user?.roles ?? [];
+        if (!userRoles.includes("ADMIN") && !userRoles.includes("HR_MANAGER")) {
+            throw new errors_1.ForbiddenError("You do not have permission to search users");
+        }
+        const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
+        if (q.length < 2) {
+            return res.json({ status: "success", data: [] });
+        }
+        const like = `%${q}%`;
+        const result = await (0, database_1.query)(`SELECT id, first_name, last_name, email
+       FROM users
+       WHERE is_active = true
+         AND (
+           first_name ILIKE $1
+           OR last_name ILIKE $1
+           OR email ILIKE $1
+           OR (first_name || ' ' || last_name) ILIKE $1
+         )
+       ORDER BY first_name ASC, last_name ASC
+       LIMIT 10`, [like]);
+        const users = result.rows.map((u) => ({
+            id: u.id,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            email: u.email,
+            name: `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim(),
+        }));
+        return res.json({
+            status: "success",
+            data: users,
         });
     }
     catch (err) {

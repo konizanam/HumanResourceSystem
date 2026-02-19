@@ -11,6 +11,7 @@ const uuid_1 = require("uuid");
 const zod_1 = require("zod");
 const db_1 = require("../db");
 const users_1 = require("../users");
+const emailSender_service_1 = require("../services/emailSender.service");
 exports.authRouter = (0, express_1.Router)();
 /* ------------------------------------------------------------------ */
 /*  GET /api/v1/auth/email-available                                   */
@@ -50,6 +51,25 @@ function createTwoFactorChallenge(input) {
         expiresInSeconds: 300,
     };
 }
+async function sendTwoFactorCodeEmail(params) {
+    const expiresMinutes = Math.max(1, Math.ceil(params.expiresInSeconds / 60));
+    try {
+        await (0, emailSender_service_1.sendTemplatedEmail)({
+            templateKey: "auth_code",
+            to: params.to,
+            data: {
+                app_name: (0, emailSender_service_1.appName)(),
+                user_full_name: params.userFullName,
+                otp_code: params.code,
+                otp_expires_minutes: String(expiresMinutes),
+                support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+            },
+        });
+    }
+    catch (e) {
+        console.error("[Email] Failed to send 2FA code email:", e instanceof Error ? e.message : e);
+    }
+}
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -71,6 +91,25 @@ function signToken(payload) {
     if (!secret)
         throw new Error("JWT_SECRET is not configured");
     return jsonwebtoken_1.default.sign(payload, secret, { expiresIn: jwtExpiresIn() });
+}
+function activationExpiresIn() {
+    const raw = process.env.ACTIVATION_TOKEN_EXPIRES_IN;
+    if (!raw)
+        return "24h";
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return "24h";
+    if (/^\d+$/.test(trimmed))
+        return Number(trimmed);
+    if (/^\d+(ms|s|m|h|d|w|y)$/.test(trimmed))
+        return trimmed;
+    return "24h";
+}
+function signActivationToken(payload) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret)
+        throw new Error("JWT_SECRET is not configured");
+    return jsonwebtoken_1.default.sign({ sub: payload.sub, email: payload.email, type: "activation" }, secret, { expiresIn: activationExpiresIn() });
 }
 /* ------------------------------------------------------------------ */
 /*  POST /api/auth/register                                            */
@@ -102,8 +141,8 @@ exports.authRouter.post("/register", async (req, res, next) => {
         const passwordHash = await bcryptjs_1.default.hash(data.password, 12);
         await client.query("BEGIN");
         // Insert user
-        const { rows: userRows } = await client.query(`INSERT INTO users (first_name, last_name, email, password_hash)
-       VALUES ($1, $2, $3, $4)
+        const { rows: userRows } = await client.query(`INSERT INTO users (first_name, last_name, email, password_hash, is_active)
+       VALUES ($1, $2, $3, $4, FALSE)
        RETURNING id`, [data.firstName, data.lastName, data.email, passwordHash]);
         const userId = userRows[0].id;
         // Assign JOB_SEEKER role
@@ -118,7 +157,26 @@ exports.authRouter.post("/register", async (req, res, next) => {
             email: data.email,
             name: `${data.firstName} ${data.lastName}`,
             roles: ["JOB_SEEKER"],
+            preActivation: true,
         });
+        // Send activation email (best-effort). This does NOT block signup.
+        try {
+            const activationToken = signActivationToken({ sub: userId, email: data.email });
+            const activationLink = `${(0, emailSender_service_1.apiOrigin)()}/api/v1/auth/activate?token=${encodeURIComponent(activationToken)}`;
+            await (0, emailSender_service_1.sendTemplatedEmail)({
+                templateKey: "registration_activation",
+                to: data.email,
+                data: {
+                    app_name: (0, emailSender_service_1.appName)(),
+                    user_full_name: `${data.firstName} ${data.lastName}`.trim(),
+                    activation_link: activationLink,
+                },
+            });
+        }
+        catch (e) {
+            // Don't break registration if email fails; log for dev.
+            console.error("[Email] Failed to send activation email:", e instanceof Error ? e.message : e);
+        }
         return res.status(201).json({
             tokenType: "Bearer",
             accessToken,
@@ -137,6 +195,34 @@ exports.authRouter.post("/register", async (req, res, next) => {
     }
     finally {
         client.release();
+    }
+});
+/* ------------------------------------------------------------------ */
+/*  GET /api/v1/auth/activate                                         */
+/* ------------------------------------------------------------------ */
+const activateSchema = zod_1.z.object({
+    token: zod_1.z.string().min(1, "Token is required"),
+});
+exports.authRouter.get("/activate", async (req, res, next) => {
+    try {
+        const { token } = activateSchema.parse(req.query);
+        const secret = process.env.JWT_SECRET;
+        if (!secret)
+            throw new Error("JWT_SECRET is not configured");
+        const decoded = jsonwebtoken_1.default.verify(token, secret);
+        if (decoded?.type !== "activation" || typeof decoded?.sub !== "string") {
+            return res.status(400).json({ error: { message: "Invalid activation token" } });
+        }
+        const userId = decoded.sub;
+        await (0, db_1.query)("UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1", [userId]);
+        const origin = (0, emailSender_service_1.webOrigin)();
+        if (origin) {
+            return res.redirect(`${origin}/login?activated=1`);
+        }
+        return res.json({ status: "success", message: "Account activated successfully" });
+    }
+    catch (err) {
+        return next(err);
     }
 });
 /* ------------------------------------------------------------------ */
@@ -168,11 +254,18 @@ exports.authRouter.post("/login", async (req, res, next) => {
             name: pub.name,
             roles: user.roles,
         });
+        // Best-effort: send the OTP to the user's email.
+        void sendTwoFactorCodeEmail({
+            to: user.email,
+            userFullName: pub.name,
+            code: challenge.code,
+            expiresInSeconds: challenge.expiresInSeconds,
+        });
         return res.status(202).json({
             requiresTwoFactor: true,
             challengeId: challenge.challengeId,
             expiresInSeconds: challenge.expiresInSeconds,
-            message: "2FA code generated. Check server terminal output.",
+            message: "Authentication code sent to your email.",
         });
     }
     catch (err) {
@@ -207,6 +300,12 @@ exports.authRouter.post("/2fa/challenge", async (req, res, next) => {
             email: user.email,
             name: pub.name,
             roles: user.roles,
+        });
+        void sendTwoFactorCodeEmail({
+            to: user.email,
+            userFullName: pub.name,
+            code: challenge.code,
+            expiresInSeconds: challenge.expiresInSeconds,
         });
         return res.json({
             message: "2FA challenge created",
