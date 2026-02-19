@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db";
-import { requireAuth } from "../middleware/auth";
+import { authenticate } from "../middleware/auth";
 
 export const jobSeekerRouter = Router();
 
 // All routes require authentication
-jobSeekerRouter.use(requireAuth);
+jobSeekerRouter.use(authenticate);
 
 /* ================================================================== */
 /*  PROFILE (professional summary)                                     */
@@ -14,7 +14,7 @@ jobSeekerRouter.use(requireAuth);
 
 jobSeekerRouter.get("/profile", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT user_id, professional_summary, field_of_expertise,
               qualification_level, years_experience, created_at
@@ -36,7 +36,7 @@ const profileSchema = z.object({
 
 jobSeekerRouter.put("/profile", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const data = profileSchema.parse(req.body);
 
     const { rows } = await query(
@@ -69,7 +69,7 @@ jobSeekerRouter.put("/profile", async (req, res, next) => {
 
 jobSeekerRouter.get("/personal-details", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT * FROM job_seeker_personal_details WHERE user_id = $1`,
       [userId]
@@ -95,7 +95,7 @@ const personalDetailsSchema = z.object({
 
 jobSeekerRouter.put("/personal-details", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = personalDetailsSchema.parse(req.body);
 
     const { rows } = await query(
@@ -142,7 +142,7 @@ jobSeekerRouter.put("/personal-details", async (req, res, next) => {
 
 jobSeekerRouter.get("/addresses", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT * FROM job_seeker_addresses WHERE user_id = $1 ORDER BY is_primary DESC`,
       [userId]
@@ -165,7 +165,7 @@ const addressSchema = z.object({
 
 jobSeekerRouter.post("/addresses", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = addressSchema.parse(req.body);
 
     const { rows } = await query(
@@ -193,7 +193,7 @@ jobSeekerRouter.post("/addresses", async (req, res, next) => {
 
 jobSeekerRouter.put("/addresses/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = addressSchema.parse(req.body);
 
     const { rows } = await query(
@@ -226,7 +226,7 @@ jobSeekerRouter.put("/addresses/:id", async (req, res, next) => {
 
 jobSeekerRouter.delete("/addresses/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rowCount } = await query(
       `DELETE FROM job_seeker_addresses WHERE id = $1 AND user_id = $2`,
       [req.params.id, userId]
@@ -246,7 +246,7 @@ jobSeekerRouter.delete("/addresses/:id", async (req, res, next) => {
 
 jobSeekerRouter.get("/education", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT * FROM job_seeker_education WHERE user_id = $1 ORDER BY start_date DESC`,
       [userId]
@@ -269,7 +269,7 @@ const educationSchema = z.object({
 
 jobSeekerRouter.post("/education", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = educationSchema.parse(req.body);
 
     const { rows } = await query(
@@ -297,7 +297,7 @@ jobSeekerRouter.post("/education", async (req, res, next) => {
 
 jobSeekerRouter.put("/education/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = educationSchema.parse(req.body);
 
     const { rows } = await query(
@@ -330,7 +330,7 @@ jobSeekerRouter.put("/education/:id", async (req, res, next) => {
 
 jobSeekerRouter.delete("/education/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rowCount } = await query(
       `DELETE FROM job_seeker_education WHERE id = $1 AND user_id = $2`,
       [req.params.id, userId]
@@ -350,7 +350,7 @@ jobSeekerRouter.delete("/education/:id", async (req, res, next) => {
 
 jobSeekerRouter.get("/experience", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT * FROM job_seeker_experience WHERE user_id = $1 ORDER BY start_date DESC`,
       [userId]
@@ -375,7 +375,7 @@ const experienceSchema = z.object({
 
 jobSeekerRouter.post("/experience", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = experienceSchema.parse(req.body);
 
     const { rows } = await query(
@@ -406,7 +406,7 @@ jobSeekerRouter.post("/experience", async (req, res, next) => {
 
 jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = experienceSchema.parse(req.body);
 
     const { rows } = await query(
@@ -442,7 +442,7 @@ jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
 
 jobSeekerRouter.delete("/experience/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rowCount } = await query(
       `DELETE FROM job_seeker_experience WHERE id = $1 AND user_id = $2`,
       [req.params.id, userId]
@@ -462,7 +462,7 @@ jobSeekerRouter.delete("/experience/:id", async (req, res, next) => {
 
 jobSeekerRouter.get("/references", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rows } = await query(
       `SELECT * FROM job_seeker_references WHERE user_id = $1 ORDER BY created_at DESC`,
       [userId]
@@ -483,7 +483,7 @@ const referenceSchema = z.object({
 
 jobSeekerRouter.post("/references", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = referenceSchema.parse(req.body);
 
     const { rows } = await query(
@@ -509,7 +509,7 @@ jobSeekerRouter.post("/references", async (req, res, next) => {
 
 jobSeekerRouter.put("/references/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const d = referenceSchema.parse(req.body);
 
     const { rows } = await query(
@@ -539,7 +539,7 @@ jobSeekerRouter.put("/references/:id", async (req, res, next) => {
 
 jobSeekerRouter.delete("/references/:id", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
     const { rowCount } = await query(
       `DELETE FROM job_seeker_references WHERE id = $1 AND user_id = $2`,
       [req.params.id, userId]
@@ -559,7 +559,7 @@ jobSeekerRouter.delete("/references/:id", async (req, res, next) => {
 
 jobSeekerRouter.get("/full-profile", async (req, res, next) => {
   try {
-    const userId = req.auth!.sub;
+    const userId = req.user!.userId;
 
     const [profile, personal, addresses, education, experience, references] =
       await Promise.all([

@@ -41,12 +41,21 @@ export const profileUpdateValidation = [
 ];
 
 export const personalDetailsValidation = [
-  body('first_name').optional().trim(),
-  body('last_name').optional().trim(),
+  body('first_name').notEmpty().withMessage('First name is required').trim(),
+  body('last_name').notEmpty().withMessage('Last name is required').trim(),
   body('middle_name').optional().trim(),
-  body('gender').optional().isIn(['Male', 'Female', 'Other', 'Prefer not to say']),
-  body('date_of_birth').optional().isISO8601().toDate(),
-  body('nationality').optional().trim(),
+  body('gender')
+    .notEmpty()
+    .withMessage('Gender is required')
+    .isIn(['Male', 'Female', 'Other', 'Prefer not to say']),
+  body('date_of_birth')
+    .notEmpty()
+    .withMessage('Date of birth is required')
+    .isISO8601()
+    .toDate(),
+  body('nationality').notEmpty().withMessage('Nationality is required').trim(),
+  body('id_type').optional().trim().notEmpty().withMessage('ID Type cannot be empty'),
+  body('id_number').optional().trim().notEmpty().withMessage('ID/Passport Number cannot be empty'),
   body('marital_status').optional().trim(),
   body('disability_status').optional().isBoolean(),
 ];

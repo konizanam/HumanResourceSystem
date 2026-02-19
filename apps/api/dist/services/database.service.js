@@ -144,21 +144,23 @@ class DatabaseService {
     }
     // ==================== JOB SEEKER PERSONAL DETAILS ====================
     async upsertPersonalDetails(userId, data) {
-        const { first_name, last_name, middle_name, gender, date_of_birth, nationality, marital_status, disability_status } = data;
+        const { first_name, last_name, middle_name, gender, date_of_birth, nationality, id_type, id_number, marital_status, disability_status } = data;
         const result = await (0, database_1.query)(`INSERT INTO job_seeker_personal_details 
-       (user_id, first_name, last_name, middle_name, gender, date_of_birth, nationality, marital_status, disability_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (user_id, first_name, last_name, middle_name, gender, date_of_birth, nationality, id_type, id_number, marital_status, disability_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id) 
        DO UPDATE SET
-         first_name = EXCLUDED.first_name,
-         last_name = EXCLUDED.last_name,
-         middle_name = EXCLUDED.middle_name,
-         gender = EXCLUDED.gender,
-         date_of_birth = EXCLUDED.date_of_birth,
-         nationality = EXCLUDED.nationality,
-         marital_status = EXCLUDED.marital_status,
-         disability_status = EXCLUDED.disability_status
-       RETURNING *`, [userId, first_name, last_name, middle_name, gender, date_of_birth, nationality, marital_status, disability_status]);
+         first_name = COALESCE(EXCLUDED.first_name, job_seeker_personal_details.first_name),
+         last_name = COALESCE(EXCLUDED.last_name, job_seeker_personal_details.last_name),
+         middle_name = COALESCE(EXCLUDED.middle_name, job_seeker_personal_details.middle_name),
+         gender = COALESCE(EXCLUDED.gender, job_seeker_personal_details.gender),
+         date_of_birth = COALESCE(EXCLUDED.date_of_birth, job_seeker_personal_details.date_of_birth),
+         nationality = COALESCE(EXCLUDED.nationality, job_seeker_personal_details.nationality),
+         id_type = COALESCE(EXCLUDED.id_type, job_seeker_personal_details.id_type),
+         id_number = COALESCE(EXCLUDED.id_number, job_seeker_personal_details.id_number),
+         marital_status = COALESCE(EXCLUDED.marital_status, job_seeker_personal_details.marital_status),
+         disability_status = COALESCE(EXCLUDED.disability_status, job_seeker_personal_details.disability_status)
+       RETURNING *`, [userId, first_name, last_name, middle_name, gender, date_of_birth, nationality, id_type, id_number, marital_status, disability_status]);
         return result.rows[0];
     }
     async getPersonalDetails(userId) {
@@ -179,7 +181,7 @@ class DatabaseService {
         return result.rows[0];
     }
     async getAddresses(userId) {
-        const result = await (0, database_1.query)('SELECT * FROM job_seeker_addresses WHERE user_id = $1 ORDER BY is_primary DESC, created_at DESC', [userId]);
+        const result = await (0, database_1.query)('SELECT * FROM job_seeker_addresses WHERE user_id = $1 ORDER BY is_primary DESC, id DESC', [userId]);
         return result.rows;
     }
     async updateAddress(addressId, userId, data) {

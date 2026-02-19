@@ -1,7 +1,14 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { getIpLocation, register, saveAddress, updatePersonalDetails, updateProfile } from "../api/client";
+import {
+  checkEmailAvailable,
+  getIpLocation,
+  register,
+  saveAddress,
+  updatePersonalDetails,
+  updateProfile,
+} from "../api/client";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 
@@ -84,6 +91,8 @@ type FormData = {
   gender: "" | "Male" | "Female" | "Other" | "Prefer not to say";
   dateOfBirth: string;
   nationality: string;
+  idType: "" | "National ID" | "Passport";
+  idNumber: string;
   maritalStatus: string;
   disabilityStatus: boolean;
 
@@ -111,6 +120,8 @@ const INITIAL: FormData = {
   gender: "",
   dateOfBirth: "",
   nationality: "",
+  idType: "",
+  idNumber: "",
   maritalStatus: "",
   disabilityStatus: false,
 
@@ -137,6 +148,8 @@ const DEV_PREFILL: Partial<FormData> = {
   gender: "Male",
   dateOfBirth: "1990-01-01",
   nationality: "Namibia",
+  idType: "National ID",
+  idNumber: "AA1234567",
   maritalStatus: "Single",
   disabilityStatus: false,
 
@@ -169,8 +182,49 @@ export function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [ipCountryCode, setIpCountryCode] = useState<string | null>(null);
+  const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
+  const [emailChecking, setEmailChecking] = useState(false);
 
   const isNamibia = ipCountryCode === "NA";
+
+  useEffect(() => {
+    const email = form.email.trim();
+    setEmailAvailable(null);
+
+    if (!email) {
+      setEmailChecking(false);
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailChecking(false);
+      return;
+    }
+
+    // Mark as checking immediately so we don't allow Next before debounce fires.
+    setEmailChecking(true);
+
+    const controller = new AbortController();
+    const handle = window.setTimeout(() => {
+      (async () => {
+        try {
+          const available = await checkEmailAvailable(email);
+          if (controller.signal.aborted) return;
+          setEmailAvailable(available);
+        } catch {
+          if (controller.signal.aborted) return;
+          setEmailAvailable(null);
+        } finally {
+          if (!controller.signal.aborted) setEmailChecking(false);
+        }
+      })();
+    }, 450);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(handle);
+    };
+  }, [form.email]);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,6 +322,8 @@ export function SignupPage() {
       if (!form.email.trim()) errs.email = "Email is required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
         errs.email = "Invalid email format";
+      else if (emailAvailable === false)
+        errs.email = "Email is already registered";
 
       if (form.password.length < 8)
         errs.password = "At least 8 characters";
@@ -285,6 +341,8 @@ export function SignupPage() {
       if (!form.gender) errs.gender = "Gender is required";
       if (!form.dateOfBirth) errs.dateOfBirth = "Date of birth is required";
       if (!form.nationality.trim()) errs.nationality = "Nationality is required";
+      if (!form.idType) errs.idType = "ID Type is required";
+      if (!form.idNumber.trim()) errs.idNumber = "ID/Passport Number is required";
     }
 
     if (step === 1) {
@@ -351,6 +409,8 @@ export function SignupPage() {
         gender: form.gender,
         date_of_birth: form.dateOfBirth,
         nationality: form.nationality.trim(),
+        id_type: form.idType,
+        id_number: form.idNumber.trim(),
         marital_status: form.maritalStatus.trim() || undefined,
         disability_status: form.disabilityStatus,
       });
@@ -375,7 +435,13 @@ export function SignupPage() {
       setSession(token, userEmail);
       navigate("/app/job-seekers", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      const status = (err as any)?.status;
+      const message = err instanceof Error ? err.message : "Registration failed";
+      if (status === 409) {
+        setFieldErrors((prev) => ({ ...prev, email: message }));
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -428,6 +494,17 @@ export function SignupPage() {
                 autoComplete="email"
                 required
               />
+              {form.email.trim() && (
+                <span className="hintText">
+                  {emailChecking
+                    ? "Checking email availability…"
+                    : emailAvailable === true
+                      ? "Email is available"
+                      : emailAvailable === false
+                        ? "Email is already registered"
+                        : ""}
+                </span>
+              )}
               {fieldErrors.email && (
                 <span className="fieldError">{fieldErrors.email}</span>
               )}
@@ -634,6 +711,39 @@ export function SignupPage() {
               )}
               {fieldErrors.nationality && (
                 <span className="fieldError">{fieldErrors.nationality}</span>
+              )}
+            </label>
+
+            <label className="field">
+              <span className="fieldLabel">ID Type</span>
+              <select
+                className="input"
+                value={form.idType}
+                onChange={(e) => set("idType", e.target.value as FormData["idType"])}
+                required
+              >
+                <option value="" disabled>
+                  Select ID type
+                </option>
+                <option value="National ID">National ID</option>
+                <option value="Passport">Passport</option>
+              </select>
+              {fieldErrors.idType && (
+                <span className="fieldError">{fieldErrors.idType}</span>
+              )}
+            </label>
+
+            <label className="field">
+              <span className="fieldLabel">ID/Passport Number</span>
+              <input
+                className="input"
+                value={form.idNumber}
+                onChange={(e) => set("idNumber", e.target.value)}
+                placeholder="Enter your ID/Passport number"
+                required
+              />
+              {fieldErrors.idNumber && (
+                <span className="fieldError">{fieldErrors.idNumber}</span>
               )}
             </label>
 
@@ -955,6 +1065,14 @@ export function SignupPage() {
               <div className="confirmItem">
                 <span className="confirmLabel">Nationality</span>
                 <span className="confirmValue">{form.nationality || "—"}</span>
+              </div>
+              <div className="confirmItem">
+                <span className="confirmLabel">ID Type</span>
+                <span className="confirmValue">{form.idType || "—"}</span>
+              </div>
+              <div className="confirmItem">
+                <span className="confirmLabel">ID/Passport Number</span>
+                <span className="confirmValue">{form.idNumber || "—"}</span>
               </div>
               <div className="confirmItem">
                 <span className="confirmLabel">Marital Status</span>

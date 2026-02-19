@@ -44,16 +44,22 @@ export const authenticate = async (
     }
 
     // Get user permissions
-    const permissionsResult = await query(
-      `SELECT DISTINCT p.name
-       FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1`,
-      [userId]
-    );
-
-    const permissions = permissionsResult.rows.map(row => row.name);
+    let permissions: string[] = [];
+    try {
+      const permissionsResult = await query(
+        `SELECT DISTINCT p.name
+         FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         JOIN user_roles ur ON rp.role_id = ur.role_id
+         WHERE ur.user_id = $1`,
+        [userId]
+      );
+      permissions = permissionsResult.rows.map((row) => row.name);
+    } catch {
+      // Best-effort: if permissions schema isn't present or query fails,
+      // default to an empty permission set instead of failing auth.
+      permissions = [];
+    }
 
     // Add permissions to the user object
     req.user = {

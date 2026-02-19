@@ -7,13 +7,13 @@ const db_1 = require("../db");
 const auth_1 = require("../middleware/auth");
 exports.jobSeekerRouter = (0, express_1.Router)();
 // All routes require authentication
-exports.jobSeekerRouter.use(auth_1.requireAuth);
+exports.jobSeekerRouter.use(auth_1.authenticate);
 /* ================================================================== */
 /*  PROFILE (professional summary)                                     */
 /* ================================================================== */
 exports.jobSeekerRouter.get("/profile", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT user_id, professional_summary, field_of_expertise,
               qualification_level, years_experience, created_at
        FROM job_seeker_profiles WHERE user_id = $1`, [userId]);
@@ -31,7 +31,7 @@ const profileSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.put("/profile", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const data = profileSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_profiles (user_id, professional_summary, field_of_expertise, qualification_level, years_experience)
        VALUES ($1, $2, $3, $4, $5)
@@ -58,7 +58,7 @@ exports.jobSeekerRouter.put("/profile", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/personal-details", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT * FROM job_seeker_personal_details WHERE user_id = $1`, [userId]);
         return res.json({ personalDetails: rows[0] ?? null });
     }
@@ -80,7 +80,7 @@ const personalDetailsSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.put("/personal-details", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = personalDetailsSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_personal_details
          (user_id, first_name, last_name, middle_name, gender, date_of_birth,
@@ -121,7 +121,7 @@ exports.jobSeekerRouter.put("/personal-details", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/addresses", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT * FROM job_seeker_addresses WHERE user_id = $1 ORDER BY is_primary DESC`, [userId]);
         return res.json({ addresses: rows });
     }
@@ -140,7 +140,7 @@ const addressSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.post("/addresses", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = addressSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_addresses
          (user_id, address_line1, address_line2, city, state, country, postal_code, is_primary)
@@ -163,7 +163,7 @@ exports.jobSeekerRouter.post("/addresses", async (req, res, next) => {
 });
 exports.jobSeekerRouter.put("/addresses/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = addressSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`UPDATE job_seeker_addresses SET
          address_line1 = $3, address_line2 = $4, city = $5,
@@ -191,7 +191,7 @@ exports.jobSeekerRouter.put("/addresses/:id", async (req, res, next) => {
 });
 exports.jobSeekerRouter.delete("/addresses/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rowCount } = await (0, db_1.query)(`DELETE FROM job_seeker_addresses WHERE id = $1 AND user_id = $2`, [req.params.id, userId]);
         if (rowCount === 0) {
             return res.status(404).json({ error: { message: "Address not found" } });
@@ -207,7 +207,7 @@ exports.jobSeekerRouter.delete("/addresses/:id", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/education", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT * FROM job_seeker_education WHERE user_id = $1 ORDER BY start_date DESC`, [userId]);
         return res.json({ education: rows });
     }
@@ -226,7 +226,7 @@ const educationSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.post("/education", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = educationSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_education
          (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade)
@@ -249,7 +249,7 @@ exports.jobSeekerRouter.post("/education", async (req, res, next) => {
 });
 exports.jobSeekerRouter.put("/education/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = educationSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`UPDATE job_seeker_education SET
          institution_name = $3, qualification = $4, field_of_study = $5,
@@ -277,7 +277,7 @@ exports.jobSeekerRouter.put("/education/:id", async (req, res, next) => {
 });
 exports.jobSeekerRouter.delete("/education/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rowCount } = await (0, db_1.query)(`DELETE FROM job_seeker_education WHERE id = $1 AND user_id = $2`, [req.params.id, userId]);
         if (rowCount === 0) {
             return res.status(404).json({ error: { message: "Education record not found" } });
@@ -293,7 +293,7 @@ exports.jobSeekerRouter.delete("/education/:id", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/experience", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT * FROM job_seeker_experience WHERE user_id = $1 ORDER BY start_date DESC`, [userId]);
         return res.json({ experience: rows });
     }
@@ -314,7 +314,7 @@ const experienceSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.post("/experience", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = experienceSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_experience
          (user_id, company_name, job_title, employment_type, start_date, end_date,
@@ -340,7 +340,7 @@ exports.jobSeekerRouter.post("/experience", async (req, res, next) => {
 });
 exports.jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = experienceSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`UPDATE job_seeker_experience SET
          company_name = $3, job_title = $4, employment_type = $5,
@@ -371,7 +371,7 @@ exports.jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
 });
 exports.jobSeekerRouter.delete("/experience/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rowCount } = await (0, db_1.query)(`DELETE FROM job_seeker_experience WHERE id = $1 AND user_id = $2`, [req.params.id, userId]);
         if (rowCount === 0) {
             return res.status(404).json({ error: { message: "Experience record not found" } });
@@ -387,7 +387,7 @@ exports.jobSeekerRouter.delete("/experience/:id", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/references", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rows } = await (0, db_1.query)(`SELECT * FROM job_seeker_references WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
         return res.json({ references: rows });
     }
@@ -404,7 +404,7 @@ const referenceSchema = zod_1.z.object({
 });
 exports.jobSeekerRouter.post("/references", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = referenceSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`INSERT INTO job_seeker_references
          (user_id, full_name, relationship, company, email, phone)
@@ -425,7 +425,7 @@ exports.jobSeekerRouter.post("/references", async (req, res, next) => {
 });
 exports.jobSeekerRouter.put("/references/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const d = referenceSchema.parse(req.body);
         const { rows } = await (0, db_1.query)(`UPDATE job_seeker_references SET
          full_name = $3, relationship = $4, company = $5, email = $6, phone = $7
@@ -450,7 +450,7 @@ exports.jobSeekerRouter.put("/references/:id", async (req, res, next) => {
 });
 exports.jobSeekerRouter.delete("/references/:id", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const { rowCount } = await (0, db_1.query)(`DELETE FROM job_seeker_references WHERE id = $1 AND user_id = $2`, [req.params.id, userId]);
         if (rowCount === 0) {
             return res.status(404).json({ error: { message: "Reference not found" } });
@@ -466,7 +466,7 @@ exports.jobSeekerRouter.delete("/references/:id", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/full-profile", async (req, res, next) => {
     try {
-        const userId = req.auth.sub;
+        const userId = req.user.userId;
         const [profile, personal, addresses, education, experience, references] = await Promise.all([
             (0, db_1.query)(`SELECT * FROM job_seeker_profiles WHERE user_id = $1`, [userId]),
             (0, db_1.query)(`SELECT * FROM job_seeker_personal_details WHERE user_id = $1`, [userId]),

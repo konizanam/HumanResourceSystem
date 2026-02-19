@@ -39,12 +39,21 @@ exports.profileUpdateValidation = [
     (0, express_validator_1.body)('years_experience').optional().isInt({ min: 0 }).withMessage('Years experience must be a positive number'),
 ];
 exports.personalDetailsValidation = [
-    (0, express_validator_1.body)('first_name').optional().trim(),
-    (0, express_validator_1.body)('last_name').optional().trim(),
+    (0, express_validator_1.body)('first_name').notEmpty().withMessage('First name is required').trim(),
+    (0, express_validator_1.body)('last_name').notEmpty().withMessage('Last name is required').trim(),
     (0, express_validator_1.body)('middle_name').optional().trim(),
-    (0, express_validator_1.body)('gender').optional().isIn(['Male', 'Female', 'Other', 'Prefer not to say']),
-    (0, express_validator_1.body)('date_of_birth').optional().isISO8601().toDate(),
-    (0, express_validator_1.body)('nationality').optional().trim(),
+    (0, express_validator_1.body)('gender')
+        .notEmpty()
+        .withMessage('Gender is required')
+        .isIn(['Male', 'Female', 'Other', 'Prefer not to say']),
+    (0, express_validator_1.body)('date_of_birth')
+        .notEmpty()
+        .withMessage('Date of birth is required')
+        .isISO8601()
+        .toDate(),
+    (0, express_validator_1.body)('nationality').notEmpty().withMessage('Nationality is required').trim(),
+    (0, express_validator_1.body)('id_type').optional().trim().notEmpty().withMessage('ID Type cannot be empty'),
+    (0, express_validator_1.body)('id_number').optional().trim().notEmpty().withMessage('ID/Passport Number cannot be empty'),
     (0, express_validator_1.body)('marital_status').optional().trim(),
     (0, express_validator_1.body)('disability_status').optional().isBoolean(),
 ];

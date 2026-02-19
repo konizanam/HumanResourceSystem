@@ -33,12 +33,20 @@ const authenticate = async (req, res, next) => {
             throw new errors_1.UnauthorizedError('User not found or inactive');
         }
         // Get user permissions
-        const permissionsResult = await (0, database_1.query)(`SELECT DISTINCT p.name
-       FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1`, [userId]);
-        const permissions = permissionsResult.rows.map(row => row.name);
+        let permissions = [];
+        try {
+            const permissionsResult = await (0, database_1.query)(`SELECT DISTINCT p.name
+         FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         JOIN user_roles ur ON rp.role_id = ur.role_id
+         WHERE ur.user_id = $1`, [userId]);
+            permissions = permissionsResult.rows.map((row) => row.name);
+        }
+        catch {
+            // Best-effort: if permissions schema isn't present or query fails,
+            // default to an empty permission set instead of failing auth.
+            permissions = [];
+        }
         // Add permissions to the user object
         req.user = {
             userId,

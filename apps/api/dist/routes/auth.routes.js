@@ -12,6 +12,24 @@ const zod_1 = require("zod");
 const db_1 = require("../db");
 const users_1 = require("../users");
 exports.authRouter = (0, express_1.Router)();
+/* ------------------------------------------------------------------ */
+/*  GET /api/v1/auth/email-available                                   */
+/* ------------------------------------------------------------------ */
+const emailAvailableSchema = zod_1.z.object({
+    email: zod_1.z.string().email("Invalid email address"),
+});
+exports.authRouter.get("/email-available", async (req, res, next) => {
+    try {
+        const parsed = emailAvailableSchema.parse(req.query);
+        const existing = await (0, users_1.findUserByEmail)(parsed.email);
+        return res.json({
+            available: !existing,
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+});
 const twoFactorChallenges = new Map();
 function createTwoFactorChallenge(input) {
     const challengeId = (0, uuid_1.v4)();
@@ -58,9 +76,9 @@ function signToken(payload) {
 /*  POST /api/auth/register                                            */
 /* ------------------------------------------------------------------ */
 const registerSchema = zod_1.z.object({
-    firstName: zod_1.z.string().min(1, "First name is required").max(100),
-    lastName: zod_1.z.string().min(1, "Last name is required").max(100),
-    email: zod_1.z.string().email("Invalid email address"),
+    firstName: zod_1.z.string().trim().min(1, "First name is required").max(100),
+    lastName: zod_1.z.string().trim().min(1, "Last name is required").max(100),
+    email: zod_1.z.string().trim().email("Invalid email address"),
     password: zod_1.z
         .string()
         .min(8, "Password must be at least 8 characters")

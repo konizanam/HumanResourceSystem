@@ -62,6 +62,10 @@ export type RegisterPayload = {
   confirmPassword: string;
 };
 
+export type EmailAvailability = {
+  available: boolean;
+};
+
 export type FullProfile = {
   profile: Record<string, unknown> | null;
   personalDetails: Record<string, unknown> | null;
@@ -95,6 +99,20 @@ export async function getIpLocation(): Promise<IpLocation> {
 /* ------------------------------------------------------------------ */
 /*  Auth                                                               */
 /* ------------------------------------------------------------------ */
+
+export async function checkEmailAvailable(email: string): Promise<boolean> {
+  const url = new URL(`${API_BASE}/auth/email-available`);
+  url.searchParams.set("email", email);
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to check email availability");
+  }
+
+  const body = (await res.json()) as EmailAvailability;
+  return Boolean(body?.available);
+}
 
 export async function login(
   email: string,
@@ -165,7 +183,7 @@ export async function register(
 
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Registration failed");
+    throw apiError(res, body, "Registration failed");
   }
 
   return (await res.json()) as LoginResponse;
@@ -249,10 +267,25 @@ export async function updatePersonalDetails(
   token: string,
   data: Record<string, unknown>
 ) {
+  // Backend expects snake_case keys. Accept either shape.
+  const d: any = data ?? {};
+  const payload = {
+    first_name: d.first_name ?? d.firstName,
+    last_name: d.last_name ?? d.lastName,
+    middle_name: d.middle_name ?? d.middleName,
+    gender: d.gender,
+    date_of_birth: d.date_of_birth ?? d.dateOfBirth,
+    nationality: d.nationality,
+    id_type: d.id_type ?? d.idType,
+    id_number: d.id_number ?? d.idNumber,
+    marital_status: d.marital_status ?? d.maritalStatus,
+    disability_status: d.disability_status ?? d.disabilityStatus,
+  };
+
   const res = await fetch(`${API_BASE}/profile/personal-details`, {
     method: "PUT",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await safeJson(res);

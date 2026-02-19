@@ -27,7 +27,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--text);
   background: linear-gradient(180deg, var(--bg0), var(--bg1));
-  font-size: 15px;
+  font-size: 16px;
 }
 
 a {
@@ -47,7 +47,7 @@ a {
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .btnPrimary {
@@ -94,7 +94,7 @@ a {
   background: var(--card);
   color: var(--text);
   outline: none;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .input:focus {
@@ -212,12 +212,29 @@ a {
 }
 
 .fieldLabel {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--muted);
 }
 
-.input::placeholder {
+.hintText {
   font-size: 13px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hintTextOk {
+  /* Reuse existing success tone used by .successBox */
+  color: #166534;
+}
+
+.hintTextBad {
+  color: var(--danger);
+}
+
+.input::placeholder {
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -227,7 +244,7 @@ a {
   list-style: none;
   display: grid;
   gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .passwordRule {
@@ -533,13 +550,17 @@ a {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #312e81;
+  text-decoration-line: underline;
+  text-decoration-color: var(--icon);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .pageText {
   margin-top: 10px;
   color: var(--muted);
   line-height: 1.6;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* Responsive navigation (mobile) */
@@ -745,10 +766,14 @@ a {
 }
 
 .confirmTitle {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--heading);
   margin: 0 0 12px;
+  text-decoration-line: underline;
+  text-decoration-color: var(--icon);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .confirmGrid {
@@ -922,10 +947,14 @@ a {
 }
 
 .editFormTitle {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--heading);
   margin: 0 0 12px;
+  text-decoration-line: underline;
+  text-decoration-color: var(--icon);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .editGrid {
@@ -1000,18 +1029,4 @@ a {
 }
 
 .btnDanger {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-.btnDanger:hover {
-  background: #fee2e2;
-}
-
-.emptyState {
-  text-align: center;
-  color: var(--muted);
-  padding: 24px 12px;
-  font-size: 13px;
-}
+  border-color: #fca5a5
