@@ -71,7 +71,7 @@ function companyToForm(c: Company): CompanyForm {
 /* ================================================================== */
 
 export function CompaniesPage() {
-  const { accessToken, hasPermission } = useAuth();
+  const { accessToken, hasPermission, user } = useAuth();
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,12 +224,31 @@ export function CompaniesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  const canManage =
-    hasPermission("MANAGE_COMPANY") ||
-    hasPermission("EDIT_COMPANY") ||
-    hasPermission("DEACTIVATE_COMPANY");
+  /* ── Permission helpers ─────────────────────────── */
+  const userRoles = user?.roles ?? [];
+  const isAdmin = userRoles.includes("ADMIN");
+  const isHR = userRoles.includes("HR_MANAGER");
+
+  /** Can register / add a new company */
   const canCreate =
-    hasPermission("CREATE_COMPANY") || hasPermission("MANAGE_COMPANY");
+    isAdmin ||
+    isHR ||
+    hasPermission("CREATE_COMPANY") ||
+    hasPermission("MANAGE_COMPANY");
+
+  /** Can open the Edit form for a company */
+  const canEdit =
+    isAdmin ||
+    isHR ||
+    hasPermission("EDIT_COMPANY") ||
+    hasPermission("MANAGE_COMPANY");
+
+  /** Can deactivate / reactivate a company */
+  const canDeactivate =
+    isAdmin ||
+    isHR ||
+    hasPermission("DEACTIVATE_COMPANY") ||
+    hasPermission("MANAGE_COMPANY");
 
   /* ── Clear success after 4s ─────────────────────── */
   useEffect(() => {
@@ -279,8 +298,6 @@ export function CompaniesPage() {
       {/* ── Table ────────────────────────────────── */}
       {loading ? (
         <p className="pageText">Loading companies…</p>
-      ) : companies.length === 0 ? (
-        <div className="emptyState">No companies found.</div>
       ) : (
         <div className="tableWrap">
           <table className="dataTable">
@@ -295,63 +312,71 @@ export function CompaniesPage() {
               </tr>
             </thead>
             <tbody>
-              {companies.map((c) => (
-                <tr key={c.id}>
-                  <td className="tdBold">{c.name}</td>
-                  <td>{c.industry ?? "—"}</td>
-                  <td>{c.city ?? "—"}</td>
-                  <td>{c.country ?? "—"}</td>
-                  <td>
-                    <span
-                      className={
-                        c.is_active ? "statusBadge statusActive" : "statusBadge statusInactive"
-                      }
-                    >
-                      {c.is_active ? "Active" : "Inactive"}
-                    </span>
+              {companies.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "2rem" }}>
+                    No companies found.
                   </td>
-                  <td className="tdAction" ref={openDropdown === c.id ? dropdownRef : undefined}>
-                    <button
-                      className="btn btnSm btnGhost dropdownToggle"
-                      type="button"
-                      onClick={() =>
-                        setOpenDropdown((prev) => (prev === c.id ? null : c.id))
-                      }
-                    >
-                      Actions ▾
-                    </button>
-                    {openDropdown === c.id && (
-                      <div className="dropdownMenu">
-                        {canManage && (
+                </tr>
+              ) : (
+                companies.map((c) => (
+                  <tr key={c.id}>
+                    <td className="tdBold">{c.name}</td>
+                    <td>{c.industry ?? "—"}</td>
+                    <td>{c.city ?? "—"}</td>
+                    <td>{c.country ?? "—"}</td>
+                    <td>
+                      <span
+                        className={
+                          c.is_active ? "statusBadge statusActive" : "statusBadge statusInactive"
+                        }
+                      >
+                        {c.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="tdAction" ref={openDropdown === c.id ? dropdownRef : undefined}>
+                      <button
+                        className="btn btnSm btnGhost dropdownToggle"
+                        type="button"
+                        onClick={() =>
+                          setOpenDropdown((prev) => (prev === c.id ? null : c.id))
+                        }
+                      >
+                        Actions ▾
+                      </button>
+                      {openDropdown === c.id && (
+                        <div className="dropdownMenu">
+                          {canEdit && (
+                            <button
+                              className="dropdownItem"
+                              type="button"
+                              onClick={() => openEdit(c.id)}
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canDeactivate && (
+                            <button
+                              className="dropdownItem dropdownItemDanger"
+                              type="button"
+                              onClick={() => openDeactivate(c)}
+                            >
+                              {c.is_active ? "Deactivate" : "Activate"}
+                            </button>
+                          )}
                           <button
                             className="dropdownItem"
                             type="button"
-                            onClick={() => openEdit(c.id)}
+                            onClick={() => openDetails(c.id)}
                           >
-                            Edit
+                            Details
                           </button>
-                        )}
-                        {canManage && (
-                          <button
-                            className="dropdownItem dropdownItemDanger"
-                            type="button"
-                            onClick={() => openDeactivate(c)}
-                          >
-                            {c.is_active ? "Deactivate" : "Activate"}
-                          </button>
-                        )}
-                        <button
-                          className="dropdownItem"
-                          type="button"
-                          onClick={() => openDetails(c.id)}
-                        >
-                          Details
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

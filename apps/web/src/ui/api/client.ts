@@ -362,6 +362,25 @@ export async function deleteReference(token: string, id: string) {
 /*  Companies                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Convert camelCase company form data to the snake_case the backend expects.
+ */
+function toSnakeCaseCompany(data: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: data.name,
+    industry: data.industry,
+    description: data.description,
+    website: data.website,
+    logo_url: data.logoUrl ?? data.logo_url,
+    contact_email: data.contactEmail ?? data.contact_email,
+    contact_phone: data.contactPhone ?? data.contact_phone,
+    address_line1: data.addressLine1 ?? data.address_line1,
+    address_line2: data.addressLine2 ?? data.address_line2,
+    city: data.city,
+    country: data.country,
+  };
+}
+
 export async function getCompanies(
   token: string,
   search?: string,
@@ -378,7 +397,10 @@ export async function getCompanies(
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load companies");
-  return res.json();
+  const body = await res.json();
+  // Support both Selma's format { status, data } and legacy { companies }
+  const list = body.data ?? body.companies ?? [];
+  return { companies: list };
 }
 
 export async function getCompany(
@@ -389,7 +411,10 @@ export async function getCompany(
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to load company");
-  return res.json();
+  const body = await res.json();
+  // Support both Selma's format { status, data } and legacy { company }
+  const company = body.data ?? body.company;
+  return { company };
 }
 
 export async function createCompany(
@@ -399,11 +424,11 @@ export async function createCompany(
   const res = await fetch(`${API_URL}/api/companies`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnakeCaseCompany(data)),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to create company");
+    throw new Error(body?.error?.message ?? body?.message ?? "Failed to create company");
   }
   return res.json();
 }
@@ -416,35 +441,35 @@ export async function updateCompany(
   const res = await fetch(`${API_URL}/api/companies/${id}`, {
     method: "PUT",
     headers: authHeaders(token),
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnakeCaseCompany(data)),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to update company");
+    throw new Error(body?.error?.message ?? body?.message ?? "Failed to update company");
   }
   return res.json();
 }
 
 export async function deactivateCompany(token: string, id: string) {
   const res = await fetch(`${API_URL}/api/companies/${id}/deactivate`, {
-    method: "POST",
+    method: "PATCH",
     headers: authHeaders(token),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to deactivate company");
+    throw new Error(body?.error?.message ?? body?.message ?? "Failed to deactivate company");
   }
   return res.json();
 }
 
 export async function activateCompany(token: string, id: string) {
-  const res = await fetch(`${API_URL}/api/companies/${id}/activate`, {
-    method: "POST",
+  const res = await fetch(`${API_URL}/api/companies/${id}/reactivate`, {
+    method: "PATCH",
     headers: authHeaders(token),
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to activate company");
+    throw new Error(body?.error?.message ?? body?.message ?? "Failed to activate company");
   }
   return res.json();
 }

@@ -10,7 +10,7 @@ export const companiesRouter = Router();
 companiesRouter.use(requireAuth);
 
 /* ------------------------------------------------------------------ */
-/*  Validation                                                         */
+/*  Validation — accept snake_case field names (matching Selma's API)  */
 /* ------------------------------------------------------------------ */
 
 const companySchema = z.object({
@@ -18,11 +18,11 @@ const companySchema = z.object({
   industry: z.string().max(100).optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
   website: z.string().max(255).optional().nullable(),
-  logoUrl: z.string().max(500).optional().nullable(),
-  contactEmail: z.string().email().optional().nullable(),
-  contactPhone: z.string().max(50).optional().nullable(),
-  addressLine1: z.string().max(255).optional().nullable(),
-  addressLine2: z.string().max(255).optional().nullable(),
+  logo_url: z.string().max(500).optional().nullable(),
+  contact_email: z.string().email().optional().nullable(),
+  contact_phone: z.string().max(50).optional().nullable(),
+  address_line1: z.string().max(255).optional().nullable(),
+  address_line2: z.string().max(255).optional().nullable(),
   city: z.string().max(100).optional().nullable(),
   country: z.string().max(100).optional().nullable(),
 });
@@ -62,7 +62,7 @@ companiesRouter.get("/", async (req, res, next) => {
     sql += ` ORDER BY c.created_at DESC`;
 
     const { rows } = await query(sql, params);
-    return res.json({ companies: rows });
+    return res.json({ status: "success", data: rows });
   } catch (err) {
     return next(err);
   }
@@ -89,7 +89,7 @@ companiesRouter.get("/:id", async (req, res, next) => {
         .json({ error: { message: "Company not found" } });
     }
 
-    return res.json({ company: rows[0] });
+    return res.json({ status: "success", data: rows[0] });
   } catch (err) {
     return next(err);
   }
@@ -120,18 +120,18 @@ companiesRouter.post(
           d.industry ?? null,
           d.description ?? null,
           d.website ?? null,
-          d.logoUrl ?? null,
-          d.contactEmail ?? null,
-          d.contactPhone ?? null,
-          d.addressLine1 ?? null,
-          d.addressLine2 ?? null,
+          d.logo_url ?? null,
+          d.contact_email ?? null,
+          d.contact_phone ?? null,
+          d.address_line1 ?? null,
+          d.address_line2 ?? null,
           d.city ?? null,
           d.country ?? null,
           userId,
         ]
       );
 
-      return res.status(201).json({ company: rows[0] });
+      return res.status(201).json({ status: "success", data: rows[0] });
     } catch (err) {
       return next(err);
     }
@@ -163,11 +163,11 @@ companiesRouter.put(
           d.industry ?? null,
           d.description ?? null,
           d.website ?? null,
-          d.logoUrl ?? null,
-          d.contactEmail ?? null,
-          d.contactPhone ?? null,
-          d.addressLine1 ?? null,
-          d.addressLine2 ?? null,
+          d.logo_url ?? null,
+          d.contact_email ?? null,
+          d.contact_phone ?? null,
+          d.address_line1 ?? null,
+          d.address_line2 ?? null,
           d.city ?? null,
           d.country ?? null,
         ]
@@ -179,7 +179,7 @@ companiesRouter.put(
           .json({ error: { message: "Company not found" } });
       }
 
-      return res.json({ company: rows[0] });
+      return res.json({ status: "success", data: rows[0] });
     } catch (err) {
       return next(err);
     }
@@ -187,10 +187,10 @@ companiesRouter.put(
 );
 
 /* ------------------------------------------------------------------ */
-/*  POST /api/companies/:id/deactivate                                 */
+/*  PATCH /api/companies/:id/deactivate                                */
 /* ------------------------------------------------------------------ */
 
-companiesRouter.post(
+companiesRouter.patch(
   "/:id/deactivate",
   requirePermission("DEACTIVATE_COMPANY", "MANAGE_COMPANY"),
   async (req, res, next) => {
@@ -207,7 +207,11 @@ companiesRouter.post(
           .json({ error: { message: "Company not found" } });
       }
 
-      return res.json({ company: rows[0], message: "Company deactivated" });
+      return res.json({
+        status: "success",
+        data: rows[0],
+        message: "Company deactivated successfully",
+      });
     } catch (err) {
       return next(err);
     }
@@ -215,11 +219,11 @@ companiesRouter.post(
 );
 
 /* ------------------------------------------------------------------ */
-/*  POST /api/companies/:id/activate                                   */
+/*  PATCH /api/companies/:id/reactivate                                */
 /* ------------------------------------------------------------------ */
 
-companiesRouter.post(
-  "/:id/activate",
+companiesRouter.patch(
+  "/:id/reactivate",
   requirePermission("DEACTIVATE_COMPANY", "MANAGE_COMPANY"),
   async (req, res, next) => {
     try {
@@ -235,7 +239,11 @@ companiesRouter.post(
           .json({ error: { message: "Company not found" } });
       }
 
-      return res.json({ company: rows[0], message: "Company activated" });
+      return res.json({
+        status: "success",
+        data: rows[0],
+        message: "Company activated successfully",
+      });
     } catch (err) {
       return next(err);
     }
