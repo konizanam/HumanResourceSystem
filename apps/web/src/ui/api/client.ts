@@ -47,6 +47,34 @@ export type FullProfile = {
   references: Record<string, unknown>[];
 };
 
+export type UserInfo = {
+  id: string;
+  email: string;
+  name: string;
+  roles: string[];
+  permissions: string[];
+};
+
+export type Company = {
+  id: string;
+  name: string;
+  industry: string | null;
+  description: string | null;
+  website: string | null;
+  logo_url: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  country: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 /* ------------------------------------------------------------------ */
 /*  Auth                                                               */
 /* ------------------------------------------------------------------ */
@@ -117,11 +145,54 @@ export async function resetPassword(
 /*  User                                                               */
 /* ------------------------------------------------------------------ */
 
-export async function me(accessToken: string) {
+export async function me(
+  accessToken: string
+): Promise<{ user: UserInfo }> {
   const res = await fetch(`${API_URL}/api/me`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error("Unauthorized");
+  return res.json();
+}
+
+/* ------------------------------------------------------------------ */
+/*  System Settings                                                    */
+/* ------------------------------------------------------------------ */
+
+export async function getSettings(): Promise<{
+  settings: Record<string, string>;
+}> {
+  try {
+    const res = await fetch(`${API_URL}/api/settings`);
+    if (!res.ok) return { settings: {} };
+    return res.json();
+  } catch {
+    return { settings: {} };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  File Upload                                                        */
+/* ------------------------------------------------------------------ */
+
+export async function uploadFile(
+  token: string,
+  file: File
+): Promise<{ file: { url: string; originalName: string; size: number; mimeType: string } }> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_URL}/api/upload`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw new Error(body?.error?.message ?? "Upload failed");
+  }
+
   return res.json();
 }
 
@@ -284,5 +355,96 @@ export async function deleteReference(token: string, id: string) {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to delete reference");
+  return res.json();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Companies                                                          */
+/* ------------------------------------------------------------------ */
+
+export async function getCompanies(
+  token: string,
+  search?: string,
+  status?: string
+): Promise<{ companies: Company[] }> {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+
+  const qs = params.toString();
+  const url = `${API_URL}/api/companies${qs ? `?${qs}` : ""}`;
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to load companies");
+  return res.json();
+}
+
+export async function getCompany(
+  token: string,
+  id: string
+): Promise<{ company: Company }> {
+  const res = await fetch(`${API_URL}/api/companies/${id}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to load company");
+  return res.json();
+}
+
+export async function createCompany(
+  token: string,
+  data: Record<string, unknown>
+) {
+  const res = await fetch(`${API_URL}/api/companies`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw new Error(body?.error?.message ?? "Failed to create company");
+  }
+  return res.json();
+}
+
+export async function updateCompany(
+  token: string,
+  id: string,
+  data: Record<string, unknown>
+) {
+  const res = await fetch(`${API_URL}/api/companies/${id}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw new Error(body?.error?.message ?? "Failed to update company");
+  }
+  return res.json();
+}
+
+export async function deactivateCompany(token: string, id: string) {
+  const res = await fetch(`${API_URL}/api/companies/${id}/deactivate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw new Error(body?.error?.message ?? "Failed to deactivate company");
+  }
+  return res.json();
+}
+
+export async function activateCompany(token: string, id: string) {
+  const res = await fetch(`${API_URL}/api/companies/${id}/activate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw new Error(body?.error?.message ?? "Failed to activate company");
+  }
   return res.json();
 }

@@ -1,11 +1,14 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useSettings } from "../context/SettingsContext";
+import { forgotPassword } from "../api/client";
 
 const STATIC_2FA_CODE = import.meta.env.VITE_STATIC_2FA_CODE ?? "123456";
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
+  const settings = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("admin@example.com");
@@ -14,11 +17,17 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"credentials" | "twoFactor">("credentials");
-  const [pending, setPending] = useState<{ accessToken: string; userEmail: string } | null>(null);
+  const [pending, setPending] = useState<{
+    accessToken: string;
+    userEmail: string;
+  } | null>(null);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
-  const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(
+    null
+  );
   const [countdownSeconds, setCountdownSeconds] = useState(0);
 
   const redirectTo = useMemo(() => {
@@ -42,7 +51,10 @@ export function LoginPage() {
     }
 
     const update = () => {
-      const remaining = Math.max(0, Math.ceil((twoFactorExpiresAt - Date.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.ceil((twoFactorExpiresAt - Date.now()) / 1000)
+      );
       setCountdownSeconds(remaining);
     };
 
@@ -108,12 +120,44 @@ export function LoginPage() {
     }
   }
 
+  /** Actually call the forgot-password API */
+  async function handleForgotPassword() {
+    const value = forgotEmail.trim();
+    if (!value || !value.includes("@")) {
+      setForgotMessage("Enter a valid email address.");
+      return;
+    }
+    setForgotBusy(true);
+    try {
+      await forgotPassword(value);
+      setForgotMessage(
+        `If a user with that email exists, a password reset link has been sent to ${value}.`
+      );
+    } catch {
+      setForgotMessage("Something went wrong. Please try again.");
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  /* ── Logo helper ──────────────────────────────────── */
+  const logoUrl = settings.system_logo_url;
+  const systemName = settings.system_name || "HR System";
+
   return (
     <div className="loginPage">
       <div className="loginCard">
         <div className="loginHeader">
           <div className="loginLogo">
-            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${systemName} Logo`}
+                className="loginLogoImg"
+              />
+            ) : (
+              <div className="loginLogoFallback">{systemName.charAt(0)}</div>
+            )}
           </div>
           <div className="loginTitle">Welcome</div>
         </div>
@@ -190,16 +234,10 @@ export function LoginPage() {
                   <button
                     type="button"
                     className="btn btnPrimary fullActionBtn"
-                    onClick={() => {
-                      const value = forgotEmail.trim();
-                      if (!value || !value.includes("@")) {
-                        setForgotMessage("Enter a valid email address.");
-                        return;
-                      }
-                      setForgotMessage(`A reset code has been sent to ${value}.`);
-                    }}
+                    onClick={handleForgotPassword}
+                    disabled={forgotBusy}
                   >
-                    Send reset link
+                    {forgotBusy ? "Sending…" : "Send reset link"}
                   </button>
 
                   {forgotMessage ? (
@@ -213,7 +251,8 @@ export function LoginPage() {
           ) : (
             <>
               <div className="hintBox" role="note">
-                Enter the 6-digit authentication code sent to {pending?.userEmail ?? email}.
+                Enter the 6-digit authentication code sent to{" "}
+                {pending?.userEmail ?? email}.
                 <br />
                 {countdownSeconds > 0
                   ? `Code expires in ${countdownLabel}.`
@@ -270,7 +309,9 @@ export function LoginPage() {
           <Link to="/register" className="linkBtn">
             Sign up
           </Link>
-          <div className="loginCopyright">© 2026 Human Resource System. All rights reserved.</div>
+          <div className="loginCopyright">
+            © {new Date().getFullYear()} {systemName}. All rights reserved.
+          </div>
         </div>
       </div>
 

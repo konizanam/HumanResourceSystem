@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 import { register } from "../api/client";
 
 const STEPS = [
@@ -28,6 +29,7 @@ const INITIAL: FormData = {
 
 export function SignupPage() {
   const { setSession } = useAuth();
+  const settings = useSettings();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(INITIAL);
@@ -226,7 +228,9 @@ export function SignupPage() {
               </div>
               <div className="confirmItem">
                 <span className="confirmLabel">Password</span>
-                <span className="confirmValue">{"•".repeat(form.password.length)}</span>
+                <span className="confirmValue">
+                  {"•".repeat(form.password.length)}
+                </span>
               </div>
               <div className="confirmItem">
                 <span className="confirmLabel">Role</span>
@@ -241,12 +245,24 @@ export function SignupPage() {
     }
   }
 
+  /* ── Logo helper ──────────────────────────────────── */
+  const logoUrl = settings.system_logo_url;
+  const systemName = settings.system_name || "HR System";
+
   return (
     <div className="loginPage">
       <div className="loginCard signupCard">
         <div className="loginHeader">
           <div className="loginLogo">
-            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${systemName} Logo`}
+                className="loginLogoImg"
+              />
+            ) : (
+              <div className="loginLogoFallback">{systemName.charAt(0)}</div>
+            )}
           </div>
           <div className="loginTitle">Create Account</div>
           <div className="loginSubtitle">Sign up as a Job Seeker</div>

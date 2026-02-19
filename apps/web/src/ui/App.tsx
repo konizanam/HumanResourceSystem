@@ -5,6 +5,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { AppLayout } from "./layout/AppLayout";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { JobSeekerProfilePage } from "./pages/JobSeekerProfilePage";
+import { CompaniesPage } from "./pages/CompaniesPage";
 
 const menu = [
   { path: "global-settings", title: "Global Settings", icon: "settings" },
@@ -20,6 +21,9 @@ const menu = [
   { path: "email-templates", title: "Email Templates", icon: "file" },
   { path: "reports", title: "Reports", icon: "chart" },
 ] as const;
+
+/* Paths that have real page components (not placeholders) */
+const REAL_PAGES = ["job-seekers", "companies"];
 
 export function App() {
   return (
@@ -37,11 +41,13 @@ export function App() {
       >
         <Route index element={<Navigate to={menu[0].path} replace />} />
 
-        {/* Job Seeker has a real page instead of placeholder */}
+        {/* Real pages */}
         <Route path="job-seekers" element={<JobSeekerProfilePage />} />
+        <Route path="companies" element={<CompaniesPage />} />
 
+        {/* Placeholder pages for everything else */}
         {menu
-          .filter((m) => m.path !== "job-seekers")
+          .filter((m) => !REAL_PAGES.includes(m.path))
           .map((m) => (
             <Route
               key={m.path}

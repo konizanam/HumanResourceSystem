@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 
 type IconName =
   | "settings"
@@ -166,9 +167,18 @@ export function AppLayout({
 }: {
   menuItems: readonly { path: string; title: string; icon: IconName }[];
 }) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const settings = useSettings();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const systemName = settings.system_name || "HR System";
+  const systemShort = systemName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 3);
 
   const sidebarClassName =
     (collapsed ? "sidebar sidebarCollapsed" : "sidebar") +
@@ -184,9 +194,9 @@ export function AppLayout({
             aria-label="Home"
             onClick={() => setMobileOpen(false)}
           >
-            <span className="brandText">HR System</span>
+            <span className="brandText">{systemName}</span>
             <span className="brandMono" aria-hidden="true">
-              HR
+              {systemShort}
             </span>
           </Link>
 
@@ -216,7 +226,9 @@ export function AppLayout({
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => (isActive ? "navItem navItemActive" : "navItem")}
+              className={({ isActive }) =>
+                isActive ? "navItem navItemActive" : "navItem"
+              }
               aria-label={item.title}
               title={collapsed ? item.title : undefined}
               onClick={() => setMobileOpen(false)}
@@ -230,8 +242,20 @@ export function AppLayout({
         </nav>
 
         <div className="sidebarFooter">
+          {user && (
+            <div className="sidebarUser">
+              <span className="sidebarUserName">{user.name}</span>
+              <span className="sidebarUserRole">
+                {user.roles?.[0] ?? "User"}
+              </span>
+            </div>
+          )}
           <button
-            className={collapsed ? "btn btnGhost logoutBtn logoutBtnCollapsed" : "btn btnGhost logoutBtn"}
+            className={
+              collapsed
+                ? "btn btnGhost logoutBtn logoutBtnCollapsed"
+                : "btn btnGhost logoutBtn"
+            }
             onClick={logout}
             type="button"
             aria-label="Logout"
