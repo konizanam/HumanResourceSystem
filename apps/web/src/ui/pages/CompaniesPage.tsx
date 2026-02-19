@@ -224,9 +224,12 @@ export function CompaniesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  const canCreate = hasPermission("CREATE_COMPANY");
-  const canEdit = hasPermission("EDIT_COMPANY");
-  const canDeactivate = hasPermission("DEACTIVATE_COMPANY");
+  const canManage =
+    hasPermission("MANAGE_COMPANY") ||
+    hasPermission("EDIT_COMPANY") ||
+    hasPermission("DEACTIVATE_COMPANY");
+  const canCreate =
+    hasPermission("CREATE_COMPANY") || hasPermission("MANAGE_COMPANY");
 
   /* ── Clear success after 4s ─────────────────────── */
   useEffect(() => {
@@ -246,7 +249,7 @@ export function CompaniesPage() {
         <h1 className="pageTitle">Companies</h1>
         {canCreate && (
           <button className="btn btnPrimary" type="button" onClick={openCreate}>
-            + New Company
+            + Add Company
           </button>
         )}
       </div>
@@ -287,7 +290,6 @@ export function CompaniesPage() {
                 <th>Industry</th>
                 <th>City</th>
                 <th>Country</th>
-                <th>Contact</th>
                 <th>Status</th>
                 <th className="thAction">Actions</th>
               </tr>
@@ -299,7 +301,6 @@ export function CompaniesPage() {
                   <td>{c.industry ?? "—"}</td>
                   <td>{c.city ?? "—"}</td>
                   <td>{c.country ?? "—"}</td>
-                  <td>{c.contact_email ?? "—"}</td>
                   <td>
                     <span
                       className={
@@ -321,14 +322,7 @@ export function CompaniesPage() {
                     </button>
                     {openDropdown === c.id && (
                       <div className="dropdownMenu">
-                        <button
-                          className="dropdownItem"
-                          type="button"
-                          onClick={() => openDetails(c.id)}
-                        >
-                          Details
-                        </button>
-                        {canEdit && (
+                        {canManage && (
                           <button
                             className="dropdownItem"
                             type="button"
@@ -337,7 +331,7 @@ export function CompaniesPage() {
                             Edit
                           </button>
                         )}
-                        {canDeactivate && (
+                        {canManage && (
                           <button
                             className="dropdownItem dropdownItemDanger"
                             type="button"
@@ -346,6 +340,13 @@ export function CompaniesPage() {
                             {c.is_active ? "Deactivate" : "Activate"}
                           </button>
                         )}
+                        <button
+                          className="dropdownItem"
+                          type="button"
+                          onClick={() => openDetails(c.id)}
+                        >
+                          Details
+                        </button>
                       </div>
                     )}
                   </td>

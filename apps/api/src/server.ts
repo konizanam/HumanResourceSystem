@@ -16,6 +16,33 @@ import { notFoundHandler, errorHandler } from "./errors";
 export function createApp() {
   const app = express();
 
+  // ── Serve uploaded files (BEFORE helmet so security headers don't block viewing) ──
+  app.use(
+    "/uploads",
+    cors({ origin: "*" }), // allow any origin to view uploaded files
+    express.static(path.join(__dirname, "..", "uploads"), {
+      setHeaders(res, filePath) {
+        // Let the browser display files inline rather than forcing download
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeMap: Record<string, string> = {
+          ".pdf": "application/pdf",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".doc": "application/msword",
+          ".docx":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        };
+        if (mimeMap[ext]) {
+          res.setHeader("Content-Type", mimeMap[ext]);
+        }
+        res.setHeader("Content-Disposition", "inline");
+        // Allow cross-origin embedding/fetching
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      },
+    })
+  );
+
   app.use(helmet());
   app.use(
     cors({
@@ -24,12 +51,6 @@ export function createApp() {
     })
   );
   app.use(express.json({ limit: "1mb" }));
-
-  // Serve uploaded files
-  app.use(
-    "/uploads",
-    express.static(path.join(__dirname, "..", "uploads"))
-  );
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });

@@ -89,6 +89,7 @@ const personalDetailsSchema = z.object({
   nationality: z.string().max(100).optional().nullable(),
   idType: z.string().max(50).optional().nullable(),
   idNumber: z.string().max(100).optional().nullable(),
+  idDocumentUrl: z.string().max(500).optional().nullable(),
   maritalStatus: z.string().max(50).optional().nullable(),
   disabilityStatus: z.boolean().optional().nullable(),
 });
@@ -101,8 +102,8 @@ jobSeekerRouter.put("/personal-details", async (req, res, next) => {
     const { rows } = await query(
       `INSERT INTO job_seeker_personal_details
          (user_id, first_name, last_name, middle_name, gender, date_of_birth,
-          nationality, id_type, id_number, marital_status, disability_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          nationality, id_type, id_number, id_document_url, marital_status, disability_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (user_id) DO UPDATE SET
          first_name = EXCLUDED.first_name,
          last_name = EXCLUDED.last_name,
@@ -112,6 +113,7 @@ jobSeekerRouter.put("/personal-details", async (req, res, next) => {
          nationality = EXCLUDED.nationality,
          id_type = EXCLUDED.id_type,
          id_number = EXCLUDED.id_number,
+         id_document_url = EXCLUDED.id_document_url,
          marital_status = EXCLUDED.marital_status,
          disability_status = EXCLUDED.disability_status
        RETURNING *`,
@@ -125,6 +127,7 @@ jobSeekerRouter.put("/personal-details", async (req, res, next) => {
         d.nationality ?? null,
         d.idType ?? null,
         d.idNumber ?? null,
+        d.idDocumentUrl ?? null,
         d.maritalStatus ?? null,
         d.disabilityStatus ?? null,
       ]
@@ -265,6 +268,7 @@ const educationSchema = z.object({
   endDate: z.string().optional().nullable(),
   isCurrent: z.boolean().optional(),
   grade: z.string().max(100).optional().nullable(),
+  certificateUrl: z.string().max(500).optional().nullable(),
 });
 
 jobSeekerRouter.post("/education", async (req, res, next) => {
@@ -274,8 +278,8 @@ jobSeekerRouter.post("/education", async (req, res, next) => {
 
     const { rows } = await query(
       `INSERT INTO job_seeker_education
-         (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
       [
         userId,
@@ -286,6 +290,7 @@ jobSeekerRouter.post("/education", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.grade ?? null,
+        d.certificateUrl ?? null,
       ]
     );
 
@@ -303,7 +308,8 @@ jobSeekerRouter.put("/education/:id", async (req, res, next) => {
     const { rows } = await query(
       `UPDATE job_seeker_education SET
          institution_name = $3, qualification = $4, field_of_study = $5,
-         start_date = $6, end_date = $7, is_current = $8, grade = $9
+         start_date = $6, end_date = $7, is_current = $8, grade = $9,
+         certificate_url = $10
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
       [
@@ -316,6 +322,7 @@ jobSeekerRouter.put("/education/:id", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.grade ?? null,
+        d.certificateUrl ?? null,
       ]
     );
 

@@ -8,33 +8,32 @@ export const settingsRouter = Router();
  * Public – returns all system settings as a key-value map.
  * If the table doesn't exist yet (migration not run), returns sensible defaults.
  */
-settingsRouter.get("/", async (_req, res, next) => {
+const DEFAULT_SETTINGS: Record<string, string> = {
+  system_name: "HR System",
+  system_logo_url: "",
+  primary_color: "#4f46e5",
+  company_name: "",
+  support_email: "",
+};
+
+settingsRouter.get("/", async (_req, res) => {
   try {
     const { rows } = await query<{ key: string; value: string }>(
       `SELECT key, value FROM system_settings`
     );
 
-    const settings: Record<string, string> = {};
+    const settings: Record<string, string> = { ...DEFAULT_SETTINGS };
     for (const row of rows) {
       settings[row.key] = row.value;
     }
 
     return res.json({ settings });
   } catch (err: unknown) {
-    // Table might not exist yet – return empty defaults
+    // If DB is unavailable or the table doesn't exist yet, return defaults
+    // so the frontend can still render without crashing.
     const msg = err instanceof Error ? err.message : "";
-    if (msg.includes("system_settings") && msg.includes("does not exist")) {
-      return res.json({
-        settings: {
-          system_name: "HR System",
-          system_logo_url: "",
-          primary_color: "#4f46e5",
-          company_name: "",
-          support_email: "",
-        },
-      });
-    }
-    return next(err);
+    console.warn("[settings] DB query failed, returning defaults:", msg);
+    return res.json({ settings: DEFAULT_SETTINGS });
   }
 });
 

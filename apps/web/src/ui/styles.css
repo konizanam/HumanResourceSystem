@@ -1161,3 +1161,117 @@ a {
   padding: 14px 20px;
   border-top: 1px solid var(--stroke);
 }
+
+/* =====================================================
+   FILE UPLOAD
+   ===================================================== */
+
+.fileUploadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fileInput {
+  display: none;
+}
+
+.fileLink {
+  font-size: 13px;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fileLink:hover {
+  color: #3730a3;
+}
+
+/* =====================================================
+   COUNTRY SEARCHABLE DROPDOWN
+   ===================================================== */
+
+.countrySelectWrapper {
+  position: relative;
+}
+
+.countrySelectTrigger {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  user-select: none;
+}
+
+.countrySelectTrigger .placeholder {
+  color: #9ca3af;
+}
+
+.countryDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.countrySearchInput {
+  border: none !important;
+  border-bottom: 1px solid var(--stroke) !important;
+  border-radius: 8px 8px 0 0 !important;
+  font-size: 13px;
+}
+
+.countryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 230px;
+}
+
+.countryItem {
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.countryItem:hover {
+  background: var(--bg-alt, #f3f4f6);
+}
+
+.countryItemSelected {
+  background: #eef2ff;
+  font-weight: 600;
+}
+
+.countryItemEmpty {
+  color: #9ca3af;
+  text-align: center;
+  cursor: default;
+}
+
+/* =====================================================
+   FIELD VALIDATION HINTS
+   ===================================================== */
+
+.fieldHint {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  color: #6b7280;
+}
+
+.fieldHintError {
+  color: #ef4444;
+}

@@ -1,5 +1,9 @@
 import { config } from "dotenv";
-config();
+import path from "path";
+
+// Always load .env from the api package root (apps/api/.env),
+// regardless of which directory `npm run` was invoked from.
+config({ path: path.resolve(__dirname, "..", ".env") });
 
 import { createServer } from "http";
 import { createApp } from "./server";

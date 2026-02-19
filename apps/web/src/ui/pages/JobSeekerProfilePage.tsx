@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
+  API_URL,
   getFullProfile,
   updateProfile,
   updatePersonalDetails,
@@ -12,8 +13,10 @@ import {
   deleteExperience,
   saveReference,
   deleteReference,
+  uploadFile,
   type FullProfile,
 } from "../api/client";
+import { COUNTRIES, countryLabel, codeToFlag } from "../data/countries";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -27,6 +30,16 @@ const PROFILE_STEPS = [
   "References",
   "Professional Summary",
 ] as const;
+
+const ID_TYPES = ["National ID", "Passport"] as const;
+
+/** Resolve a potentially-relative upload URL to an absolute one */
+function resolveFileUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  // Relative path like /uploads/... → prepend API server base URL
+  return `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+}
 
 /* ================================================================== */
 /*  Main component                                                     */
@@ -268,9 +281,12 @@ function PersonalDetailsSection({
     nationality: (d.nationality as string) ?? "",
     idType: (d.id_type as string) ?? "",
     idNumber: (d.id_number as string) ?? "",
+    idDocumentUrl: (d.id_document_url as string) ?? "",
     maritalStatus: (d.marital_status as string) ?? "",
     disabilityStatus: (d.disability_status as boolean) ?? false,
   });
+  const [uploading, setUploading] = useState(false);
+  const idFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const nd = data ?? {};
@@ -283,12 +299,32 @@ function PersonalDetailsSection({
       nationality: (nd.nationality as string) ?? "",
       idType: (nd.id_type as string) ?? "",
       idNumber: (nd.id_number as string) ?? "",
+      idDocumentUrl: (nd.id_document_url as string) ?? "",
       maritalStatus: (nd.marital_status as string) ?? "",
       disabilityStatus: (nd.disability_status as boolean) ?? false,
     });
   }, [data]);
 
+  async function handleIdDocUpload(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await uploadFile(token, file);
+      setForm((prev) => ({ ...prev, idDocumentUrl: result.file.url }));
+      setSuccess("ID document uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function onSave() {
+    // Validate ID number before saving
+    if (form.idType === "National ID" && form.idNumber && form.idNumber.length !== 11) {
+      setError("National ID must be exactly 11 digits");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -303,6 +339,12 @@ function PersonalDetailsSection({
   }
 
   if (!editing) {
+    const natEntry = COUNTRIES.find(
+      (c) => c.name.toLowerCase() === ((d.nationality as string) ?? "").toLowerCase()
+    );
+    const natDisplay = natEntry
+      ? `${codeToFlag(natEntry.code)} ${natEntry.name}`
+      : (d.nationality as string) ?? "";
     return (
       <div className="profileReadGrid">
         <ReadField label="First Name" value={d.first_name} />
@@ -310,9 +352,10 @@ function PersonalDetailsSection({
         <ReadField label="Middle Name" value={d.middle_name} />
         <ReadField label="Gender" value={d.gender} />
         <ReadField label="Date of Birth" value={d.date_of_birth ? String(d.date_of_birth).split("T")[0] : ""} />
-        <ReadField label="Nationality" value={d.nationality} />
+        <ReadField label="Nationality" value={natDisplay} />
         <ReadField label="ID Type" value={d.id_type} />
         <ReadField label="ID Number" value={d.id_number} />
+        <ReadField label="ID Document" value={resolveFileUrl(d.id_document_url as string)} isLink />
         <ReadField label="Marital Status" value={d.marital_status} />
         <ReadField label="Disability" value={d.disability_status ? "Yes" : "No"} />
       </div>
@@ -335,9 +378,104 @@ function PersonalDetailsSection({
           </select>
         </label>
         <EditField label="Date of Birth" value={form.dateOfBirth} onChange={(v) => setForm({ ...form, dateOfBirth: v })} type="date" />
-        <EditField label="Nationality" value={form.nationality} onChange={(v) => setForm({ ...form, nationality: v })} />
-        <EditField label="ID Type" value={form.idType} onChange={(v) => setForm({ ...form, idType: v })} />
-        <EditField label="ID Number" value={form.idNumber} onChange={(v) => setForm({ ...form, idNumber: v })} />
+
+        {/* ── Nationality (searchable dropdown) ── */}
+        <CountrySelect
+          value={form.nationality}
+          onChange={(v) => setForm({ ...form, nationality: v })}
+        />
+
+        {/* ── ID Type (dropdown) ── */}
+        <label className="field">
+          <span className="fieldLabel">ID Type</span>
+          <select
+            className="input"
+            value={form.idType}
+            onChange={(e) => {
+              const newType = e.target.value;
+              setForm({ ...form, idType: newType, idNumber: "" });
+            }}
+          >
+            <option value="">Select</option>
+            {ID_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </label>
+
+        {/* ── ID Number (validated) ── */}
+        <label className="field">
+          <span className="fieldLabel">ID Number</span>
+          <input
+            className="input"
+            type="text"
+            value={form.idNumber}
+            placeholder={
+              form.idType === "National ID"
+                ? "e.g. 12345678901 (11 digits)"
+                : form.idType === "Passport"
+                ? "e.g. AB1234567"
+                : ""
+            }
+            onChange={(e) => {
+              let val = e.target.value;
+              if (form.idType === "National ID") {
+                // Only allow digits, max 11
+                val = val.replace(/\D/g, "").slice(0, 11);
+              } else if (form.idType === "Passport") {
+                // Allow alphanumeric only
+                val = val.replace(/[^a-zA-Z0-9]/g, "");
+              }
+              setForm({ ...form, idNumber: val });
+            }}
+          />
+          {form.idType === "National ID" && form.idNumber && form.idNumber.length !== 11 && (
+            <span className="fieldHint fieldHintError">
+              National ID must be exactly 11 digits ({form.idNumber.length}/11)
+            </span>
+          )}
+        </label>
+
+        {/* ── ID Document Upload ── */}
+        <div className="field fieldFull">
+          <span className="fieldLabel">ID Document</span>
+          <div className="fileUploadRow">
+            <input
+              ref={idFileRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+              className="fileInput"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleIdDocUpload(file);
+              }}
+            />
+            <button
+              className="btn btnGhost btnSm"
+              type="button"
+              disabled={uploading}
+              onClick={() => idFileRef.current?.click()}
+            >
+              {uploading ? "Uploading…" : "Choose File"}
+            </button>
+            {form.idDocumentUrl && (
+              <a
+                href={resolveFileUrl(form.idDocumentUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="fileLink"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(resolveFileUrl(form.idDocumentUrl), "_blank", "noopener,noreferrer");
+                }}
+              >
+                View uploaded document
+              </a>
+            )}
+          </div>
+        </div>
+
         <label className="field">
           <span className="fieldLabel">Marital Status</span>
           <select className="input" value={form.maritalStatus} onChange={(e) => setForm({ ...form, maritalStatus: e.target.value })}>
@@ -353,7 +491,7 @@ function PersonalDetailsSection({
           <span className="fieldLabel">Disability status</span>
         </label>
       </div>
-      <button className="btn btnPrimary" onClick={onSave} disabled={saving} type="button">
+      <button className="btn btnPrimary" onClick={onSave} disabled={saving || uploading} type="button">
         {saving ? "Saving…" : "Save Personal Details"}
       </button>
     </div>
@@ -501,9 +639,12 @@ function EducationSection({
     endDate: "",
     isCurrent: false,
     grade: "",
+    certificateUrl: "",
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const certFileRef = useRef<HTMLInputElement>(null);
 
   function startEdit(item: Record<string, unknown>) {
     setEditId(item.id as string);
@@ -515,7 +656,22 @@ function EducationSection({
       endDate: (item.end_date as string)?.split("T")[0] ?? "",
       isCurrent: (item.is_current as boolean) ?? false,
       grade: (item.grade as string) ?? "",
+      certificateUrl: (item.certificate_url as string) ?? "",
     });
+  }
+
+  async function handleCertUpload(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await uploadFile(token, file);
+      setForm((prev) => ({ ...prev, certificateUrl: result.file.url }));
+      setSuccess("Certificate uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function onSave() {
@@ -562,6 +718,24 @@ function EducationSection({
                   {e.end_date ? ` → ${(e.end_date as string).split("T")[0]}` : ""}
                   {e.is_current ? " (Current)" : ""}
                 </span>
+                {e.certificate_url && (
+                  <>
+                    <br />
+                    <a
+                      href={resolveFileUrl(e.certificate_url as string)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="fileLink"
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        window.open(resolveFileUrl(e.certificate_url as string), "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      View Certificate
+                    </a>
+                  </>
+                )}
               </div>
               {editing && (
                 <div className="recordActions">
@@ -587,12 +761,52 @@ function EducationSection({
               <input type="checkbox" checked={form.isCurrent} onChange={(e) => setForm({ ...form, isCurrent: e.target.checked })} />
               <span className="fieldLabel">Currently studying here</span>
             </label>
+
+            {/* ── Certificate Upload ── */}
+            <div className="field fieldFull">
+              <span className="fieldLabel">Certificate</span>
+              <div className="fileUploadRow">
+                <input
+                  ref={certFileRef}
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                  className="fileInput"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleCertUpload(file);
+                  }}
+                />
+                <button
+                  className="btn btnGhost btnSm"
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => certFileRef.current?.click()}
+                >
+                  {uploading ? "Uploading…" : "Choose File"}
+                </button>
+                {form.certificateUrl && (
+                  <a
+                    href={resolveFileUrl(form.certificateUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fileLink"
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      window.open(resolveFileUrl(form.certificateUrl), "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    View uploaded certificate
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
           <div className="stepperActions">
             {editId && (
               <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); }}>Cancel</button>
             )}
-            <button className="btn btnPrimary" onClick={onSave} disabled={saving} type="button">
+            <button className="btn btnPrimary" onClick={onSave} disabled={saving || uploading} type="button">
               {saving ? "Saving…" : editId ? "Update Education" : "Add Education"}
             </button>
           </div>
@@ -954,14 +1168,126 @@ function ProfessionalSummarySection({
 }
 
 /* ================================================================== */
+/*  Country Searchable Dropdown                                         */
+/* ================================================================== */
+
+function CountrySelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Find current country entry for display
+  const selected = COUNTRIES.find(
+    (c) => c.name.toLowerCase() === value.toLowerCase()
+  );
+
+  const filtered = search
+    ? COUNTRIES.filter((c) =>
+        c.name.toLowerCase().includes(search.toLowerCase())
+      )
+    : COUNTRIES;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div className="field countrySelectWrapper" ref={wrapperRef}>
+      <span className="fieldLabel">Nationality</span>
+      <div
+        className="input countrySelectTrigger"
+        onClick={() => setOpen((v) => !v)}
+        role="combobox"
+        aria-expanded={open}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") setOpen((v) => !v);
+        }}
+      >
+        {selected ? countryLabel(selected) : <span className="placeholder">Select country…</span>}
+      </div>
+      {open && (
+        <div className="countryDropdown">
+          <input
+            className="input countrySearchInput"
+            type="text"
+            placeholder="Search countries…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoFocus
+          />
+          <ul className="countryList">
+            {filtered.length === 0 && (
+              <li className="countryItem countryItemEmpty">No countries found</li>
+            )}
+            {filtered.map((c) => (
+              <li
+                key={c.code}
+                className={
+                  "countryItem" +
+                  (c.name === value ? " countryItemSelected" : "")
+                }
+                onClick={() => {
+                  onChange(c.name);
+                  setOpen(false);
+                  setSearch("");
+                }}
+              >
+                {countryLabel(c)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================== */
 /*  Utility Components                                                  */
 /* ================================================================== */
 
-function ReadField({ label, value }: { label: string; value: unknown }) {
+function ReadField({ label, value, isLink }: { label: string; value: unknown; isLink?: boolean }) {
+  const str = value != null && value !== "" ? String(value) : "";
   return (
     <div className="readField">
       <span className="readLabel">{label}</span>
-      <span className="readValue">{value != null && value !== "" ? String(value) : "—"}</span>
+      <span className="readValue">
+        {str ? (
+          isLink ? (
+            <a
+              href={str}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="fileLink"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(str, "_blank", "noopener,noreferrer");
+              }}
+            >
+              View Document
+            </a>
+          ) : (
+            str
+          )
+        ) : (
+          "—"
+        )}
+      </span>
     </div>
   );
 }
