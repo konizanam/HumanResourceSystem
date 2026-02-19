@@ -66,7 +66,7 @@ export function SignupPage() {
       if (form.password.length < 8)
         errs.password = "At least 8 characters";
       else if (
-        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/.test(
+        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/.test(
           form.password
         )
       )

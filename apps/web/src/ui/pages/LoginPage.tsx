@@ -5,6 +5,7 @@ import { useSettings } from "../context/SettingsContext";
 import { forgotPassword } from "../api/client";
 
 const STATIC_2FA_CODE = import.meta.env.VITE_STATIC_2FA_CODE ?? "123456";
+const IS_DEV = import.meta.env.DEV; // true in Vite dev server
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
@@ -81,7 +82,15 @@ export function LoginPage() {
         const result = await authenticate(email, password);
         setPending(result);
         setStep("twoFactor");
-        setCode("");
+        // In dev mode, auto-fill the code and log it to the console
+        if (IS_DEV) {
+          setCode(STATIC_2FA_CODE);
+          console.log(
+            `[DEV] 2FA bypass code: ${STATIC_2FA_CODE} (auto-filled)`
+          );
+        } else {
+          setCode("");
+        }
         setTwoFactorExpiresAt(Date.now() + 10 * 60 * 1000);
         return;
       }
@@ -251,12 +260,25 @@ export function LoginPage() {
           ) : (
             <>
               <div className="hintBox" role="note">
-                Enter the 6-digit authentication code sent to{" "}
-                {pending?.userEmail ?? email}.
-                <br />
-                {countdownSeconds > 0
-                  ? `Code expires in ${countdownLabel}.`
-                  : "Code expired. Please sign in again."}
+                {IS_DEV ? (
+                  <>
+                    <strong>DEV MODE</strong> — No email is sent. Use code:{" "}
+                    <code style={{ fontWeight: "bold", letterSpacing: "2px" }}>
+                      {STATIC_2FA_CODE}
+                    </code>
+                    <br />
+                    The code field has been auto-filled. Just click Verify.
+                  </>
+                ) : (
+                  <>
+                    Enter the 6-digit authentication code sent to{" "}
+                    {pending?.userEmail ?? email}.
+                    <br />
+                    {countdownSeconds > 0
+                      ? `Code expires in ${countdownLabel}.`
+                      : "Code expired. Please sign in again."}
+                  </>
+                )}
               </div>
               <label className="field">
                 <span className="fieldLabel">Authentication code</span>
