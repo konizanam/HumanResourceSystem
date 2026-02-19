@@ -1,8 +1,9 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { register, saveAddress, updatePersonalDetails, updateProfile } from "../api/client";
+import { getIpLocation, register, saveAddress, updatePersonalDetails, updateProfile } from "../api/client";
 import { COUNTRY_NAMES } from "../utils/countries";
+import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 
 const QUALIFICATION_LEVELS = [
   "Primary School",
@@ -163,8 +164,36 @@ export function SignupPage() {
   const [nationalityOpen, setNationalityOpen] = useState(false);
   const [fieldOpen, setFieldOpen] = useState(false);
   const [qualificationOpen, setQualificationOpen] = useState(false);
+  const [cityOpen, setCityOpen] = useState(false);
+  const [regionOpen, setRegionOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [ipCountryCode, setIpCountryCode] = useState<string | null>(null);
+
+  const isNamibia = ipCountryCode === "NA";
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const loc = await getIpLocation();
+        if (cancelled) return;
+        setIpCountryCode(loc.countryCode);
+
+        if (loc.countryCode === "NA") {
+          setForm((prev) => {
+            if (prev.country.trim()) return prev;
+            return { ...prev, country: "Namibia" };
+          });
+        }
+      } catch {
+        // Best-effort only: if geo fails, don't block signup.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -210,6 +239,22 @@ export function SignupPage() {
     if (!q) return options;
     return options.filter((o) => o.toLowerCase().includes(q));
   }, [form.qualificationLevel]);
+
+  const namibiaCitySuggestions = useMemo(() => {
+    if (!isNamibia) return [];
+    const q = form.city.trim().toLowerCase();
+    const options = NAMIBIA_TOWNS_CITIES as readonly string[];
+    if (!q) return options.slice(0, 10);
+    return options.filter((o) => o.toLowerCase().startsWith(q)).slice(0, 10);
+  }, [form.city, isNamibia]);
+
+  const namibiaRegionSuggestions = useMemo(() => {
+    if (!isNamibia) return [];
+    const q = form.state.trim().toLowerCase();
+    const options = NAMIBIA_REGIONS as readonly string[];
+    if (!q) return options;
+    return options.filter((o) => o.toLowerCase().startsWith(q));
+  }, [form.state, isNamibia]);
 
   /* ── Per-step validation ──────────────────────────── */
 
@@ -658,10 +703,39 @@ export function SignupPage() {
               <input
                 className="input"
                 value={form.city}
-                onChange={(e) => set("city", e.target.value)}
+                onChange={(e) => {
+                  set("city", e.target.value);
+                  if (isNamibia) setCityOpen(true);
+                }}
+                onFocus={() => {
+                  if (isNamibia) setCityOpen(true);
+                }}
+                onBlur={() => setCityOpen(false)}
                 placeholder="City"
                 required
               />
+              {isNamibia && cityOpen && namibiaCitySuggestions.length > 0 && (
+                <div
+                  className="autocompleteList"
+                  role="listbox"
+                  aria-label="Namibia city suggestions"
+                >
+                  {namibiaCitySuggestions.map((o) => (
+                    <button
+                      key={o}
+                      type="button"
+                      className="autocompleteItem"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        set("city", o);
+                        setCityOpen(false);
+                      }}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
               {fieldErrors.city && (
                 <span className="fieldError">{fieldErrors.city}</span>
               )}
@@ -672,9 +746,38 @@ export function SignupPage() {
               <input
                 className="input"
                 value={form.state}
-                onChange={(e) => set("state", e.target.value)}
+                onChange={(e) => {
+                  set("state", e.target.value);
+                  if (isNamibia) setRegionOpen(true);
+                }}
+                onFocus={() => {
+                  if (isNamibia) setRegionOpen(true);
+                }}
+                onBlur={() => setRegionOpen(false)}
                 placeholder="State/Region"
               />
+              {isNamibia && regionOpen && namibiaRegionSuggestions.length > 0 && (
+                <div
+                  className="autocompleteList"
+                  role="listbox"
+                  aria-label="Namibia region suggestions"
+                >
+                  {namibiaRegionSuggestions.map((o) => (
+                    <button
+                      key={o}
+                      type="button"
+                      className="autocompleteItem"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        set("state", o);
+                        setRegionOpen(false);
+                      }}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
             </label>
 
             <label className="field">

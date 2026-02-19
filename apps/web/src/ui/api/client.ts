@@ -71,6 +71,27 @@ export type FullProfile = {
   references: Record<string, unknown>[];
 };
 
+export type IpLocation = {
+  ip: string | null;
+  countryCode: string | null;
+  countryName: string | null;
+  region: string | null;
+  city: string | null;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Geo                                                               */
+/* ------------------------------------------------------------------ */
+
+export async function getIpLocation(): Promise<IpLocation> {
+  const res = await fetch(`${API_BASE}/geo/ip`);
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to determine location");
+  }
+  return (await res.json()) as IpLocation;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Auth                                                               */
 /* ------------------------------------------------------------------ */

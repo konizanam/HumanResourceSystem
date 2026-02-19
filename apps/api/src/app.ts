@@ -17,6 +17,9 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 // Create Express application
 const app: Application = express();
 
+// Needed for correct client IP when behind a proxy/load balancer
+app.set('trust proxy', true);
+
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // =====================
 // Middleware
