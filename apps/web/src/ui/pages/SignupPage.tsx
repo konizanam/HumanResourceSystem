@@ -290,6 +290,7 @@ export function SignupPage() {
     if (step === 1) {
       if (!form.addressLine1.trim()) errs.addressLine1 = "Address line 1 is required";
       if (!form.city.trim()) errs.city = "City is required";
+      if (!form.state.trim()) errs.state = "State/Region is required";
       if (!form.country.trim()) errs.country = "Country is required";
     }
 
@@ -358,7 +359,7 @@ export function SignupPage() {
         address_line1: form.addressLine1.trim(),
         address_line2: form.addressLine2.trim() || undefined,
         city: form.city.trim(),
-        state: form.state.trim() || undefined,
+        state: form.state.trim(),
         country: form.country.trim(),
         postal_code: form.postalCode.trim() || undefined,
         is_primary: true,
@@ -742,7 +743,7 @@ export function SignupPage() {
             </label>
 
             <label className="field">
-              <span className="fieldLabel">State/Region (optional)</span>
+              <span className="fieldLabel">State/Region</span>
               <input
                 className="input"
                 value={form.state}
@@ -755,6 +756,7 @@ export function SignupPage() {
                 }}
                 onBlur={() => setRegionOpen(false)}
                 placeholder="State/Region"
+                required
               />
               {isNamibia && regionOpen && namibiaRegionSuggestions.length > 0 && (
                 <div
@@ -777,6 +779,9 @@ export function SignupPage() {
                     </button>
                   ))}
                 </div>
+              )}
+              {fieldErrors.state && (
+                <span className="fieldError">{fieldErrors.state}</span>
               )}
             </label>
 

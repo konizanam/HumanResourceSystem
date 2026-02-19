@@ -18,6 +18,8 @@ const swagger_1 = require("./swagger");
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../.env') });
 // Create Express application
 const app = (0, express_1.default)();
+// Needed for correct client IP when behind a proxy/load balancer
+app.set('trust proxy', true);
 app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../uploads')));
 // =====================
 // Middleware
@@ -81,17 +83,30 @@ app.use('*', (req, res) => {
 });
 app.use((err, req, res, next) => {
     const { NODE_ENV } = process.env;
-    // Log error
-    console.error('❌ Error:', {
-        message: err.message,
-        stack: NODE_ENV === 'development' ? err.stack : undefined,
-        path: req.path,
-        method: req.method,
-        timestamp: new Date().toISOString()
-    });
+    const statusCode = err.isOperational ? (err.statusCode || 400) : 500;
+    // Log only unexpected/server errors loudly.
+    // Expected operational 4xx errors (e.g. auth failures) can happen during dev refreshes.
+    if (statusCode >= 500) {
+        console.error('❌ Error:', {
+            message: err.message,
+            stack: NODE_ENV === 'development' ? err.stack : undefined,
+            path: req.path,
+            method: req.method,
+            timestamp: new Date().toISOString(),
+        });
+    }
+    else if (statusCode !== 401 && statusCode !== 403) {
+        console.log('⚠️ Request rejected:', {
+            statusCode,
+            message: err.message,
+            path: req.path,
+            method: req.method,
+            timestamp: new Date().toISOString(),
+        });
+    }
     // Operational errors (known errors we created)
     if (err.isOperational) {
-        return res.status(err.statusCode || 400).json({
+        return res.status(statusCode).json({
             status: 'error',
             message: err.message
         });

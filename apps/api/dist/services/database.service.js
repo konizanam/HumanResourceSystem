@@ -124,13 +124,22 @@ class DatabaseService {
     }
     async updateJobSeekerProfile(userId, data) {
         const { professional_summary, field_of_expertise, qualification_level, years_experience } = data;
-        const result = await (0, database_1.query)(`UPDATE job_seeker_profiles 
-       SET professional_summary = COALESCE($1, professional_summary),
-           field_of_expertise = COALESCE($2, field_of_expertise),
-           qualification_level = COALESCE($3, qualification_level),
-           years_experience = COALESCE($4, years_experience)
-       WHERE user_id = $5
-       RETURNING *`, [professional_summary, field_of_expertise, qualification_level, years_experience, userId]);
+        const result = await (0, database_1.query)(`INSERT INTO job_seeker_profiles
+       (user_id, professional_summary, field_of_expertise, qualification_level, years_experience)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id)
+       DO UPDATE SET
+         professional_summary = COALESCE(EXCLUDED.professional_summary, job_seeker_profiles.professional_summary),
+         field_of_expertise = COALESCE(EXCLUDED.field_of_expertise, job_seeker_profiles.field_of_expertise),
+         qualification_level = COALESCE(EXCLUDED.qualification_level, job_seeker_profiles.qualification_level),
+         years_experience = COALESCE(EXCLUDED.years_experience, job_seeker_profiles.years_experience)
+       RETURNING *`, [
+            userId,
+            professional_summary ?? null,
+            field_of_expertise ?? null,
+            qualification_level ?? null,
+            years_experience ?? null,
+        ]);
         return result.rows[0];
     }
     // ==================== JOB SEEKER PERSONAL DETAILS ====================

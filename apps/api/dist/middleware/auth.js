@@ -15,8 +15,20 @@ const authenticate = async (req, res, next) => {
         }
         const token = authHeader.split(' ')[1];
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
+        // Support both legacy tokens (`userId`) and standard JWT subject (`sub`).
+        const userId = typeof decoded?.userId === 'string'
+            ? decoded.userId
+            : typeof decoded?.sub === 'string'
+                ? decoded.sub
+                : undefined;
+        if (!userId) {
+            throw new errors_1.UnauthorizedError('Invalid token');
+        }
+        const roles = Array.isArray(decoded?.roles)
+            ? decoded.roles
+            : [];
         // Check if user still exists and is active
-        const result = await (0, database_1.query)('SELECT id, email, is_active FROM users WHERE id = $1', [decoded.userId]);
+        const result = await (0, database_1.query)('SELECT id, email, is_active FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0 || !result.rows[0].is_active) {
             throw new errors_1.UnauthorizedError('User not found or inactive');
         }
@@ -25,11 +37,13 @@ const authenticate = async (req, res, next) => {
        FROM permissions p
        JOIN role_permissions rp ON p.id = rp.permission_id
        JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1`, [decoded.userId]);
+       WHERE ur.user_id = $1`, [userId]);
         const permissions = permissionsResult.rows.map(row => row.name);
         // Add permissions to the user object
         req.user = {
-            ...decoded,
+            userId,
+            email: typeof decoded?.email === 'string' ? decoded.email : '',
+            roles,
             permissions
         };
         next();
@@ -86,11 +100,6 @@ const isJobSeeker = async (req, res, next) => {
         // Check if user has JOB_SEEKER role
         if (!req.user.roles.includes('JOB_SEEKER')) {
             throw new errors_1.ForbiddenError('This endpoint is for job seekers only');
-        }
-        // Verify job seeker profile exists
-        const result = await (0, database_1.query)('SELECT user_id FROM job_seeker_profiles WHERE user_id = $1', [req.user.userId]);
-        if (result.rows.length === 0) {
-            throw new errors_1.ForbiddenError('Job seeker profile not found');
         }
         next();
     }
