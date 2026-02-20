@@ -5,7 +5,7 @@ export function createOpenApiSpec() {
       title: "HR System API",
       version: "0.2.0",
     },
-    servers: [{ url: "http://localhost:4000" }],
+    sservers: [{ url: "http://localhost:4000/api/v1" }],
     components: {
       securitySchemes: {
         bearerAuth: {

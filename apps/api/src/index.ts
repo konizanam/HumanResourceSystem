@@ -39,6 +39,7 @@ async function start() {
     console.log(`🌍 Environment: ${NODE_ENV}`);
     console.log(`🔗 Health check: http://localhost:${PORT}/health`);
     console.log(`🔗 API v1: http://localhost:${PORT}/api/v1/health`);
+      console.log(`📄 Swagger docs at http://localhost:${PORT}/docs`);
     console.log('=================================\n');
   });
 
