@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { DocumentController } from '../controllers.ts/document.controller';
+import { DocumentController } from '../controllers/document.controller';
 import { authenticate } from '../middleware/auth';
 import { upload } from '../config/upload';
 

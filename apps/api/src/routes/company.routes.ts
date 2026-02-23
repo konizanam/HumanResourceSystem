@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { CompanyController } from '../controllers.ts/company.controller';
+import { CompanyController } from '../controllers/company.controller';
 import { authenticate } from '../middleware/auth';
 import { body } from 'express-validator';
 import { validateRequest } from '../utils/validation';

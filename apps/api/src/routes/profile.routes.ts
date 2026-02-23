@@ -1,6 +1,6 @@
 // src/routes/profile.routes.ts
 import { Router } from 'express';
-import { ProfileController } from '../controllers.ts/profile.controller';
+import { ProfileController } from '../controllers/profile.controller';
 import { authenticate, isJobSeeker } from '../middleware/auth';
 import {
   validateRequest,

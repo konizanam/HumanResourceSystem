@@ -13,7 +13,7 @@ CREATE TABLE users (
     password_reset_token TEXT,
     password_reset_expires_at TIMESTAMP,
     password_reset_requested_at TIMESTAMP,
-    is_active BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,7 +66,6 @@ CREATE TABLE companies (
     address_line2 VARCHAR(255),
     city VARCHAR(100),
     country VARCHAR(100),
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -527,3 +526,275 @@ COMMENT ON TABLE audit_logs IS 'Comprehensive activity tracking for compliance';
 COMMENT ON TABLE job_seeker_profiles IS 'Professional summary and searchable profile data';
 COMMENT ON TABLE job_seeker_personal_details IS 'Sensitive PII with restricted access';
 
+-- Create documents table
+CREATE TABLE IF NOT EXISTS documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_url VARCHAR(500) NOT NULL,
+    document_type VARCHAR(100),
+    category VARCHAR(100),
+    description TEXT,
+    is_public BOOLEAN DEFAULT FALSE,
+    uploaded_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes
+CREATE INDEX idx_documents_user ON documents(user_id);
+CREATE INDEX idx_documents_company ON documents(company_id);
+CREATE INDEX idx_documents_type ON documents(document_type);
+CREATE INDEX idx_documents_category ON documents(category);
+CREATE INDEX idx_documents_created ON documents(created_at);
+
+-- Create job_seeker_documents junction table (for multiple document types)
+CREATE TABLE IF NOT EXISTS job_seeker_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    document_type VARCHAR(100) NOT NULL, -- 'resume', 'cover_letter', 'certificate', 'id', etc.
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, document_id)
+);
+
+-- Create company_documents table
+CREATE TABLE IF NOT EXISTS company_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    document_type VARCHAR(100) NOT NULL, -- 'logo', 'registration', 'tax', etc.
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(company_id, document_id)
+);
+
+-- Resumes table for multiple resume uploads
+CREATE TABLE IF NOT EXISTS resumes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    uploaded_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_resumes_job_seeker ON resumes(job_seeker_id);
+CREATE INDEX idx_resumes_is_primary ON resumes(is_primary);
+
+-- Skills table
+CREATE TABLE IF NOT EXISTS skills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    proficiency_level VARCHAR(50) CHECK (proficiency_level IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')),
+    years_of_experience INTEGER,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(job_seeker_id, name)
+);
+
+CREATE INDEX idx_skills_job_seeker ON skills(job_seeker_id);
+CREATE INDEX idx_skills_name ON skills(name);
+
+-- Certifications table
+CREATE TABLE IF NOT EXISTS certifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    issuing_organization VARCHAR(200) NOT NULL,
+    issue_date DATE NOT NULL,
+    expiration_date DATE,
+    credential_id VARCHAR(100),
+    credential_url TEXT,
+    does_not_expire BOOLEAN DEFAULT FALSE,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_certifications_job_seeker ON certifications(job_seeker_id);
+CREATE INDEX idx_certifications_name ON certifications(name);
+CREATE INDEX idx_certifications_issue_date ON certifications(issue_date);
+
+-- Notifications table
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL CHECK (type IN (
+        'application_received', 'application_status_changed',
+        'job_posted', 'job_closed', 'interview_scheduled',
+        'message_received', 'profile_viewed', 'system_alert'
+    )),
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB DEFAULT '{}',
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    action_url TEXT,
+    priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user ON notifications(user_id);
+CREATE INDEX idx_notifications_user_read ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_type ON notifications(type);
+
+-- Notification preferences table
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email_notifications BOOLEAN DEFAULT TRUE,
+    push_notifications BOOLEAN DEFAULT TRUE,
+    in_app_notifications BOOLEAN DEFAULT TRUE,
+    application_updates BOOLEAN DEFAULT TRUE,
+    job_alerts BOOLEAN DEFAULT TRUE,
+    message_notifications BOOLEAN DEFAULT TRUE,
+    marketing_emails BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Admin logs table for audit trail
+CREATE TABLE IF NOT EXISTS admin_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    target_type VARCHAR(50) NOT NULL CHECK (target_type IN ('user', 'job', 'application', 'company')),
+    target_id UUID,
+    details JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_admin_logs_admin ON admin_logs(admin_id);
+CREATE INDEX idx_admin_logs_action ON admin_logs(action);
+CREATE INDEX idx_admin_logs_target ON admin_logs(target_type, target_id);
+CREATE INDEX idx_admin_logs_created_at ON admin_logs(created_at DESC);
+
+-- Backups tracking table
+CREATE TABLE IF NOT EXISTS backups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filename VARCHAR(255) NOT NULL,
+    size_bytes BIGINT,
+    status VARCHAR(50) DEFAULT 'completed',
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- User sessions table
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    ip_address INET,
+    user_agent TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_activity TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_sessions_user ON user_sessions(user_id);
+CREATE INDEX idx_sessions_token ON user_sessions(token);
+CREATE INDEX idx_sessions_expires ON user_sessions(expires_at);
+
+-- Job reports table (for users to report inappropriate jobs)
+CREATE TABLE IF NOT EXISTS job_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason VARCHAR(50) NOT NULL CHECK (reason IN ('spam', 'inappropriate', 'fraud', 'other')),
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'dismissed', 'action_taken')),
+    reviewed_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_reports_job ON job_reports(job_id);
+CREATE INDEX idx_reports_status ON job_reports(status);
+
+-- Saved jobs table
+CREATE TABLE IF NOT EXISTS saved_jobs (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    saved_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, job_id)
+);
+
+CREATE INDEX idx_saved_jobs_user ON saved_jobs(user_id);
+
+-- Job alerts table
+CREATE TABLE IF NOT EXISTS job_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    keywords TEXT,
+    category_id UUID REFERENCES job_categories(id),
+    location VARCHAR(255),
+    salary_min NUMERIC(12,2),
+    frequency VARCHAR(20) DEFAULT 'daily' CHECK (frequency IN ('instant', 'daily', 'weekly')),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_alerts_user ON job_alerts(user_id);
+CREATE INDEX idx_alerts_active ON job_alerts(is_active);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_description TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_website VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_logo_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_size VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS founded_year INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS headquarters_location VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS block_reason TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS professional_summary TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS field_of_expertise VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS years_experience INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS resume_url TEXT;
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS applications_count INTEGER DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS flag_reason TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location VARCHAR(255);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS remote BOOLEAN DEFAULT FALSE;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS requirements JSONB DEFAULT '[]';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS responsibilities JSONB DEFAULT '[]';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_level VARCHAR(50);
+
+CREATE TABLE IF NOT EXISTS employer_stats (
+    employer_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    total_jobs_posted INTEGER DEFAULT 0,
+    active_jobs INTEGER DEFAULT 0,
+    total_applications_received INTEGER DEFAULT 0,
+    total_views INTEGER DEFAULT 0,
+    average_response_time INTEGER,
+    last_active TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
