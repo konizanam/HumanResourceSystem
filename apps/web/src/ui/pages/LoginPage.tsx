@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+import { forgotPassword, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
@@ -191,16 +191,28 @@ export function LoginPage() {
                   <button
                     type="button"
                     className="btn btnPrimary fullActionBtn"
-                    onClick={() => {
+                    disabled={busy}
+                    onClick={async () => {
                       const value = forgotEmail.trim();
                       if (!value || !value.includes("@")) {
                         setForgotMessage("Enter a valid email address.");
                         return;
                       }
-                      setForgotMessage(`A reset code has been sent to ${value}.`);
+                      setBusy(true);
+                      setForgotMessage(null);
+                      try {
+                        await forgotPassword(value);
+                        setForgotMessage(
+                          `If an account exists for ${value}, a reset link has been sent.`
+                        );
+                      } catch {
+                        setForgotMessage("Something went wrong. Please try again.");
+                      } finally {
+                        setBusy(false);
+                      }
                     }}
                   >
-                    Send reset link
+                    {busy ? "Sending…" : "Send reset link"}
                   </button>
 
                   {forgotMessage ? (

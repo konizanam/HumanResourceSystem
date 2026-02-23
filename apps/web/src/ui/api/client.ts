@@ -746,3 +746,506 @@ export async function deleteReference(token: string, id: string) {
     throw apiError(res, body, "Failed to delete reference");
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Admin Roles                                                        */
+/* ------------------------------------------------------------------ */
+
+export type Role = {
+  id: string;
+  name: string;
+  description?: string | null;
+  user_count?: number;
+  permission_count?: number;
+  created_at?: string;
+};
+
+export type Permission = {
+  id: string;
+  name: string;
+  description?: string | null;
+  module_name: string;
+  action_type: string;
+  created_at?: string;
+};
+
+export type RoleDetail = Role & {
+  permissions: Permission[];
+  users: { id: string; email: string; first_name: string; last_name: string }[];
+};
+
+export async function listRoles(
+  token: string,
+  params?: { page?: number; limit?: number; search?: string },
+): Promise<{ roles: Role[]; pagination: Pagination }> {
+  const url = new URL(`${API_BASE}/admin/roles`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.search) url.searchParams.set("search", params.search);
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load roles");
+  return body as { roles: Role[]; pagination: Pagination };
+}
+
+export async function getRole(token: string, id: string): Promise<RoleDetail> {
+  const res = await fetch(`${API_BASE}/admin/roles/${encodeURIComponent(id)}`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load role");
+  return body as RoleDetail;
+}
+
+export async function createRole(
+  token: string,
+  payload: { name: string; description?: string },
+): Promise<Role> {
+  const res = await fetch(`${API_BASE}/admin/roles`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create role");
+  return body as Role;
+}
+
+export async function updateRole(
+  token: string,
+  id: string,
+  payload: { name: string; description?: string },
+): Promise<Role> {
+  const res = await fetch(`${API_BASE}/admin/roles/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update role");
+  return body as Role;
+}
+
+export async function deleteRole(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/roles/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete role");
+}
+
+export async function getRolePermissions(
+  token: string,
+  roleId: string,
+): Promise<{ role_id: string; role_name: string; permissions: Permission[]; all_permissions: Permission[] }> {
+  const res = await fetch(
+    `${API_BASE}/admin/roles/${encodeURIComponent(roleId)}/permissions`,
+    { headers: authHeaders(token) },
+  );
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load role permissions");
+  return body;
+}
+
+export async function setRolePermissions(
+  token: string,
+  roleId: string,
+  permissionIds: string[],
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/admin/roles/${encodeURIComponent(roleId)}/permissions`,
+    {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({ permission_ids: permissionIds }),
+    },
+  );
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to assign permissions");
+}
+
+export async function listPermissions(
+  token: string,
+): Promise<{ permissions: Permission[]; grouped: Record<string, Permission[]> }> {
+  const res = await fetch(`${API_BASE}/admin/permissions`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load permissions");
+  return body;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Job Categories                                                     */
+/* ------------------------------------------------------------------ */
+
+export type JobSubcategory = {
+  id: string;
+  category_id: string;
+  name: string;
+  category_name?: string;
+};
+
+export type JobCategory = {
+  id: string;
+  name: string;
+  subcategories: JobSubcategory[];
+  job_counts?: { total_jobs: number; active_jobs: number };
+};
+
+export async function listJobCategories(
+  token: string,
+): Promise<{ categories: JobCategory[]; total_categories: number }> {
+  const res = await fetch(`${API_BASE}/jobs/categories`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job categories");
+  return body;
+}
+
+export async function createJobCategory(
+  token: string,
+  payload: { name: string },
+): Promise<JobCategory> {
+  const res = await fetch(`${API_BASE}/jobs/categories`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create category");
+  return body as JobCategory;
+}
+
+export async function updateJobCategory(
+  token: string,
+  id: string,
+  payload: { name: string },
+): Promise<JobCategory> {
+  const res = await fetch(`${API_BASE}/jobs/categories/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update category");
+  return body as JobCategory;
+}
+
+export async function deleteJobCategory(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/jobs/categories/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete category");
+}
+
+export async function createJobSubcategory(
+  token: string,
+  payload: { category_id: string; name: string },
+): Promise<JobSubcategory> {
+  const res = await fetch(`${API_BASE}/jobs/subcategories`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create subcategory");
+  return body as JobSubcategory;
+}
+
+export async function updateJobSubcategory(
+  token: string,
+  id: string,
+  payload: { name: string; category_id?: string },
+): Promise<JobSubcategory> {
+  const res = await fetch(`${API_BASE}/jobs/subcategories/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update subcategory");
+  return body as JobSubcategory;
+}
+
+export async function deleteJobSubcategory(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/jobs/subcategories/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete subcategory");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin Users                                                        */
+/* ------------------------------------------------------------------ */
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  role?: string | null;
+  is_active?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  block_reason?: string | null;
+  email_verified?: boolean;
+  last_login?: string | null;
+  created_at?: string;
+  company_name?: string | null;
+  phone?: string | null;
+  login_count?: number;
+  // detail fields
+  jobs_posted?: number;
+  applications_submitted?: number;
+  skills?: any[] | null;
+  certifications?: any[] | null;
+};
+
+type Pagination = {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+};
+
+export async function listAdminUsers(
+  token: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  },
+): Promise<{
+  users: AdminUser[];
+  pagination: Pagination;
+  summary: { total_users: number; active_users: number; blocked_users: number };
+}> {
+  const url = new URL(`${API_BASE}/admin/users`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.role) url.searchParams.set("role", params.role);
+  if (params?.status) url.searchParams.set("status", params.status);
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load users");
+  return body;
+}
+
+export async function getAdminUser(token: string, id: string): Promise<AdminUser> {
+  const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load user");
+  return body as AdminUser;
+}
+
+export async function blockUser(
+  token: string,
+  id: string,
+  payload: { block: boolean; reason?: string },
+): Promise<{ message: string; user: AdminUser }> {
+  const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}/block`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update user block status");
+  return body;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin Jobs                                                         */
+/* ------------------------------------------------------------------ */
+
+export type AdminJob = {
+  id: string;
+  title: string;
+  description?: string;
+  company?: string;
+  location?: string;
+  salary_min?: number;
+  salary_max?: number;
+  salary_currency?: string;
+  category?: string;
+  experience_level?: string;
+  employment_type?: string;
+  status?: string;
+  remote?: boolean;
+  is_featured?: boolean;
+  is_flagged?: boolean;
+  views?: number;
+  applications_count?: number;
+  employer_id?: string;
+  employer_name?: string;
+  employer_email?: string;
+  reports_count?: number;
+  application_deadline?: string;
+  created_at?: string;
+};
+
+export async function listAdminJobs(
+  token: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    flagged?: boolean;
+    featured?: boolean;
+  },
+): Promise<{
+  jobs: AdminJob[];
+  pagination: Pagination;
+  summary: { total_jobs: number; active_jobs: number; flagged_jobs: number };
+}> {
+  const url = new URL(`${API_BASE}/admin/jobs`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.flagged !== undefined) url.searchParams.set("flagged", String(params.flagged));
+  if (params?.featured !== undefined) url.searchParams.set("featured", String(params.featured));
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load jobs");
+  return body;
+}
+
+export async function deleteAdminJob(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/jobs/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete job");
+}
+
+export async function featureAdminJob(
+  token: string,
+  id: string,
+  featured: boolean,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/jobs/${encodeURIComponent(id)}/feature`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ is_featured: featured }),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update job feature status");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin Statistics (Reports)                                         */
+/* ------------------------------------------------------------------ */
+
+export type AdminStatistics = {
+  users: {
+    total: number; active: number; blocked: number;
+    job_seekers: number; employers: number; admins: number; hr: number;
+    new_today: number; new_this_week: number; new_this_month: number;
+  };
+  jobs: {
+    total: number; active: number; closed: number; draft: number;
+    featured: number; flagged: number;
+    new_today: number; new_this_week: number;
+    total_views: number; total_applications: number;
+  };
+  applications: {
+    total: number; pending: number; reviewed: number;
+    accepted: number; rejected: number; withdrawn: number;
+    new_today: number;
+  };
+  system: {
+    api_requests_today: number; active_sessions: number;
+    storage_used: string; last_backup: string | null; version: string;
+  };
+};
+
+export async function getAdminStatistics(token: string): Promise<AdminStatistics> {
+  const res = await fetch(`${API_BASE}/admin/statistics`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load statistics");
+  return body as AdminStatistics;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin Audit Logs                                                   */
+/* ------------------------------------------------------------------ */
+
+export type AuditLog = {
+  id: string;
+  admin_id: string;
+  admin_name?: string;
+  admin_email?: string;
+  action: string;
+  target_type: string;
+  target_id?: string;
+  details?: Record<string, unknown>;
+  ip_address?: string;
+  created_at: string;
+};
+
+export async function listAuditLogs(
+  token: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    target_type?: string;
+  },
+): Promise<{ logs: AuditLog[]; pagination: Pagination }> {
+  const url = new URL(`${API_BASE}/admin/audit-logs`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.action) url.searchParams.set("action", params.action);
+  if (params?.target_type) url.searchParams.set("target_type", params.target_type);
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load audit logs");
+  return body;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Permissions CRUD                                                   */
+/* ------------------------------------------------------------------ */
+
+export async function createPermission(
+  token: string,
+  payload: { name: string; description?: string; module_name: string; action_type: string },
+): Promise<Permission> {
+  const res = await fetch(`${API_BASE}/admin/permissions`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create permission");
+  return body as Permission;
+}
+
+export async function deletePermission(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/permissions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete permission");
+}
