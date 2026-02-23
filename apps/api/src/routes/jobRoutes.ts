@@ -792,5 +792,946 @@ router.patch('/:id/applications/:applicationId/status',
     }
   }
 );
+// ============================================================================
+// JOB CATEGORIES ENDPOINTS
+// ============================================================================
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     JobCategory:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         name:
+ *           type: string
+ *         subcategories:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/JobSubcategory'
+ *     JobSubcategory:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         category_id:
+ *           type: string
+ *           format: uuid
+ *         name:
+ *           type: string
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   name: Job Categories
+ *   description: Job categories and subcategories management
+ */
+
+// GET /api/jobs/categories - Get all job categories with subcategories
+/**
+ * @swagger
+ * /jobs/categories:
+ *   get:
+ *     summary: Get all job categories with their subcategories
+ *     tags: [Job Categories]
+ *     parameters:
+ *       - in: query
+ *         name: include_counts
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Include job counts for each category
+ *     responses:
+ *       200:
+ *         description: List of categories with subcategories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/JobCategory'
+ *                 total_categories:
+ *                   type: integer
+ */
+router.get('/categories', [
+  query('include_counts').optional().isBoolean().toBoolean()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const includeCounts = req.query.include_counts === 'true';
+
+    // Get all categories
+    const categoriesResult = await dbQuery(
+      'SELECT * FROM job_categories ORDER BY name'
+    );
+
+    // Get all subcategories
+    const subcategoriesResult = await dbQuery(
+      'SELECT * FROM job_subcategories ORDER BY name'
+    );
+
+    // Group subcategories by category_id
+    const subcategoriesByCategory = subcategoriesResult.rows.reduce((acc, sub) => {
+      if (!acc[sub.category_id]) {
+        acc[sub.category_id] = [];
+      }
+      acc[sub.category_id].push(sub);
+      return acc;
+    }, {});
+
+    let categories = categoriesResult.rows.map(category => ({
+      ...category,
+      subcategories: subcategoriesByCategory[category.id] || []
+    }));
+
+    // Include job counts if requested
+    if (includeCounts) {
+      const jobCounts = await dbQuery(
+        `SELECT 
+          category_id,
+          COUNT(*) as total_jobs,
+          COUNT(CASE WHEN status = 'active' THEN 1 END) as active_jobs
+         FROM jobs 
+         GROUP BY category_id`
+      );
+
+      const countsMap = jobCounts.rows.reduce((acc, row) => {
+        acc[row.category_id] = {
+          total_jobs: parseInt(row.total_jobs),
+          active_jobs: parseInt(row.active_jobs)
+        };
+        return acc;
+      }, {});
+
+      categories = categories.map(category => ({
+        ...category,
+        job_counts: countsMap[category.id] || { total_jobs: 0, active_jobs: 0 }
+      }));
+    }
+
+    res.json({
+      categories,
+      total_categories: categories.length
+    });
+  } catch (error) {
+    console.error('Error fetching job categories:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/jobs/categories/:id - Get single category with subcategories
+/**
+ * @swagger
+ * /jobs/categories/{id}:
+ *   get:
+ *     summary: Get a specific category with its subcategories
+ *     tags: [Job Categories]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: include_jobs
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Include recent jobs in this category
+ *     responses:
+ *       200:
+ *         description: Category details with subcategories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobCategory'
+ *       404:
+ *         description: Category not found
+ */
+router.get('/categories/:id', [
+  param('id').isUUID().withMessage('Invalid category ID'),
+  query('include_jobs').optional().isBoolean().toBoolean()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const categoryId = req.params.id;
+    const includeJobs = req.query.include_jobs === 'true';
+
+    // Get category
+    const categoryResult = await dbQuery(
+      'SELECT * FROM job_categories WHERE id = $1',
+      [categoryId]
+    );
+
+    if (categoryResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const category = categoryResult.rows[0];
+
+    // Get subcategories
+    const subcategoriesResult = await dbQuery(
+      'SELECT * FROM job_subcategories WHERE category_id = $1 ORDER BY name',
+      [categoryId]
+    );
+
+    // Get job counts
+    const jobCounts = await dbQuery(
+      `SELECT 
+        COUNT(*) as total_jobs,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_jobs
+       FROM jobs 
+       WHERE category_id = $1`,
+      [categoryId]
+    );
+
+    const result = {
+      ...category,
+      subcategories: subcategoriesResult.rows,
+      job_counts: {
+        total_jobs: parseInt(jobCounts.rows[0].total_jobs),
+        active_jobs: parseInt(jobCounts.rows[0].active_jobs)
+      }
+    };
+
+    // Include recent jobs if requested
+    if (includeJobs) {
+      const jobsResult = await dbQuery(
+        `SELECT j.id, j.title, j.company, j.location, j.salary_min, j.salary_max,
+                j.salary_currency, j.status, j.created_at,
+                u.name as employer_name
+         FROM jobs j
+         LEFT JOIN users u ON j.employer_id = u.id
+         WHERE j.category_id = $1 AND j.status = 'active'
+         ORDER BY j.created_at DESC
+         LIMIT 10`,
+        [categoryId]
+      );
+      
+      result.recent_jobs = jobsResult.rows;
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching category:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/jobs/subcategories - Get all subcategories
+/**
+ * @swagger
+ * /jobs/subcategories:
+ *   get:
+ *     summary: Get all job subcategories
+ *     tags: [Job Categories]
+ *     parameters:
+ *       - in: query
+ *         name: category_id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by category
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search subcategories by name
+ *     responses:
+ *       200:
+ *         description: List of subcategories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 subcategories:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/JobSubcategory'
+ *                 total:
+ *                   type: integer
+ */
+router.get('/subcategories', [
+  query('category_id').optional().isUUID(),
+  query('search').optional().isString().trim()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { category_id, search } = req.query;
+
+    let queryText = 'SELECT sc.*, c.name as category_name FROM job_subcategories sc LEFT JOIN job_categories c ON sc.category_id = c.id';
+    const queryParams: any[] = [];
+    const conditions: string[] = [];
+
+    if (category_id) {
+      conditions.push(`sc.category_id = $${queryParams.length + 1}`);
+      queryParams.push(category_id);
+    }
+
+    if (search) {
+      conditions.push(`sc.name ILIKE $${queryParams.length + 1}`);
+      queryParams.push(`%${search}%`);
+    }
+
+    if (conditions.length > 0) {
+      queryText += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    queryText += ' ORDER BY c.name, sc.name';
+
+    const result = await dbQuery(queryText, queryParams);
+
+    res.json({
+      subcategories: result.rows,
+      total: result.rows.length
+    });
+  } catch (error) {
+    console.error('Error fetching subcategories:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/jobs/subcategories/:id - Get single subcategory
+/**
+ * @swagger
+ * /jobs/subcategories/{id}:
+ *   get:
+ *     summary: Get a specific subcategory
+ *     tags: [Job Categories]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Subcategory details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobSubcategory'
+ *       404:
+ *         description: Subcategory not found
+ */
+router.get('/subcategories/:id', [
+  param('id').isUUID().withMessage('Invalid subcategory ID')
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const subcategoryId = req.params.id;
+
+    const result = await dbQuery(
+      `SELECT sc.*, c.name as category_name, c.id as category_id
+       FROM job_subcategories sc
+       LEFT JOIN job_categories c ON sc.category_id = c.id
+       WHERE sc.id = $1`,
+      [subcategoryId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Subcategory not found' });
+    }
+
+    // Get job counts for this subcategory
+    const jobCounts = await dbQuery(
+      `SELECT 
+        COUNT(*) as total_jobs,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_jobs
+       FROM jobs 
+       WHERE subcategory_id = $1`,
+      [subcategoryId]
+    );
+
+    res.json({
+      ...result.rows[0],
+      job_counts: {
+        total_jobs: parseInt(jobCounts.rows[0].total_jobs),
+        active_jobs: parseInt(jobCounts.rows[0].active_jobs)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching subcategory:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============================================================================
+// ADMIN ONLY: Category Management
+// ============================================================================
+
+// POST /api/jobs/categories - Create new category (Admin only)
+/**
+ * @swagger
+ * /jobs/categories:
+ *   post:
+ *     summary: Create a new job category (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Category created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobCategory'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       409:
+ *         description: Category already exists
+ */
+router.post('/categories',
+  authenticate,
+  authorize('ADMIN'),
+  [
+    body('name').notEmpty().withMessage('Category name is required').trim()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { name } = req.body;
+
+      // Check if category already exists
+      const existing = await dbQuery(
+        'SELECT id FROM job_categories WHERE name = $1',
+        [name]
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: 'Category already exists' });
+      }
+
+      const result = await dbQuery(
+        'INSERT INTO job_categories (name) VALUES ($1) RETURNING *',
+        [name]
+      );
+
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error('Error creating category:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// PUT /api/jobs/categories/:id - Update category (Admin only)
+/**
+ * @swagger
+ * /jobs/categories/{id}:
+ *   put:
+ *     summary: Update a job category (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Category updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobCategory'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Category not found
+ *       409:
+ *         description: Category name already exists
+ */
+router.put('/categories/:id',
+  authenticate,
+  authorize('ADMIN'),
+  param('id').isUUID().withMessage('Invalid category ID'),
+  [
+    body('name').notEmpty().withMessage('Category name is required').trim()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const categoryId = req.params.id;
+      const { name } = req.body;
+
+      // Check if category exists
+      const categoryCheck = await dbQuery(
+        'SELECT id FROM job_categories WHERE id = $1',
+        [categoryId]
+      );
+
+      if (categoryCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+
+      // Check if new name conflicts with existing category
+      const nameCheck = await dbQuery(
+        'SELECT id FROM job_categories WHERE name = $1 AND id != $2',
+        [name, categoryId]
+      );
+
+      if (nameCheck.rows.length > 0) {
+        return res.status(409).json({ error: 'Category name already exists' });
+      }
+
+      const result = await dbQuery(
+        'UPDATE job_categories SET name = $1 WHERE id = $2 RETURNING *',
+        [name, categoryId]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating category:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// DELETE /api/jobs/categories/:id - Delete category (Admin only)
+/**
+ * @swagger
+ * /jobs/categories/{id}:
+ *   delete:
+ *     summary: Delete a job category (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Category deleted successfully
+ *       400:
+ *         description: Category has subcategories or jobs
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Category not found
+ */
+router.delete('/categories/:id',
+  authenticate,
+  authorize('ADMIN'),
+  param('id').isUUID().withMessage('Invalid category ID'),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const categoryId = req.params.id;
+
+      // Check if category exists
+      const categoryCheck = await dbQuery(
+        'SELECT name FROM job_categories WHERE id = $1',
+        [categoryId]
+      );
+
+      if (categoryCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+
+      // Check if category has subcategories
+      const subcatCheck = await dbQuery(
+        'SELECT COUNT(*) as count FROM job_subcategories WHERE category_id = $1',
+        [categoryId]
+      );
+
+      if (parseInt(subcatCheck.rows[0].count) > 0) {
+        return res.status(400).json({ 
+          error: 'Cannot delete category that has subcategories',
+          subcategory_count: parseInt(subcatCheck.rows[0].count)
+        });
+      }
+
+      // Check if category has jobs
+      const jobsCheck = await dbQuery(
+        'SELECT COUNT(*) as count FROM jobs WHERE category_id = $1',
+        [categoryId]
+      );
+
+      if (parseInt(jobsCheck.rows[0].count) > 0) {
+        return res.status(400).json({ 
+          error: 'Cannot delete category that has jobs',
+          job_count: parseInt(jobsCheck.rows[0].count)
+        });
+      }
+
+      await dbQuery('DELETE FROM job_categories WHERE id = $1', [categoryId]);
+
+      res.json({ 
+        message: 'Category deleted successfully',
+        deleted_category: categoryCheck.rows[0].name
+      });
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// ADMIN ONLY: Subcategory Management
+// ============================================================================
+
+// POST /api/jobs/subcategories - Create new subcategory (Admin only)
+/**
+ * @swagger
+ * /jobs/subcategories:
+ *   post:
+ *     summary: Create a new job subcategory (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - category_id
+ *               - name
+ *             properties:
+ *               category_id:
+ *                 type: string
+ *                 format: uuid
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Subcategory created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobSubcategory'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Category not found
+ *       409:
+ *         description: Subcategory already exists in this category
+ */
+router.post('/subcategories',
+  authenticate,
+  authorize('ADMIN'),
+  [
+    body('category_id').isUUID().withMessage('Valid category ID is required'),
+    body('name').notEmpty().withMessage('Subcategory name is required').trim()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { category_id, name } = req.body;
+
+      // Check if category exists
+      const categoryCheck = await dbQuery(
+        'SELECT id FROM job_categories WHERE id = $1',
+        [category_id]
+      );
+
+      if (categoryCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+
+      // Check if subcategory already exists in this category
+      const existing = await dbQuery(
+        'SELECT id FROM job_subcategories WHERE category_id = $1 AND name = $2',
+        [category_id, name]
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: 'Subcategory already exists in this category' });
+      }
+
+      const result = await dbQuery(
+        'INSERT INTO job_subcategories (category_id, name) VALUES ($1, $2) RETURNING *',
+        [category_id, name]
+      );
+
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error('Error creating subcategory:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// PUT /api/jobs/subcategories/:id - Update subcategory (Admin only)
+/**
+ * @swagger
+ * /jobs/subcategories/{id}:
+ *   put:
+ *     summary: Update a job subcategory (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               category_id:
+ *                 type: string
+ *                 format: uuid
+ *     responses:
+ *       200:
+ *         description: Subcategory updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/JobSubcategory'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Subcategory not found
+ */
+router.put('/subcategories/:id',
+  authenticate,
+  authorize('ADMIN'),
+  param('id').isUUID().withMessage('Invalid subcategory ID'),
+  [
+    body('name').optional().notEmpty().withMessage('Subcategory name cannot be empty').trim(),
+    body('category_id').optional().isUUID().withMessage('Valid category ID is required')
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const subcategoryId = req.params.id;
+      const { name, category_id } = req.body;
+
+      // Check if subcategory exists
+      const subcatCheck = await dbQuery(
+        'SELECT * FROM job_subcategories WHERE id = $1',
+        [subcategoryId]
+      );
+
+      if (subcatCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Subcategory not found' });
+      }
+
+      // Build update query
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (name) {
+        updates.push(`name = $${paramIndex++}`);
+        values.push(name);
+      }
+
+      if (category_id) {
+        // Check if new category exists
+        const categoryCheck = await dbQuery(
+          'SELECT id FROM job_categories WHERE id = $1',
+          [category_id]
+        );
+
+        if (categoryCheck.rows.length === 0) {
+          return res.status(404).json({ error: 'Category not found' });
+        }
+
+        updates.push(`category_id = $${paramIndex++}`);
+        values.push(category_id);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      values.push(subcategoryId);
+
+      const result = await dbQuery(
+        `UPDATE job_subcategories SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating subcategory:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// DELETE /api/jobs/subcategories/:id - Delete subcategory (Admin only)
+/**
+ * @swagger
+ * /jobs/subcategories/{id}:
+ *   delete:
+ *     summary: Delete a job subcategory (Admin only)
+ *     tags: [Job Categories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Subcategory deleted successfully
+ *       400:
+ *         description: Subcategory has jobs
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin only
+ *       404:
+ *         description: Subcategory not found
+ */
+router.delete('/subcategories/:id',
+  authenticate,
+  authorize('ADMIN'),
+  param('id').isUUID().withMessage('Invalid subcategory ID'),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const subcategoryId = req.params.id;
+
+      // Check if subcategory exists
+      const subcatCheck = await dbQuery(
+        'SELECT name FROM job_subcategories WHERE id = $1',
+        [subcategoryId]
+      );
+
+      if (subcatCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Subcategory not found' });
+      }
+
+      // Check if subcategory has jobs
+      const jobsCheck = await dbQuery(
+        'SELECT COUNT(*) as count FROM jobs WHERE subcategory_id = $1',
+        [subcategoryId]
+      );
+
+      if (parseInt(jobsCheck.rows[0].count) > 0) {
+        return res.status(400).json({ 
+          error: 'Cannot delete subcategory that has jobs',
+          job_count: parseInt(jobsCheck.rows[0].count)
+        });
+      }
+
+      await dbQuery('DELETE FROM job_subcategories WHERE id = $1', [subcategoryId]);
+
+      res.json({ 
+        message: 'Subcategory deleted successfully',
+        deleted_subcategory: subcatCheck.rows[0].name
+      });
+    } catch (error) {
+      console.error('Error deleting subcategory:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
 
 export default router;

@@ -12,8 +12,10 @@ import employerRoutes from './employerRoutes';
 import jobSeekerResumeRoutes from './jobSeekerResumeRoutes';
 import jobSeekerSkillsRoutes from './jobSeekerSkillsRoutes';
 import jobSeekerCertificationsRoutes from './jobSeekerCertificationsRoutes';
+
 import notificationsRoutes from './notificationsRoutes';
-import adminRoutes from './adminRoutes'; // Add this
+import adminRoutes from './adminRoutes';
+import rolePermissionRoutes from './rolePermissionRoutes'; // Add this
 
 const router = Router();
 
@@ -30,8 +32,10 @@ router.use('/employers', employerRoutes);
 router.use('/job-seeker/resume', jobSeekerResumeRoutes);
 router.use('/job-seeker/skills', jobSeekerSkillsRoutes);
 router.use('/job-seeker/certifications', jobSeekerCertificationsRoutes);
+
 router.use('/notifications', notificationsRoutes);
-router.use('/admin', adminRoutes); // Add this
+router.use('/admin', adminRoutes);
+router.use('/admin', rolePermissionRoutes); // Add this - mounts at /admin/roles, /admin/permissions etc.
 
 // Health check
 router.get('/health', (req, res) => {

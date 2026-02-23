@@ -2839,6 +2839,872 @@ export function createOpenApiSpec() {
       "403": { description: "Forbidden" }
     }
   }
+},
+/* ── ROLE MANAGEMENT ENDPOINTS ───────────────────── */
+"/api/admin/roles": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get all roles",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "query",
+        name: "page",
+        schema: { type: "integer", minimum: 1, default: 1 }
+      },
+      {
+        in: "query",
+        name: "limit",
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+      },
+      {
+        in: "query",
+        name: "search",
+        schema: { type: "string" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "List of roles",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                roles: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Role" }
+                },
+                pagination: { $ref: "#/components/schemas/Pagination" }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" }
+    }
+  },
+  post: {
+    tags: ["Role Management"],
+    summary: "Create a new role",
+    security: [{ bearerAuth: [] }],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["name"],
+            properties: {
+              name: { type: "string" },
+              description: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "201": {
+        description: "Role created",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Role" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "409": { description: "Role already exists" }
+    }
+  }
+},
+"/api/admin/roles/{id}": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get role by ID",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Role details",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Role" }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "Role not found" }
+    }
+  },
+  put: {
+    tags: ["Role Management"],
+    summary: "Update a role",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              description: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "200": {
+        description: "Role updated",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Role" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "Role not found" }
+    }
+  },
+  delete: {
+    tags: ["Role Management"],
+    summary: "Delete a role",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": { description: "Role deleted" },
+      "400": { description: "Cannot delete system role" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "Role not found" }
+    }
+  }
+},
+"/api/admin/permissions": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get all permissions",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "query",
+        name: "module",
+        schema: { type: "string" }
+      },
+      {
+        in: "query",
+        name: "search",
+        schema: { type: "string" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "List of permissions",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                permissions: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Permission" }
+                },
+                grouped: {
+                  type: "object",
+                  additionalProperties: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/Permission" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" }
+    }
+  },
+  post: {
+    tags: ["Role Management"],
+    summary: "Create a new permission",
+    security: [{ bearerAuth: [] }],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["name", "module_name", "action_type"],
+            properties: {
+              name: { type: "string" },
+              description: { type: "string" },
+              module_name: { type: "string" },
+              action_type: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "201": {
+        description: "Permission created",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Permission" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "409": { description: "Permission already exists" }
+    }
+  }
+},
+"/api/admin/roles/{roleId}/permissions": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get permissions for a role",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "roleId",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Role permissions",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                role_id: { type: "string" },
+                role_name: { type: "string" },
+                permissions: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Permission" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "Role not found" }
+    }
+  },
+  put: {
+    tags: ["Role Management"],
+    summary: "Assign permissions to a role",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "roleId",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["permission_ids"],
+            properties: {
+              permission_ids: {
+                type: "array",
+                items: { type: "string", format: "uuid" }
+              }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "200": { description: "Permissions assigned" },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "Role not found" }
+    }
+  }
+},
+"/api/admin/users/{userId}/roles": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get roles for a user",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "userId",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "User roles",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                user_id: { type: "string" },
+                user_email: { type: "string" },
+                roles: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Role" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "User not found" }
+    }
+  },
+  put: {
+    tags: ["Role Management"],
+    summary: "Assign roles to a user",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "userId",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["role_ids"],
+            properties: {
+              role_ids: {
+                type: "array",
+                items: { type: "string", format: "uuid" }
+              }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "200": { description: "Roles assigned" },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "User not found" }
+    }
+  }
+},
+"/api/admin/users/{userId}/permissions": {
+  get: {
+    tags: ["Role Management"],
+    summary: "Get effective permissions for a user",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "userId",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "User permissions",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                user_id: { type: "string" },
+                user_email: { type: "string" },
+                roles: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                permissions: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Permission" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden" },
+      "404": { description: "User not found" }
+    }
+  }
+}, 
+/* ── JOB CATEGORIES ENDPOINTS ─────────────────────── */
+
+// Add the JobCategory and JobSubcategory schemas to your components.schemas section first
+// (Add this inside the schemas object in components)
+
+JobCategory: {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid", description: "Category ID" },
+    name: { type: "string", description: "Category name" },
+    subcategories: {
+      type: "array",
+      items: { $ref: "#/components/schemas/JobSubcategory" }
+    },
+    job_counts: {
+      type: "object",
+      properties: {
+        total_jobs: { type: "integer" },
+        active_jobs: { type: "integer" }
+      }
+    },
+    recent_jobs: {
+      type: "array",
+      items: { $ref: "#/components/schemas/Job" }
+    }
+  }
+},
+JobSubcategory: {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid", description: "Subcategory ID" },
+    category_id: { type: "string", format: "uuid", description: "Parent category ID" },
+    name: { type: "string", description: "Subcategory name" },
+    category_name: { type: "string", description: "Parent category name" },
+    job_counts: {
+      type: "object",
+      properties: {
+        total_jobs: { type: "integer" },
+        active_jobs: { type: "integer" }
+      }
+    }
+  }
+},
+
+// Then add these endpoints to your paths object
+
+"/api/jobs/categories": {
+  get: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Get all job categories with their subcategories",
+    parameters: [
+      {
+        in: "query",
+        name: "include_counts",
+        schema: { type: "boolean", default: false },
+        description: "Include job counts for each category"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "List of categories with subcategories",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                categories: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/JobCategory" }
+                },
+                total_categories: { type: "integer" }
+              }
+            }
+          }
+        }
+      },
+      "400": { description: "Validation error" }
+    }
+  },
+  post: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Create a new job category (Admin only)",
+    security: [{ bearerAuth: [] }],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["name"],
+            properties: {
+              name: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "201": {
+        description: "Category created successfully",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobCategory" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "409": { description: "Category already exists" }
+    }
+  }
+},
+"/api/jobs/categories/{id}": {
+  get: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Get a specific category with its subcategories",
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" },
+        description: "Category ID"
+      },
+      {
+        in: "query",
+        name: "include_jobs",
+        schema: { type: "boolean", default: false },
+        description: "Include recent jobs in this category"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Category details with subcategories",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobCategory" }
+          }
+        }
+      },
+      "400": { description: "Invalid category ID" },
+      "404": { description: "Category not found" }
+    }
+  },
+  put: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Update a job category (Admin only)",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["name"],
+            properties: {
+              name: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "200": {
+        description: "Category updated successfully",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobCategory" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "404": { description: "Category not found" },
+      "409": { description: "Category name already exists" }
+    }
+  },
+  delete: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Delete a job category (Admin only)",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Category deleted successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                message: { type: "string" },
+                deleted_category: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Category has subcategories or jobs",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string" },
+                subcategory_count: { type: "integer" },
+                job_count: { type: "integer" }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "404": { description: "Category not found" }
+    }
+  }
+},
+"/api/jobs/subcategories": {
+  get: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Get all job subcategories",
+    parameters: [
+      {
+        in: "query",
+        name: "category_id",
+        schema: { type: "string", format: "uuid" },
+        description: "Filter by category"
+      },
+      {
+        in: "query",
+        name: "search",
+        schema: { type: "string" },
+        description: "Search subcategories by name"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "List of subcategories",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                subcategories: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/JobSubcategory" }
+                },
+                total: { type: "integer" }
+              }
+            }
+          }
+        }
+      },
+      "400": { description: "Validation error" }
+    }
+  },
+  post: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Create a new job subcategory (Admin only)",
+    security: [{ bearerAuth: [] }],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["category_id", "name"],
+            properties: {
+              category_id: { type: "string", format: "uuid" },
+              name: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "201": {
+        description: "Subcategory created successfully",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobSubcategory" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "404": { description: "Category not found" },
+      "409": { description: "Subcategory already exists in this category" }
+    }
+  }
+},
+"/api/jobs/subcategories/{id}": {
+  get: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Get a specific subcategory",
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Subcategory details",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobSubcategory" }
+          }
+        }
+      },
+      "400": { description: "Invalid subcategory ID" },
+      "404": { description: "Subcategory not found" }
+    }
+  },
+  put: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Update a job subcategory (Admin only)",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              category_id: { type: "string", format: "uuid" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      "200": {
+        description: "Subcategory updated successfully",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/JobSubcategory" }
+          }
+        }
+      },
+      "400": { description: "Validation error" },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "404": { description: "Subcategory not found" }
+    }
+  },
+  delete: {
+    tags: ["Jobs", "Job Categories"],
+    summary: "Delete a job subcategory (Admin only)",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        in: "path",
+        name: "id",
+        required: true,
+        schema: { type: "string", format: "uuid" }
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Subcategory deleted successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                message: { type: "string" },
+                deleted_subcategory: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Subcategory has jobs",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string" },
+                job_count: { type: "integer" }
+              }
+            }
+          }
+        }
+      },
+      "401": { description: "Unauthorized" },
+      "403": { description: "Forbidden - Admin only" },
+      "404": { description: "Subcategory not found" }
+    }
+  }
 }
     }
   };
