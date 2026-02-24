@@ -798,3 +798,150 @@ CREATE TABLE IF NOT EXISTS employer_stats (
     last_active TIMESTAMP,
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+SELECT 
+    table_name,
+    column_name,
+    data_type,
+    is_nullable,
+    column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+ORDER BY table_name, ordinal_position;
+
+-- Drop the existing constraint first
+ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
+
+-- Then add it again with your desired values
+ALTER TABLE jobs 
+ADD CONSTRAINT jobs_status_check 
+CHECK (status IN ('draft', 'active', 'closed', 'expired', 'flagged'));
+
+-- Or if you want to modify the allowed values
+ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
+ALTER TABLE jobs 
+ADD CONSTRAINT jobs_status_check 
+CHECK (status IN ('draft', 'active', 'closed', 'expired', 'flagged', 'archived'));
+
+ALTER TABLE IF EXISTS applications DROP CONSTRAINT IF EXISTS applications_status_check;
+
+ALTER TABLE IF EXISTS companies DROP CONSTRAINT IF EXISTS companies_status_check;
+ALTER TABLE IF EXISTS backups DROP CONSTRAINT IF EXISTS backups_status_check;
+ALTER TABLE IF EXISTS job_reports DROP CONSTRAINT IF EXISTS job_reports_status_check;
+ALTER TABLE IF EXISTS users DROP CONSTRAINT IF EXISTS users_status_check;
+
+ALTER TABLE applications ALTER COLUMN status SET DEFAULT 'applied';
+UPDATE applications SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
+UPDATE applications SET status = 'applied' WHERE status IS NULL OR status = '';
+
+UPDATE companies SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
+UPDATE companies SET status = 'active' WHERE status IS NULL OR status = '';
+
+UPDATE backups SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
+UPDATE backups SET status = 'completed' WHERE status IS NULL OR status = '';
+
+UPDATE job_reports SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
+UPDATE job_reports SET status = 'pending' WHERE status IS NULL OR status = '';
+
+DO $$
+BEGIN
+    -- Add status column to users if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'status'
+    ) THEN
+        ALTER TABLE users ADD COLUMN status VARCHAR(50);
+    END IF;
+END $$;
+
+UPDATE users 
+SET status = CASE 
+    WHEN is_active = true THEN 'active'
+    ELSE 'inactive'
+END 
+WHERE status IS NULL;
+
+ALTER TABLE users ALTER COLUMN status SET DEFAULT 'active';
+
+ALTER TABLE applications 
+ADD CONSTRAINT applications_status_check 
+CHECK (status IN (
+    'applied', 
+    'screening', 
+    'shortlisted', 
+    'interviewing', 
+    'offered', 
+    'hired', 
+    'rejected'
+));
+
+ALTER TABLE companies 
+ADD CONSTRAINT companies_status_check 
+CHECK (status IN (
+    'active', 
+    'inactive', 
+    'suspended', 
+    'pending'
+));
+
+ALTER TABLE backups 
+ADD CONSTRAINT backups_status_check 
+CHECK (status IN (
+    'pending', 
+    'processing', 
+    'completed', 
+    'failed'
+));
+
+ALTER TABLE job_reports 
+ADD CONSTRAINT job_reports_status_check 
+CHECK (status IN (
+    'pending', 
+    'reviewed', 
+    'resolved', 
+    'dismissed'
+));
+
+ALTER TABLE users 
+ADD CONSTRAINT users_status_check 
+CHECK (status IN (
+    'active', 
+    'inactive', 
+    'suspended', 
+    'pending_verification',
+    'blocked'
+));
+
+SELECT 
+    conrelid::regclass AS table_name,
+    conname AS constraint_name,
+    pg_get_constraintdef(oid) AS constraint_definition
+FROM pg_constraint
+WHERE contype = 'c'  -- 'c' for check constraints
+AND conrelid::regclass IN (
+    'applications', 
+    'jobs', 
+    'companies', 
+    'backups', 
+    'job_reports',
+    'users'
+)
+ORDER BY table_name, constraint_name;
+
+SELECT 'applications' AS table_name, status, COUNT(*) 
+FROM applications GROUP BY status ORDER BY status;
+
+SELECT 'jobs' AS table_name, status, COUNT(*) 
+FROM jobs GROUP BY status ORDER BY status;
+
+SELECT 'companies' AS table_name, status, COUNT(*) 
+FROM companies GROUP BY status ORDER BY status;
+
+SELECT 'backups' AS table_name, status, COUNT(*) 
+FROM backups GROUP BY status ORDER BY status;
+
+SELECT 'job_reports' AS table_name, status, COUNT(*) 
+FROM job_reports GROUP BY status ORDER BY status;
+
+SELECT 'users' AS table_name, status, COUNT(*) 
+FROM users GROUP BY status ORDER BY status;
