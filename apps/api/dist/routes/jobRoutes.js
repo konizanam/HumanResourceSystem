@@ -59,31 +59,31 @@ router.get('/', [
             }
             // Employers see their own jobs, admins see all
             if (req.user.roles.includes('EMPLOYER') && !req.user.roles.includes('ADMIN')) {
-                whereConditions.push(`employer_id = $${paramIndex}`);
+                whereConditions.push(`j.employer_id = $${paramIndex}`);
                 queryParams.push(req.user.userId);
                 paramIndex++;
             }
             // Admins can optionally filter by employer
             else if (req.user.roles.includes('ADMIN') && req.query.employer_id) {
-                whereConditions.push(`employer_id = $${paramIndex}`);
+                whereConditions.push(`j.employer_id = $${paramIndex}`);
                 queryParams.push(req.query.employer_id);
                 paramIndex++;
             }
         }
         else {
             // Public view - only show active jobs
-            whereConditions.push(`status = $${paramIndex}`);
+            whereConditions.push(`j.status = $${paramIndex}`);
             queryParams.push('active');
             paramIndex++;
         }
         // Add status filter if provided and user is employer/admin
         if (req.query.status && req.user && isEmployerOrAdmin(req.user)) {
-            whereConditions.push(`status = $${paramIndex}`);
+            whereConditions.push(`j.status = $${paramIndex}`);
             queryParams.push(req.query.status);
             paramIndex++;
         }
         if (req.query.company_id) {
-            whereConditions.push(`company_id = $${paramIndex}`);
+            whereConditions.push(`j.company_id = $${paramIndex}`);
             queryParams.push(req.query.company_id);
             paramIndex++;
         }
@@ -91,7 +91,7 @@ router.get('/', [
             ? 'WHERE ' + whereConditions.join(' AND ')
             : '';
         // Get total count
-        const countResult = await (0, database_1.query)(`SELECT COUNT(*) FROM jobs ${whereClause}`, queryParams);
+        const countResult = await (0, database_1.query)(`SELECT COUNT(*) FROM jobs j ${whereClause}`, queryParams);
         const total = parseInt(countResult.rows[0].count);
         // Get paginated jobs with employer info
         const jobsResult = await (0, database_1.query)(`SELECT j.*, 

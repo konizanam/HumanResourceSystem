@@ -88,7 +88,8 @@ const authorize = (...allowedRoles) => {
         if (!req.user) {
             return next(new errors_1.UnauthorizedError('Authentication required'));
         }
-        const hasRole = req.user.roles.some(role => allowedRoles.includes(role));
+        const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
+        const hasRole = req.user.roles.some((role) => normalizedAllowed.includes(String(role).toUpperCase()));
         if (!hasRole) {
             return next(new errors_1.ForbiddenError('Insufficient permissions'));
         }
@@ -103,7 +104,8 @@ const authorizePermission = (...allowedPermissions) => {
             return next(new errors_1.UnauthorizedError('Authentication required'));
         }
         // Admin always has all permissions
-        if (req.user.roles.includes('ADMIN')) {
+        const normalizedRoles = req.user.roles.map((role) => String(role).toUpperCase());
+        if (normalizedRoles.includes('ADMIN')) {
             return next();
         }
         const hasPermission = req.user.permissions?.some(permission => allowedPermissions.includes(permission));
@@ -120,7 +122,8 @@ const isJobSeeker = async (req, res, next) => {
             throw new errors_1.UnauthorizedError('Authentication required');
         }
         // Check if user has JOB_SEEKER role
-        if (!req.user.roles.includes('JOB_SEEKER')) {
+        const normalizedRoles = req.user.roles.map((role) => String(role).toUpperCase());
+        if (!normalizedRoles.includes('JOB_SEEKER')) {
             throw new errors_1.ForbiddenError('This endpoint is for job seekers only');
         }
         next();

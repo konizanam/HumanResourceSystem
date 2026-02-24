@@ -208,7 +208,7 @@ export function AppLayout({
 
   const canManageUsers = hasPermission("MANAGE_USERS");
   const canManageCompany = hasPermission("MANAGE_COMPANY");
-  const canUseJobs = hasPermission("CREATE_JOB", "VIEW_JOB");
+  const canUseJobs = hasPermission("CREATE_JOB", "VIEW_JOB", "MANAGE_USERS");
   const canViewAudit = hasPermission("VIEW_AUDIT_LOGS");
   const showJobSeekerProfile = !canManageUsers && !canManageCompany;
 

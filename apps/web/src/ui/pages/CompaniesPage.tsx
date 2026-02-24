@@ -197,8 +197,8 @@ export function CompaniesPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const navigate = useNavigate();
-  const canPostJob = hasPermission("CREATE_JOB");
-  const canViewJobs = hasPermission("VIEW_JOB");
+  const canPostJob = hasPermission("CREATE_JOB", "MANAGE_USERS");
+  const canViewJobs = hasPermission("VIEW_JOB", "MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

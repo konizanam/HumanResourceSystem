@@ -179,12 +179,12 @@ export function JobsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const canCreate = hasPermission("CREATE_JOB");
+  const canCreate = hasPermission("CREATE_JOB", "MANAGE_USERS");
   const canEdit = hasPermission("EDIT_JOB");
   const canDelete = hasPermission("DELETE_JOB");
   const canViewApplications = hasPermission("VIEW_APPLICATIONS");
   const canManageCompany = hasPermission("MANAGE_COMPANY");
-  const canViewJob = hasPermission("VIEW_JOB");
+  const canViewJob = hasPermission("VIEW_JOB", "MANAGE_USERS");
   const shouldRestrictToAssignedCompanies =
     !canManageCompany && !canViewJob && (canCreate || canEdit || canDelete || canViewApplications);
 
