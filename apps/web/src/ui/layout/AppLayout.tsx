@@ -211,8 +211,15 @@ export function AppLayout({
       const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
       const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
       const json = atob(padded);
-      const parsed = JSON.parse(json) as { roles?: unknown };
-      return Array.isArray(parsed.roles) ? (parsed.roles as string[]) : [];
+      const parsed = JSON.parse(json) as { roles?: unknown; role?: unknown };
+      const fromRoles = Array.isArray(parsed.roles)
+        ? (parsed.roles as unknown[]).map((r) => String(r).trim().toUpperCase()).filter(Boolean)
+        : [];
+      const fromSingleRole =
+        typeof parsed.role === "string" && parsed.role.trim()
+          ? [parsed.role.trim().toUpperCase()]
+          : [];
+      return [...fromRoles, ...fromSingleRole];
     } catch {
       return [];
     }
@@ -220,6 +227,8 @@ export function AppLayout({
 
   useEffect(() => {
     if (!accessToken) return;
+    // Avoid job-seeker onboarding checks for admins who may also carry JOB_SEEKER role.
+    if (roles.includes("ADMIN")) return;
     if (!roles.includes("JOB_SEEKER")) return;
     if (location.pathname.startsWith("/app/job-seekers")) return;
 

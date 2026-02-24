@@ -466,7 +466,10 @@ exports.jobSeekerRouter.delete("/references/:id", async (req, res, next) => {
 /* ================================================================== */
 exports.jobSeekerRouter.get("/full-profile", async (req, res, next) => {
     try {
-        const userId = req.user.userId;
+        const requesterId = req.user.userId;
+        const requestedUserId = typeof req.query.user_id === "string" ? req.query.user_id.trim() : "";
+        const canReadOtherProfiles = req.user?.roles?.includes("ADMIN") || req.user?.roles?.includes("EMPLOYER");
+        const userId = requestedUserId && canReadOtherProfiles ? requestedUserId : requesterId;
         const [profile, personal, addresses, education, experience, references] = await Promise.all([
             (0, db_1.query)(`SELECT * FROM job_seeker_profiles WHERE user_id = $1`, [userId]),
             (0, db_1.query)(`SELECT * FROM job_seeker_personal_details WHERE user_id = $1`, [userId]),

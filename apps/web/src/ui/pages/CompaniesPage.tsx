@@ -2,18 +2,38 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   type Company,
   type CompanyUpsertPayload,
+  type JobCategory,
+  type JobUpsertPayload,
   type UserSearchResult,
   addUserToCompany,
+  createJob,
   createCompany,
   deactivateCompany,
+  listJobCategories,
   listCompanies,
   reactivateCompany,
   searchUsers,
   updateCompany,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
+import { useNavigate } from "react-router-dom";
 
 type PanelMode = "view" | "edit";
+
+type CompanyJobFormState = {
+  title: string;
+  description: string;
+  category_id: string;
+  subcategory: string;
+  salary_min: string;
+  salary_max: string;
+  employment_type: JobUpsertPayload["employment_type"];
+  location: string;
+  remote: boolean;
+  application_deadline: string;
+  status: "draft" | "pending";
+};
 
 const INDUSTRY_SUGGESTIONS = [
   "Agriculture",
@@ -55,6 +75,20 @@ const EMPTY_COMPANY: CompanyUpsertPayload = {
   address_line2: "",
   city: "",
   country: "",
+};
+
+const EMPTY_COMPANY_JOB_FORM: CompanyJobFormState = {
+  title: "",
+  description: "",
+  category_id: "",
+  subcategory: "",
+  salary_min: "",
+  salary_max: "",
+  employment_type: "Full-time",
+  location: "",
+  remote: false,
+  application_deadline: "",
+  status: "draft",
 };
 
 function toText(v: unknown): string {
@@ -161,6 +195,10 @@ function getCompanyUserNames(company: Company | null): string[] {
 
 export function CompaniesPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const navigate = useNavigate();
+  const canPostJob = hasPermission("CREATE_JOB");
+  const canViewJobs = hasPermission("VIEW_JOB");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -184,6 +222,11 @@ export function CompaniesPage() {
 
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
   const [usersModalCompany, setUsersModalCompany] = useState<Company | null>(null);
+  const [postJobCompany, setPostJobCompany] = useState<Company | null>(null);
+  const [postJobForm, setPostJobForm] = useState<CompanyJobFormState>(EMPTY_COMPANY_JOB_FORM);
+  const [postJobErrors, setPostJobErrors] = useState<Record<string, string>>({});
+  const [jobCategories, setJobCategories] = useState<JobCategory[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   const openCompany = useMemo(
     () => companies.find((c) => c.id === openCompanyId) ?? null,
@@ -195,6 +238,12 @@ export function CompaniesPage() {
     if (!q) return [] as string[];
     return INDUSTRY_SUGGESTIONS.filter((v) => v.toLowerCase().includes(q)).slice(0, 8);
   }, [addForm.industry]);
+
+  const selectedCategory = useMemo(
+    () => jobCategories.find((cat) => cat.id === postJobForm.category_id) ?? null,
+    [jobCategories, postJobForm.category_id],
+  );
+  const availableSubcategories = selectedCategory?.subcategories ?? [];
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -213,6 +262,34 @@ export function CompaniesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!accessToken || !postJobCompany) return;
+    let cancelled = false;
+    setLoadingCategories(true);
+    void listJobCategories(accessToken)
+      .then((res) => {
+        if (cancelled) return;
+        setJobCategories(Array.isArray(res.categories) ? res.categories : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setJobCategories([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingCategories(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, postJobCompany]);
+
+  useEffect(() => {
+    if (!postJobForm.subcategory) return;
+    if (availableSubcategories.some((s) => s.name === postJobForm.subcategory)) return;
+    setPostJobForm((prev) => ({ ...prev, subcategory: "" }));
+  }, [availableSubcategories, postJobForm.subcategory]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -251,6 +328,69 @@ export function CompaniesPage() {
   function clearMessages() {
     setError(null);
     setSuccess(null);
+  }
+
+  function openPostJobModal(company: Company) {
+    clearMessages();
+    setPostJobCompany(company);
+    setPostJobForm({
+      ...EMPTY_COMPANY_JOB_FORM,
+      location: [company.city, company.country].filter(Boolean).join(", "),
+    });
+    setPostJobErrors({});
+  }
+
+  function closePostJobModal() {
+    setPostJobCompany(null);
+    setPostJobForm(EMPTY_COMPANY_JOB_FORM);
+    setPostJobErrors({});
+  }
+
+  async function onSubmitPostJob() {
+    if (!accessToken || !postJobCompany) return;
+    const errs: Record<string, string> = {};
+    if (!postJobForm.title.trim()) errs.title = "Job title is required";
+    if (!postJobForm.description.trim()) errs.description = "Description is required";
+    if (!postJobForm.category_id) errs.category_id = "Category is required";
+    if (!postJobForm.subcategory) errs.subcategory = "Subcategory is required";
+    if (!postJobForm.salary_min.trim()) errs.salary_min = "Minimum salary is required";
+    if (!postJobForm.salary_max.trim()) errs.salary_max = "Maximum salary is required";
+    if (!postJobForm.location.trim()) errs.location = "Location is required";
+    if (!postJobForm.application_deadline) errs.application_deadline = "Application deadline is required";
+    setPostJobErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    const categoryName = selectedCategory?.name ?? "";
+    try {
+      setSaving(true);
+      clearMessages();
+      await createJob(accessToken, {
+        title: postJobForm.title.trim(),
+        description: postJobForm.description.trim(),
+        company: postJobCompany.name,
+        company_id: postJobCompany.id,
+        category: categoryName,
+        subcategory: postJobForm.subcategory,
+        location: postJobForm.location.trim(),
+        salary_min: Number(postJobForm.salary_min),
+        salary_max: Number(postJobForm.salary_max),
+        salary_currency: "NAD",
+        employment_type: postJobForm.employment_type,
+        experience_level: "Entry",
+        remote: postJobForm.remote,
+        requirements: [],
+        responsibilities: [],
+        benefits: [],
+        application_deadline: postJobForm.application_deadline,
+        status: postJobForm.status,
+      });
+      setSuccess("Job posted successfully");
+      closePostJobModal();
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to post job");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function clearAddFieldError(key: string) {
@@ -807,6 +947,10 @@ export function CompaniesPage() {
                     onView={() => startView(c)}
                     onEdit={() => startEdit(c)}
                     onShowUsers={() => setUsersModalCompany(c)}
+                    canPostJob={canPostJob}
+                    canViewJobs={canViewJobs}
+                    onPostJob={() => openPostJobModal(c)}
+                    onViewJobs={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
                     onActivate={() => onActivateCompany(c.id)}
                     onDeactivate={() => {
                       clearMessages();
@@ -842,6 +986,176 @@ export function CompaniesPage() {
           </tbody>
         </table>
       </div>
+
+      {postJobCompany && (
+        <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && closePostJobModal()}>
+          <div
+            className="modalCard"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Post Job"
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ maxWidth: 840 }}
+          >
+            <div className="modalTitle">Post Job — {postJobCompany.name}</div>
+            {loadingCategories ? (
+              <p className="pageText">Loading categories...</p>
+            ) : (
+              <div className="editGrid">
+                <div className="field">
+                  <label className="fieldLabel">Job Title *</label>
+                  <input
+                    className="input"
+                    value={postJobForm.title}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, title: e.target.value }))}
+                  />
+                  {postJobErrors.title && <span className="fieldError">{postJobErrors.title}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Category *</label>
+                  <select
+                    className="input"
+                    value={postJobForm.category_id}
+                    onChange={(e) =>
+                      setPostJobForm((prev) => ({ ...prev, category_id: e.target.value, subcategory: "" }))
+                    }
+                  >
+                    <option value="">Select category</option>
+                    {jobCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                  {postJobErrors.category_id && <span className="fieldError">{postJobErrors.category_id}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Subcategory *</label>
+                  <select
+                    className="input"
+                    value={postJobForm.subcategory}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, subcategory: e.target.value }))}
+                    disabled={!postJobForm.category_id}
+                  >
+                    <option value="">Select subcategory</option>
+                    {availableSubcategories.map((sub) => (
+                      <option key={sub.id} value={sub.name}>
+                        {sub.name}
+                      </option>
+                    ))}
+                  </select>
+                  {postJobErrors.subcategory && <span className="fieldError">{postJobErrors.subcategory}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Employment Type *</label>
+                  <select
+                    className="input"
+                    value={postJobForm.employment_type}
+                    onChange={(e) =>
+                      setPostJobForm((prev) => ({
+                        ...prev,
+                        employment_type: e.target.value as JobUpsertPayload["employment_type"],
+                      }))
+                    }
+                  >
+                    <option value="Full-time">Full-time</option>
+                    <option value="Part-time">Part-time</option>
+                    <option value="Contract">Contract</option>
+                    <option value="Internship">Internship</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Salary Min *</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={postJobForm.salary_min}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, salary_min: e.target.value }))}
+                  />
+                  {postJobErrors.salary_min && <span className="fieldError">{postJobErrors.salary_min}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Salary Max *</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={postJobForm.salary_max}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, salary_max: e.target.value }))}
+                  />
+                  {postJobErrors.salary_max && <span className="fieldError">{postJobErrors.salary_max}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Location *</label>
+                  <input
+                    className="input"
+                    value={postJobForm.location}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, location: e.target.value }))}
+                  />
+                  {postJobErrors.location && <span className="fieldError">{postJobErrors.location}</span>}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Application Deadline *</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={postJobForm.application_deadline}
+                    onChange={(e) =>
+                      setPostJobForm((prev) => ({ ...prev, application_deadline: e.target.value }))
+                    }
+                  />
+                  {postJobErrors.application_deadline && (
+                    <span className="fieldError">{postJobErrors.application_deadline}</span>
+                  )}
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Status *</label>
+                  <select
+                    className="input"
+                    value={postJobForm.status}
+                    onChange={(e) =>
+                      setPostJobForm((prev) => ({ ...prev, status: e.target.value as "draft" | "pending" }))
+                    }
+                  >
+                    <option value="draft">DRAFT</option>
+                    <option value="pending">PENDING</option>
+                  </select>
+                </div>
+                <label className="field fieldCheckbox">
+                  <input
+                    type="checkbox"
+                    checked={postJobForm.remote}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, remote: e.target.checked }))}
+                  />
+                  <span className="fieldLabel">Is Remote</span>
+                </label>
+                <div className="field fieldFull">
+                  <label className="fieldLabel">Description *</label>
+                  <textarea
+                    className="input textarea"
+                    rows={4}
+                    value={postJobForm.description}
+                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, description: e.target.value }))}
+                  />
+                  {postJobErrors.description && <span className="fieldError">{postJobErrors.description}</span>}
+                </div>
+              </div>
+            )}
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={closePostJobModal} disabled={saving}>
+                Cancel
+              </button>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={onSubmitPostJob}
+                disabled={saving || loadingCategories}
+              >
+                {saving ? "Posting..." : "Post Job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         open={Boolean(confirmDeactivateId)}
@@ -1059,6 +1373,10 @@ function FragmentCompanyRow({
   onActivate,
   onDeactivate,
   onShowUsers,
+  canPostJob,
+  canViewJobs,
+  onPostJob,
+  onViewJobs,
   onClose,
   children,
 }: {
@@ -1071,6 +1389,10 @@ function FragmentCompanyRow({
   onActivate: () => void;
   onDeactivate: () => void;
   onShowUsers: () => void;
+  canPostJob: boolean;
+  canViewJobs: boolean;
+  onPostJob: () => void;
+  onViewJobs: () => void;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -1124,6 +1446,24 @@ function FragmentCompanyRow({
                 onClick: isDeactivated ? onActivate : onDeactivate,
                 danger: !isDeactivated,
               },
+              ...(canPostJob
+                ? [
+                    {
+                      key: "post-job",
+                      label: "Post Job",
+                      onClick: onPostJob,
+                    },
+                  ]
+                : []),
+              ...(canViewJobs
+                ? [
+                    {
+                      key: "view-jobs",
+                      label: "View Jobs",
+                      onClick: onViewJobs,
+                    },
+                  ]
+                : []),
             ]}
           />
         </td>

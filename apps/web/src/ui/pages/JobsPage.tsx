@@ -1,8 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  type Company,
   createJob,
   deleteJob,
+  listCompanies,
   listJobApplicationsForJob,
   listJobs,
   type JobListItem,
@@ -175,11 +177,18 @@ export function JobsPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const canCreate = hasPermission("CREATE_JOB");
   const canEdit = hasPermission("EDIT_JOB");
   const canDelete = hasPermission("DELETE_JOB");
   const canViewApplications = hasPermission("VIEW_APPLICATIONS");
+  const canManageCompany = hasPermission("MANAGE_COMPANY");
+  const canViewJob = hasPermission("VIEW_JOB");
+  const shouldRestrictToAssignedCompanies =
+    !canManageCompany && !canViewJob && (canCreate || canEdit || canDelete || canViewApplications);
+
+  const companyIdFromUrl = searchParams.get("company_id")?.trim() || "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -187,6 +196,8 @@ export function JobsPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [allowedCompanyIds, setAllowedCompanyIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [applicationCounts, setApplicationCounts] = useState<Record<string, number>>({});
@@ -199,6 +210,26 @@ export function JobsPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    void listCompanies(accessToken)
+      .then((list) => {
+        if (cancelled) return;
+        const safeList = Array.isArray(list) ? list : [];
+        setCompanies(safeList);
+        setAllowedCompanyIds(safeList.map((c) => c.id));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCompanies([]);
+        setAllowedCompanyIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
     try {
@@ -208,11 +239,22 @@ export function JobsPage() {
         page,
         limit: pagination.limit,
         status: statusFilter || undefined,
-        my_jobs: true,
+        my_jobs: false,
+        company_id: companyIdFromUrl || undefined,
       });
-      const list = Array.isArray(data.jobs) ? data.jobs : [];
+      const fetched = Array.isArray(data.jobs) ? data.jobs : [];
+      const list = shouldRestrictToAssignedCompanies
+        ? fetched.filter((job) => job.company_id && allowedCompanyIds.includes(job.company_id))
+        : fetched;
       setJobs(list);
-      setPagination(data.pagination ?? { page, limit: pagination.limit, total: list.length, pages: 1 });
+      const totalFromApi = Number(data.pagination?.total ?? list.length);
+      const total = shouldRestrictToAssignedCompanies ? list.length : totalFromApi;
+      setPagination({
+        page: Number(data.pagination?.page ?? page),
+        limit: Number(data.pagination?.limit ?? pagination.limit),
+        total,
+        pages: Math.max(1, Math.ceil(total / Number(data.pagination?.limit ?? pagination.limit))),
+      });
 
       const countsEntries = await Promise.all(
         list.map(async (job) => {
@@ -230,7 +272,14 @@ export function JobsPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, pagination.limit, statusFilter]);
+  }, [
+    accessToken,
+    allowedCompanyIds,
+    companyIdFromUrl,
+    pagination.limit,
+    shouldRestrictToAssignedCompanies,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     void load(1);
@@ -247,6 +296,11 @@ export function JobsPage() {
       );
     });
   }, [jobs, search]);
+
+  const activeCompany = useMemo(
+    () => companies.find((company) => company.id === companyIdFromUrl) ?? null,
+    [companies, companyIdFromUrl],
+  );
 
   function validateForm() {
     const next: Record<string, string> = {};
@@ -354,6 +408,25 @@ export function JobsPage() {
           </select>
         </div>
       </div>
+
+      {companyIdFromUrl && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+          <span className="chipBadge">
+            Company: {activeCompany?.name ?? companyIdFromUrl}
+          </span>
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete("company_id");
+              setSearchParams(next);
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      )}
 
       <div className="tableWrap" role="region" aria-label="Jobs table">
         <table className="table companiesTable">

@@ -16,6 +16,7 @@ import { JobApplicationsPage } from "./pages/JobApplicationsPage";
 import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { StatusPage } from "./pages/StatusPage";
 
 const menu = [
   { path: "global-settings", title: "Global Settings", icon: "settings" },
@@ -59,10 +60,11 @@ export function App() {
         <Route path="jobs" element={<JobsPage />} />
         <Route path="jobs/:jobId/applications" element={<JobApplicationsPage />} />
         <Route path="permission" element={<PermissionsPage />} />
+        <Route path="status" element={<StatusPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="reports" element={<ReportsPage />} />
 
-        {/* Remaining placeholders: global-settings, status */}
+        {/* Remaining placeholders: global-settings */}
         {menu
           .filter(
             (m) =>
@@ -74,6 +76,7 @@ export function App() {
               m.path !== "users" &&
               m.path !== "jobs" &&
               m.path !== "permission" &&
+              m.path !== "status" &&
               m.path !== "audit" &&
               m.path !== "reports",
           )

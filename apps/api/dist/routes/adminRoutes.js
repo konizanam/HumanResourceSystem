@@ -1,22 +1,20 @@
-import express from 'express';
-import { body, param, query, validationResult } from 'express-validator';
-import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
-import { Request, Response } from 'express';
-
-const router = express.Router();
-
-
-
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const express_validator_1 = require("express-validator");
+const database_1 = require("../config/database");
+const auth_1 = require("../middleware/auth");
+const router = express_1.default.Router();
 // Validation middleware
 const validateUserId = [
-  param('id').isUUID().withMessage('Invalid user ID')
+    (0, express_validator_1.param)('id').isUUID().withMessage('Invalid user ID')
 ];
-
 const validateJobId = [
-  param('id').isUUID().withMessage('Invalid job ID')
+    (0, express_validator_1.param)('id').isUUID().withMessage('Invalid job ID')
 ];
-
 /**
  * @swagger
  * components:
@@ -177,14 +175,12 @@ const validateJobId = [
  *             version:
  *               type: string
  */
-
 /**
  * @swagger
  * tags:
  *   name: Admin
  *   description: Administrative endpoints (Admin only)
  */
-
 // ============================================================================
 // GET /api/admin/users - Get all users with filters
 // ============================================================================
@@ -278,94 +274,77 @@ const validateJobId = [
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.get('/users',
-  authenticate,
-  authorize('ADMIN'),
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('role').optional().isIn(['JOB_SEEKER', 'EMPLOYER', 'ADMIN', 'HR']),
-    query('status').optional().isIn(['active', 'blocked', 'inactive']),
-    query('search').optional().isString().trim(),
-    query('verified').optional().isBoolean().toBoolean(),
-    query('from_date').optional().isISO8601().toDate(),
-    query('to_date').optional().isISO8601().toDate(),
-    query('sort_by').optional().isIn(['created_at', 'last_login', 'email', 'name']),
-    query('sort_order').optional().isIn(['ASC', 'DESC'])
-  ],
-  async (req: Request, res: Response) => {
+router.get('/users', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), [
+    (0, express_validator_1.query)('page').optional().isInt({ min: 1 }).toInt(),
+    (0, express_validator_1.query)('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    (0, express_validator_1.query)('role').optional().isIn(['JOB_SEEKER', 'EMPLOYER', 'ADMIN', 'HR']),
+    (0, express_validator_1.query)('status').optional().isIn(['active', 'blocked', 'inactive']),
+    (0, express_validator_1.query)('search').optional().isString().trim(),
+    (0, express_validator_1.query)('verified').optional().isBoolean().toBoolean(),
+    (0, express_validator_1.query)('from_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.query)('to_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.query)('sort_by').optional().isIn(['created_at', 'last_login', 'email', 'name']),
+    (0, express_validator_1.query)('sort_order').optional().isIn(['ASC', 'DESC'])
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const page = req.query.page ? parseInt(req.query.page as string) : 1;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
-      const offset = (page - 1) * limit;
-      const { role, status, search, verified, from_date, to_date, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
-
-      // Build WHERE clause
-      let whereConditions: string[] = [];
-      const queryParams: any[] = [];
-      let paramIndex = 1;
-
-      if (role) {
-        whereConditions.push(`role = $${paramIndex++}`);
-        queryParams.push(role);
-      }
-
-      if (status === 'blocked') {
-        whereConditions.push(`is_blocked = $${paramIndex++}`);
-        queryParams.push(true);
-      } else if (status === 'active') {
-        whereConditions.push(`is_active = $${paramIndex++} AND (is_blocked = $${paramIndex++} OR is_blocked IS NULL)`);
-        queryParams.push(true, false);
-      } else if (status === 'inactive') {
-        whereConditions.push(`is_active = $${paramIndex++}`);
-        queryParams.push(false);
-      }
-
-      if (verified !== undefined) {
-        whereConditions.push(`email_verified = $${paramIndex++}`);
-        queryParams.push(verified);
-      }
-
-      if (search) {
-        whereConditions.push(`(
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 20;
+        const offset = (page - 1) * limit;
+        const { role, status, search, verified, from_date, to_date, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
+        // Build WHERE clause
+        let whereConditions = [];
+        const queryParams = [];
+        let paramIndex = 1;
+        if (role) {
+            whereConditions.push(`role = $${paramIndex++}`);
+            queryParams.push(role);
+        }
+        if (status === 'blocked') {
+            whereConditions.push(`is_blocked = $${paramIndex++}`);
+            queryParams.push(true);
+        }
+        else if (status === 'active') {
+            whereConditions.push(`is_active = $${paramIndex++} AND (is_blocked = $${paramIndex++} OR is_blocked IS NULL)`);
+            queryParams.push(true, false);
+        }
+        else if (status === 'inactive') {
+            whereConditions.push(`is_active = $${paramIndex++}`);
+            queryParams.push(false);
+        }
+        if (verified !== undefined) {
+            whereConditions.push(`email_verified = $${paramIndex++}`);
+            queryParams.push(verified);
+        }
+        if (search) {
+            whereConditions.push(`(
           email ILIKE $${paramIndex} OR 
           first_name ILIKE $${paramIndex} OR 
           last_name ILIKE $${paramIndex} OR 
           company_name ILIKE $${paramIndex}
         )`);
-        queryParams.push(`%${search}%`);
-        paramIndex++;
-      }
-
-      if (from_date) {
-        whereConditions.push(`created_at >= $${paramIndex++}`);
-        queryParams.push(from_date);
-      }
-
-      if (to_date) {
-        whereConditions.push(`created_at <= $${paramIndex++}`);
-        queryParams.push(to_date);
-      }
-
-      const whereClause = whereConditions.length > 0 
-        ? 'WHERE ' + whereConditions.join(' AND ') 
-        : '';
-
-      // Get total count
-      const countResult = await dbQuery(
-        `SELECT COUNT(*) FROM users ${whereClause}`,
-        queryParams
-      );
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get users
-      const usersResult = await dbQuery(
-        `SELECT 
+            queryParams.push(`%${search}%`);
+            paramIndex++;
+        }
+        if (from_date) {
+            whereConditions.push(`created_at >= $${paramIndex++}`);
+            queryParams.push(from_date);
+        }
+        if (to_date) {
+            whereConditions.push(`created_at <= $${paramIndex++}`);
+            queryParams.push(to_date);
+        }
+        const whereClause = whereConditions.length > 0
+            ? 'WHERE ' + whereConditions.join(' AND ')
+            : '';
+        // Get total count
+        const countResult = await (0, database_1.query)(`SELECT COUNT(*) FROM users ${whereClause}`, queryParams);
+        const total = parseInt(countResult.rows[0].count);
+        // Get users
+        const usersResult = await (0, database_1.query)(`SELECT 
           id, email, first_name, last_name, role, is_active, is_blocked,
           blocked_at, block_reason, email_verified, last_login, created_at,
           company_name, phone,
@@ -373,40 +352,33 @@ router.get('/users',
          FROM users
          ${whereClause}
          ORDER BY ${sort_by} ${sort_order}
-         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        [...queryParams, limit, offset]
-      );
-
-      // Get summary counts
-      const summaryResult = await dbQuery(
-        `SELECT 
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`, [...queryParams, limit, offset]);
+        // Get summary counts
+        const summaryResult = await (0, database_1.query)(`SELECT 
           COUNT(*) as total_users,
           COUNT(CASE WHEN is_active = TRUE AND (is_blocked = FALSE OR is_blocked IS NULL) THEN 1 END) as active_users,
           COUNT(CASE WHEN is_blocked = TRUE THEN 1 END) as blocked_users
-         FROM users`
-      );
-
-      res.json({
-        users: usersResult.rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        },
-        summary: {
-          total_users: parseInt(summaryResult.rows[0].total_users),
-          active_users: parseInt(summaryResult.rows[0].active_users),
-          blocked_users: parseInt(summaryResult.rows[0].blocked_users)
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      res.status(500).json({ error: 'Server error' });
+         FROM users`);
+        res.json({
+            users: usersResult.rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            },
+            summary: {
+                total_users: parseInt(summaryResult.rows[0].total_users),
+                active_users: parseInt(summaryResult.rows[0].active_users),
+                blocked_users: parseInt(summaryResult.rows[0].blocked_users)
+            }
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // GET /api/admin/users/:id - Get user details
 // ============================================================================
@@ -439,21 +411,14 @@ router.get('/users',
  *       404:
  *         description: User not found
  */
-router.get('/users/:id',
-  authenticate,
-  authorize('ADMIN'),
-  validateUserId,
-  async (req: Request, res: Response) => {
+router.get('/users/:id', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), validateUserId, async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const userId = req.params.id;
-
-      const result = await dbQuery(
-        `SELECT 
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const userId = req.params.id;
+        const result = await (0, database_1.query)(`SELECT 
           u.id, u.email, u.first_name, u.last_name, u.role, 
           u.is_active, u.is_blocked, u.blocked_at, u.block_reason,
           u.email_verified, u.last_login, u.created_at,
@@ -474,22 +439,17 @@ router.get('/users/:id',
             'issuing_organization', c.issuing_organization
           )) FROM certifications c WHERE c.job_seeker_id = u.id) as certifications
          FROM users u
-         WHERE u.id = $1`,
-        [userId]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      res.json(result.rows[0]);
-    } catch (error) {
-      console.error('Error fetching user details:', error);
-      res.status(500).json({ error: 'Server error' });
+         WHERE u.id = $1`, [userId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json(result.rows[0]);
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error fetching user details:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // PUT /api/admin/users/:id/block - Block/unblock a user
 // ============================================================================
@@ -544,77 +504,53 @@ router.get('/users/:id',
  *       404:
  *         description: User not found
  */
-router.put('/users/:id/block',
-  authenticate,
-  authorize('ADMIN'),
-  validateUserId,
-  [
-    body('block').isBoolean().withMessage('Block status must be a boolean'),
-    body('reason').optional().isString().trim()
-  ],
-  async (req: Request, res: Response) => {
+router.put('/users/:id/block', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), validateUserId, [
+    (0, express_validator_1.body)('block').isBoolean().withMessage('Block status must be a boolean'),
+    (0, express_validator_1.body)('reason').optional().isString().trim()
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const userId = req.params.id;
-      const { block, reason } = req.body;
-
-      // Check if user exists
-      const userCheck = await dbQuery(
-        'SELECT id, role FROM users WHERE id = $1',
-        [userId]
-      );
-
-      if (userCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const user = userCheck.rows[0];
-
-      // Prevent admin from blocking themselves
-      if (user.id === req.user!.userId) {
-        return res.status(400).json({ error: 'You cannot block yourself' });
-      }
-
-      // Validate reason when blocking
-      if (block && !reason) {
-        return res.status(400).json({ error: 'Reason is required when blocking a user' });
-      }
-
-      // Update user block status
-      const result = await dbQuery(
-        `UPDATE users 
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const userId = req.params.id;
+        const { block, reason } = req.body;
+        // Check if user exists
+        const userCheck = await (0, database_1.query)('SELECT id, role FROM users WHERE id = $1', [userId]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const user = userCheck.rows[0];
+        // Prevent admin from blocking themselves
+        if (user.id === req.user.userId) {
+            return res.status(400).json({ error: 'You cannot block yourself' });
+        }
+        // Validate reason when blocking
+        if (block && !reason) {
+            return res.status(400).json({ error: 'Reason is required when blocking a user' });
+        }
+        // Update user block status
+        const result = await (0, database_1.query)(`UPDATE users 
          SET is_blocked = $1,
              blocked_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
              block_reason = $2,
              updated_at = NOW()
          WHERE id = $3
-         RETURNING id, email, first_name, last_name, role, is_blocked, blocked_at, block_reason`,
-        [block, reason || null, userId]
-      );
-
-      // If blocking, invalidate all user sessions
-      if (block) {
-        await dbQuery(
-          'DELETE FROM user_sessions WHERE user_id = $1',
-          [userId]
-        );
-      }
-
-      res.json({
-        message: block ? 'User blocked successfully' : 'User unblocked successfully',
-        user: result.rows[0]
-      });
-    } catch (error) {
-      console.error('Error updating user block status:', error);
-      res.status(500).json({ error: 'Server error' });
+         RETURNING id, email, first_name, last_name, role, is_blocked, blocked_at, block_reason`, [block, reason || null, userId]);
+        // If blocking, invalidate all user sessions
+        if (block) {
+            await (0, database_1.query)('DELETE FROM user_sessions WHERE user_id = $1', [userId]);
+        }
+        res.json({
+            message: block ? 'User blocked successfully' : 'User unblocked successfully',
+            user: result.rows[0]
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error updating user block status:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // GET /api/admin/jobs - Get all jobs with filters
 // ============================================================================
@@ -712,96 +648,73 @@ router.put('/users/:id/block',
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.get('/jobs',
-  authenticate,
-  authorize('ADMIN'),
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('status').optional().isIn(['active', 'closed', 'draft']),
-    query('employer_id').optional().isUUID(),
-    query('search').optional().isString().trim(),
-    query('flagged').optional().isBoolean().toBoolean(),
-    query('featured').optional().isBoolean().toBoolean(),
-    query('from_date').optional().isISO8601().toDate(),
-    query('to_date').optional().isISO8601().toDate(),
-    query('sort_by').optional().isIn(['created_at', 'views', 'applications_count']),
-    query('sort_order').optional().isIn(['ASC', 'DESC'])
-  ],
-  async (req: Request, res: Response) => {
+router.get('/jobs', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), [
+    (0, express_validator_1.query)('page').optional().isInt({ min: 1 }).toInt(),
+    (0, express_validator_1.query)('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    (0, express_validator_1.query)('status').optional().isIn(['active', 'closed', 'draft']),
+    (0, express_validator_1.query)('employer_id').optional().isUUID(),
+    (0, express_validator_1.query)('search').optional().isString().trim(),
+    (0, express_validator_1.query)('flagged').optional().isBoolean().toBoolean(),
+    (0, express_validator_1.query)('featured').optional().isBoolean().toBoolean(),
+    (0, express_validator_1.query)('from_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.query)('to_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.query)('sort_by').optional().isIn(['created_at', 'views', 'applications_count']),
+    (0, express_validator_1.query)('sort_order').optional().isIn(['ASC', 'DESC'])
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const page = req.query.page ? parseInt(req.query.page as string) : 1;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
-      const offset = (page - 1) * limit;
-      const { 
-        status, employer_id, search, flagged, featured, 
-        from_date, to_date, sort_by = 'created_at', sort_order = 'DESC' 
-      } = req.query;
-
-      // Build WHERE clause
-      let whereConditions: string[] = [];
-      const queryParams: any[] = [];
-      let paramIndex = 1;
-
-      if (status) {
-        whereConditions.push(`j.status = $${paramIndex++}`);
-        queryParams.push(status);
-      }
-
-      if (employer_id) {
-        whereConditions.push(`j.employer_id = $${paramIndex++}`);
-        queryParams.push(employer_id);
-      }
-
-      if (flagged !== undefined) {
-        whereConditions.push(`j.is_flagged = $${paramIndex++}`);
-        queryParams.push(flagged);
-      }
-
-      if (featured !== undefined) {
-        whereConditions.push(`j.is_featured = $${paramIndex++}`);
-        queryParams.push(featured);
-      }
-
-      if (search) {
-        whereConditions.push(`(
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 20;
+        const offset = (page - 1) * limit;
+        const { status, employer_id, search, flagged, featured, from_date, to_date, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
+        // Build WHERE clause
+        let whereConditions = [];
+        const queryParams = [];
+        let paramIndex = 1;
+        if (status) {
+            whereConditions.push(`j.status = $${paramIndex++}`);
+            queryParams.push(status);
+        }
+        if (employer_id) {
+            whereConditions.push(`j.employer_id = $${paramIndex++}`);
+            queryParams.push(employer_id);
+        }
+        if (flagged !== undefined) {
+            whereConditions.push(`j.is_flagged = $${paramIndex++}`);
+            queryParams.push(flagged);
+        }
+        if (featured !== undefined) {
+            whereConditions.push(`j.is_featured = $${paramIndex++}`);
+            queryParams.push(featured);
+        }
+        if (search) {
+            whereConditions.push(`(
           j.title ILIKE $${paramIndex} OR 
           j.description ILIKE $${paramIndex} OR 
           j.company ILIKE $${paramIndex}
         )`);
-        queryParams.push(`%${search}%`);
-        paramIndex++;
-      }
-
-      if (from_date) {
-        whereConditions.push(`j.created_at >= $${paramIndex++}`);
-        queryParams.push(from_date);
-      }
-
-      if (to_date) {
-        whereConditions.push(`j.created_at <= $${paramIndex++}`);
-        queryParams.push(to_date);
-      }
-
-      const whereClause = whereConditions.length > 0 
-        ? 'WHERE ' + whereConditions.join(' AND ') 
-        : '';
-
-      // Get total count
-      const countResult = await dbQuery(
-        `SELECT COUNT(*) FROM jobs j ${whereClause}`,
-        queryParams
-      );
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get jobs
-      const jobsResult = await dbQuery(
-        `SELECT 
+            queryParams.push(`%${search}%`);
+            paramIndex++;
+        }
+        if (from_date) {
+            whereConditions.push(`j.created_at >= $${paramIndex++}`);
+            queryParams.push(from_date);
+        }
+        if (to_date) {
+            whereConditions.push(`j.created_at <= $${paramIndex++}`);
+            queryParams.push(to_date);
+        }
+        const whereClause = whereConditions.length > 0
+            ? 'WHERE ' + whereConditions.join(' AND ')
+            : '';
+        // Get total count
+        const countResult = await (0, database_1.query)(`SELECT COUNT(*) FROM jobs j ${whereClause}`, queryParams);
+        const total = parseInt(countResult.rows[0].count);
+        // Get jobs
+        const jobsResult = await (0, database_1.query)(`SELECT 
           j.*,
           u.email as employer_email,
           u.first_name || ' ' || u.last_name as employer_name,
@@ -810,40 +723,33 @@ router.get('/jobs',
          LEFT JOIN users u ON j.employer_id = u.id
          ${whereClause}
          ORDER BY ${sort_by} ${sort_order}
-         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        [...queryParams, limit, offset]
-      );
-
-      // Get summary counts
-      const summaryResult = await dbQuery(
-        `SELECT 
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`, [...queryParams, limit, offset]);
+        // Get summary counts
+        const summaryResult = await (0, database_1.query)(`SELECT 
           COUNT(*) as total_jobs,
           COUNT(CASE WHEN status = 'active' THEN 1 END) as active_jobs,
           COUNT(CASE WHEN is_flagged = TRUE THEN 1 END) as flagged_jobs
-         FROM jobs`
-      );
-
-      res.json({
-        jobs: jobsResult.rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        },
-        summary: {
-          total_jobs: parseInt(summaryResult.rows[0].total_jobs),
-          active_jobs: parseInt(summaryResult.rows[0].active_jobs),
-          flagged_jobs: parseInt(summaryResult.rows[0].flagged_jobs)
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching jobs:', error);
-      res.status(500).json({ error: 'Server error' });
+         FROM jobs`);
+        res.json({
+            jobs: jobsResult.rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            },
+            summary: {
+                total_jobs: parseInt(summaryResult.rows[0].total_jobs),
+                active_jobs: parseInt(summaryResult.rows[0].active_jobs),
+                flagged_jobs: parseInt(summaryResult.rows[0].flagged_jobs)
+            }
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error fetching jobs:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // DELETE /api/admin/jobs/:id - Delete a job
 // ============================================================================
@@ -886,68 +792,48 @@ router.get('/jobs',
  *       404:
  *         description: Job not found
  */
-router.delete('/jobs/:id',
-  authenticate,
-  authorize('ADMIN'),
-  validateJobId,
-  async (req: Request, res: Response) => {
+router.delete('/jobs/:id', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), validateJobId, async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const jobId = req.params.id;
-
-      // Check if job exists
-      const jobCheck = await dbQuery(
-        'SELECT id, title, employer_id FROM jobs WHERE id = $1',
-        [jobId]
-      );
-
-      if (jobCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'Job not found' });
-      }
-
-      const job = jobCheck.rows[0];
-
-      // Start transaction
-      await dbQuery('BEGIN');
-
-      try {
-        // Delete related applications first
-        await dbQuery('DELETE FROM applications WHERE job_id = $1', [jobId]);
-
-        // Delete the job
-        await dbQuery('DELETE FROM jobs WHERE id = $1', [jobId]);
-
-        await dbQuery('COMMIT');
-
-        // Log the action
-        await dbQuery(
-          `INSERT INTO admin_logs (admin_id, action, target_type, target_id, details, created_at)
-           VALUES ($1, 'DELETE_JOB', 'job', $2, $3, NOW())`,
-          [req.user!.userId, jobId, JSON.stringify({ title: job.title, employer_id: job.employer_id })]
-        );
-
-        res.json({
-          message: 'Job deleted successfully',
-          job: {
-            id: job.id,
-            title: job.title
-          }
-        });
-      } catch (error) {
-        await dbQuery('ROLLBACK');
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error deleting job:', error);
-      res.status(500).json({ error: 'Server error' });
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const jobId = req.params.id;
+        // Check if job exists
+        const jobCheck = await (0, database_1.query)('SELECT id, title, employer_id FROM jobs WHERE id = $1', [jobId]);
+        if (jobCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        const job = jobCheck.rows[0];
+        // Start transaction
+        await (0, database_1.query)('BEGIN');
+        try {
+            // Delete related applications first
+            await (0, database_1.query)('DELETE FROM applications WHERE job_id = $1', [jobId]);
+            // Delete the job
+            await (0, database_1.query)('DELETE FROM jobs WHERE id = $1', [jobId]);
+            await (0, database_1.query)('COMMIT');
+            // Log the action
+            await (0, database_1.query)(`INSERT INTO admin_logs (admin_id, action, target_type, target_id, details, created_at)
+           VALUES ($1, 'DELETE_JOB', 'job', $2, $3, NOW())`, [req.user.userId, jobId, JSON.stringify({ title: job.title, employer_id: job.employer_id })]);
+            res.json({
+                message: 'Job deleted successfully',
+                job: {
+                    id: job.id,
+                    title: job.title
+                }
+            });
+        }
+        catch (error) {
+            await (0, database_1.query)('ROLLBACK');
+            throw error;
+        }
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error deleting job:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // GET /api/admin/statistics - Get system statistics
 // ============================================================================
@@ -982,25 +868,18 @@ router.delete('/jobs/:id',
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.get('/statistics',
-  authenticate,
-  authorize('ADMIN'),
-  [
-    query('from_date').optional().isISO8601().toDate(),
-    query('to_date').optional().isISO8601().toDate()
-  ],
-  async (req: Request, res: Response) => {
+router.get('/statistics', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), [
+    (0, express_validator_1.query)('from_date').optional().isISO8601().toDate(),
+    (0, express_validator_1.query)('to_date').optional().isISO8601().toDate()
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { from_date, to_date } = req.query;
-
-      // User statistics
-      const userStats = await dbQuery(
-        `SELECT 
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const { from_date, to_date } = req.query;
+        // User statistics
+        const userStats = await (0, database_1.query)(`SELECT 
           COUNT(*) as total,
           COUNT(CASE WHEN is_active = TRUE AND (is_blocked = FALSE OR is_blocked IS NULL) THEN 1 END) as active,
           COUNT(CASE WHEN is_blocked = TRUE THEN 1 END) as blocked,
@@ -1011,12 +890,9 @@ router.get('/statistics',
           COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today,
           COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_this_week,
           COUNT(CASE WHEN created_at >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as new_this_month
-         FROM users`
-      );
-
-      // Job statistics
-      const jobStats = await dbQuery(
-        `SELECT 
+         FROM users`);
+        // Job statistics
+        const jobStats = await (0, database_1.query)(`SELECT 
           COUNT(*) as total,
           COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
           COUNT(CASE WHEN status = 'closed' THEN 1 END) as closed,
@@ -1027,12 +903,9 @@ router.get('/statistics',
           COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_this_week,
           COALESCE(SUM(views), 0) as total_views,
           (SELECT COUNT(*) FROM applications) as total_applications
-         FROM jobs`
-      );
-
-      // Application statistics
-      const appStats = await dbQuery(
-        `SELECT 
+         FROM jobs`);
+        // Application statistics
+        const appStats = await (0, database_1.query)(`SELECT 
           COUNT(*) as total,
           COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
           COUNT(CASE WHEN status = 'reviewed' THEN 1 END) as reviewed,
@@ -1040,91 +913,80 @@ router.get('/statistics',
           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected,
           COUNT(CASE WHEN status = 'withdrawn' THEN 1 END) as withdrawn,
           COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today
-         FROM applications`
-      );
-
-      // Activity statistics
-      const activityStats = await dbQuery(
-        `SELECT 
+         FROM applications`);
+        // Activity statistics
+        const activityStats = await (0, database_1.query)(`SELECT 
           0 as api_requests_today,
           COUNT(DISTINCT user_id) as active_sessions
-         FROM user_sessions`
-      );
-
-      // Date range specific statistics
-      let dateRangeStats = null;
-      if (from_date && to_date) {
-        dateRangeStats = await dbQuery(
-          `SELECT 
+         FROM user_sessions`);
+        // Date range specific statistics
+        let dateRangeStats = null;
+        if (from_date && to_date) {
+            dateRangeStats = await (0, database_1.query)(`SELECT 
             (SELECT COUNT(*) FROM users WHERE created_at BETWEEN $1 AND $2) as users_created,
             (SELECT COUNT(*) FROM jobs WHERE created_at BETWEEN $1 AND $2) as jobs_created,
             (SELECT COUNT(*) FROM applications WHERE created_at BETWEEN $1 AND $2) as applications_created
-           FROM (SELECT 1) t`,
-          [from_date, to_date]
-        );
-      }
-
-      // System information
-      const systemInfo = {
-        api_requests_today: parseInt(activityStats.rows[0].api_requests_today),
-        active_sessions: parseInt(activityStats.rows[0].active_sessions),
-        storage_used: await getStorageUsed(),
-        last_backup: await getLastBackupTime(),
-        version: process.env.npm_package_version || '1.0.0'
-      };
-
-      res.json({
-        users: {
-          total: parseInt(userStats.rows[0].total),
-          active: parseInt(userStats.rows[0].active),
-          blocked: parseInt(userStats.rows[0].blocked),
-          job_seekers: parseInt(userStats.rows[0].job_seekers),
-          employers: parseInt(userStats.rows[0].employers),
-          admins: parseInt(userStats.rows[0].admins),
-          hr: parseInt(userStats.rows[0].hr),
-          new_today: parseInt(userStats.rows[0].new_today),
-          new_this_week: parseInt(userStats.rows[0].new_this_week),
-          new_this_month: parseInt(userStats.rows[0].new_this_month),
-          ...(dateRangeStats && {
-            created_in_range: parseInt(dateRangeStats.rows[0].users_created)
-          })
-        },
-        jobs: {
-          total: parseInt(jobStats.rows[0].total),
-          active: parseInt(jobStats.rows[0].active),
-          closed: parseInt(jobStats.rows[0].closed),
-          draft: parseInt(jobStats.rows[0].draft),
-          featured: parseInt(jobStats.rows[0].featured),
-          flagged: parseInt(jobStats.rows[0].flagged),
-          new_today: parseInt(jobStats.rows[0].new_today),
-          new_this_week: parseInt(jobStats.rows[0].new_this_week),
-          total_views: parseInt(jobStats.rows[0].total_views),
-          total_applications: parseInt(jobStats.rows[0].total_applications),
-          ...(dateRangeStats && {
-            created_in_range: parseInt(dateRangeStats.rows[0].jobs_created)
-          })
-        },
-        applications: {
-          total: parseInt(appStats.rows[0].total),
-          pending: parseInt(appStats.rows[0].pending),
-          reviewed: parseInt(appStats.rows[0].reviewed),
-          accepted: parseInt(appStats.rows[0].accepted),
-          rejected: parseInt(appStats.rows[0].rejected),
-          withdrawn: parseInt(appStats.rows[0].withdrawn),
-          new_today: parseInt(appStats.rows[0].new_today),
-          ...(dateRangeStats && {
-            created_in_range: parseInt(dateRangeStats.rows[0].applications_created)
-          })
-        },
-        system: systemInfo
-      });
-    } catch (error) {
-      console.error('Error fetching statistics:', error);
-      res.status(500).json({ error: 'Server error' });
+           FROM (SELECT 1) t`, [from_date, to_date]);
+        }
+        // System information
+        const systemInfo = {
+            api_requests_today: parseInt(activityStats.rows[0].api_requests_today),
+            active_sessions: parseInt(activityStats.rows[0].active_sessions),
+            storage_used: await getStorageUsed(),
+            last_backup: await getLastBackupTime(),
+            version: process.env.npm_package_version || '1.0.0'
+        };
+        res.json({
+            users: {
+                total: parseInt(userStats.rows[0].total),
+                active: parseInt(userStats.rows[0].active),
+                blocked: parseInt(userStats.rows[0].blocked),
+                job_seekers: parseInt(userStats.rows[0].job_seekers),
+                employers: parseInt(userStats.rows[0].employers),
+                admins: parseInt(userStats.rows[0].admins),
+                hr: parseInt(userStats.rows[0].hr),
+                new_today: parseInt(userStats.rows[0].new_today),
+                new_this_week: parseInt(userStats.rows[0].new_this_week),
+                new_this_month: parseInt(userStats.rows[0].new_this_month),
+                ...(dateRangeStats && {
+                    created_in_range: parseInt(dateRangeStats.rows[0].users_created)
+                })
+            },
+            jobs: {
+                total: parseInt(jobStats.rows[0].total),
+                active: parseInt(jobStats.rows[0].active),
+                closed: parseInt(jobStats.rows[0].closed),
+                draft: parseInt(jobStats.rows[0].draft),
+                featured: parseInt(jobStats.rows[0].featured),
+                flagged: parseInt(jobStats.rows[0].flagged),
+                new_today: parseInt(jobStats.rows[0].new_today),
+                new_this_week: parseInt(jobStats.rows[0].new_this_week),
+                total_views: parseInt(jobStats.rows[0].total_views),
+                total_applications: parseInt(jobStats.rows[0].total_applications),
+                ...(dateRangeStats && {
+                    created_in_range: parseInt(dateRangeStats.rows[0].jobs_created)
+                })
+            },
+            applications: {
+                total: parseInt(appStats.rows[0].total),
+                pending: parseInt(appStats.rows[0].pending),
+                reviewed: parseInt(appStats.rows[0].reviewed),
+                accepted: parseInt(appStats.rows[0].accepted),
+                rejected: parseInt(appStats.rows[0].rejected),
+                withdrawn: parseInt(appStats.rows[0].withdrawn),
+                new_today: parseInt(appStats.rows[0].new_today),
+                ...(dateRangeStats && {
+                    created_in_range: parseInt(dateRangeStats.rows[0].applications_created)
+                })
+            },
+            system: systemInfo
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error fetching statistics:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // GET /api/admin/audit-logs - Get admin action logs
 // ============================================================================
@@ -1201,62 +1063,46 @@ router.get('/statistics',
  *       403:
  *         description: Forbidden
  */
-router.get('/audit-logs',
-  authenticate,
-  authorize('ADMIN'),
-  [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('admin_id').optional().isUUID(),
-    query('action').optional().isString(),
-    query('target_type').optional().isIn(['user', 'job', 'application', 'company'])
-  ],
-  async (req: Request, res: Response) => {
+router.get('/audit-logs', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), [
+    (0, express_validator_1.query)('page').optional().isInt({ min: 1 }).toInt(),
+    (0, express_validator_1.query)('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    (0, express_validator_1.query)('admin_id').optional().isUUID(),
+    (0, express_validator_1.query)('action').optional().isString(),
+    (0, express_validator_1.query)('target_type').optional().isIn(['user', 'job', 'application', 'company'])
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const page = req.query.page ? parseInt(req.query.page as string) : 1;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
-      const offset = (page - 1) * limit;
-      const { admin_id, action, target_type } = req.query;
-
-      // Build WHERE clause
-      let whereConditions: string[] = [];
-      const queryParams: any[] = [];
-      let paramIndex = 1;
-
-      if (admin_id) {
-        whereConditions.push(`admin_id = $${paramIndex++}`);
-        queryParams.push(admin_id);
-      }
-
-      if (action) {
-        whereConditions.push(`action = $${paramIndex++}`);
-        queryParams.push(action);
-      }
-
-      if (target_type) {
-        whereConditions.push(`target_type = $${paramIndex++}`);
-        queryParams.push(target_type);
-      }
-
-      const whereClause = whereConditions.length > 0 
-        ? 'WHERE ' + whereConditions.join(' AND ') 
-        : '';
-
-      // Get total count
-      const countResult = await dbQuery(
-        `SELECT COUNT(*) FROM admin_logs ${whereClause}`,
-        queryParams
-      );
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get logs
-      const logsResult = await dbQuery(
-        `SELECT 
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 20;
+        const offset = (page - 1) * limit;
+        const { admin_id, action, target_type } = req.query;
+        // Build WHERE clause
+        let whereConditions = [];
+        const queryParams = [];
+        let paramIndex = 1;
+        if (admin_id) {
+            whereConditions.push(`admin_id = $${paramIndex++}`);
+            queryParams.push(admin_id);
+        }
+        if (action) {
+            whereConditions.push(`action = $${paramIndex++}`);
+            queryParams.push(action);
+        }
+        if (target_type) {
+            whereConditions.push(`target_type = $${paramIndex++}`);
+            queryParams.push(target_type);
+        }
+        const whereClause = whereConditions.length > 0
+            ? 'WHERE ' + whereConditions.join(' AND ')
+            : '';
+        // Get total count
+        const countResult = await (0, database_1.query)(`SELECT COUNT(*) FROM admin_logs ${whereClause}`, queryParams);
+        const total = parseInt(countResult.rows[0].count);
+        // Get logs
+        const logsResult = await (0, database_1.query)(`SELECT 
           l.*,
           u.email as admin_email,
           u.first_name || ' ' || u.last_name as admin_name
@@ -1264,26 +1110,22 @@ router.get('/audit-logs',
          LEFT JOIN users u ON l.admin_id = u.id
          ${whereClause}
          ORDER BY l.created_at DESC
-         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        [...queryParams, limit, offset]
-      );
-
-      res.json({
-        logs: logsResult.rows,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching audit logs:', error);
-      res.status(500).json({ error: 'Server error' });
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`, [...queryParams, limit, offset]);
+        res.json({
+            logs: logsResult.rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error fetching audit logs:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // POST /api/admin/jobs/:id/feature - Feature/unfeature a job
 // ============================================================================
@@ -1323,77 +1165,58 @@ router.get('/audit-logs',
  *       404:
  *         description: Job not found
  */
-router.post('/jobs/:id/feature',
-  authenticate,
-  authorize('ADMIN'),
-  validateJobId,
-  [
-    body('featured').isBoolean().withMessage('Featured status must be a boolean')
-  ],
-  async (req: Request, res: Response) => {
+router.post('/jobs/:id/feature', auth_1.authenticate, (0, auth_1.authorize)('ADMIN'), validateJobId, [
+    (0, express_validator_1.body)('featured').isBoolean().withMessage('Featured status must be a boolean')
+], async (req, res) => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const jobId = req.params.id;
-      const { featured } = req.body;
-
-      const result = await dbQuery(
-        `UPDATE jobs 
+        const errors = (0, express_validator_1.validationResult)(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        const jobId = req.params.id;
+        const { featured } = req.body;
+        const result = await (0, database_1.query)(`UPDATE jobs 
          SET is_featured = $1, updated_at = NOW()
          WHERE id = $2
-         RETURNING id, title, is_featured`,
-        [featured, jobId]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Job not found' });
-      }
-
-      // Log the action
-      await dbQuery(
-        `INSERT INTO admin_logs (admin_id, action, target_type, target_id, details, created_at)
-         VALUES ($1, $2, 'job', $3, $4, NOW())`,
-        [req.user!.userId, featured ? 'FEATURE_JOB' : 'UNFEATURE_JOB', jobId, JSON.stringify({ title: result.rows[0].title })]
-      );
-
-      res.json({
-        message: featured ? 'Job featured successfully' : 'Job unfeatured successfully',
-        job: result.rows[0]
-      });
-    } catch (error) {
-      console.error('Error updating job feature status:', error);
-      res.status(500).json({ error: 'Server error' });
+         RETURNING id, title, is_featured`, [featured, jobId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        // Log the action
+        await (0, database_1.query)(`INSERT INTO admin_logs (admin_id, action, target_type, target_id, details, created_at)
+         VALUES ($1, $2, 'job', $3, $4, NOW())`, [req.user.userId, featured ? 'FEATURE_JOB' : 'UNFEATURE_JOB', jobId, JSON.stringify({ title: result.rows[0].title })]);
+        res.json({
+            message: featured ? 'Job featured successfully' : 'Job unfeatured successfully',
+            job: result.rows[0]
+        });
     }
-  }
-);
-
+    catch (error) {
+        console.error('Error updating job feature status:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // ============================================================================
 // Helper functions
 // ============================================================================
-
-async function getStorageUsed(): Promise<string> {
-  try {
-    // This would need to be implemented based on your storage solution
-    // For example, if using AWS S3, you'd sum up file sizes
-    return '2.3 GB';
-  } catch (error) {
-    return 'Unknown';
-  }
+async function getStorageUsed() {
+    try {
+        // This would need to be implemented based on your storage solution
+        // For example, if using AWS S3, you'd sum up file sizes
+        return '2.3 GB';
+    }
+    catch (error) {
+        return 'Unknown';
+    }
 }
-
-async function getLastBackupTime(): Promise<string | null> {
-  try {
-    // This would need to be implemented based on your backup system
-    const result = await dbQuery(
-      'SELECT created_at FROM backups ORDER BY created_at DESC LIMIT 1'
-    );
-    return result.rows[0]?.created_at || null;
-  } catch (error) {
-    return null;
-  }
+async function getLastBackupTime() {
+    try {
+        // This would need to be implemented based on your backup system
+        const result = await (0, database_1.query)('SELECT created_at FROM backups ORDER BY created_at DESC LIMIT 1');
+        return result.rows[0]?.created_at || null;
+    }
+    catch (error) {
+        return null;
+    }
 }
-
-export default router;
+exports.default = router;
+//# sourceMappingURL=adminRoutes.js.map

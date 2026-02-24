@@ -24,6 +24,10 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     validationMessage ??
     fallbackMessage;
 
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("hrs:unauthorized"));
+  }
+
   return Object.assign(new Error(message), { status: res.status });
 }
 
@@ -488,7 +492,10 @@ export async function me(accessToken: string) {
   const res = await fetch(`${API_BASE}/users/me`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error("Unauthorized");
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Unauthorized");
+  }
   return res.json();
 }
 
@@ -1120,6 +1127,7 @@ export type JobApplication = {
 
 export type JobListItem = {
   id: string;
+  company_id?: string | null;
   title: string;
   description?: string | null;
   company?: string | null;
@@ -1148,6 +1156,8 @@ export type JobUpsertPayload = {
   title: string;
   description: string;
   company: string;
+  company_id?: string;
+  subcategory?: string;
   location: string;
   salary_min: number;
   salary_max: number;
@@ -1160,7 +1170,7 @@ export type JobUpsertPayload = {
   responsibilities?: string[];
   benefits?: string[];
   application_deadline: string;
-  status?: "active" | "closed" | "draft";
+  status?: "active" | "closed" | "draft" | "pending";
 };
 
 export async function listAdminJobs(
@@ -1260,6 +1270,7 @@ export async function listJobs(
     limit?: number;
     status?: string;
     my_jobs?: boolean;
+    company_id?: string;
   },
 ): Promise<{
   jobs: JobListItem[];
@@ -1271,6 +1282,7 @@ export async function listJobs(
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.my_jobs !== undefined) url.searchParams.set("my_jobs", String(params.my_jobs));
+  if (params?.company_id) url.searchParams.set("company_id", params.company_id);
 
   const res = await fetch(url, { headers: authHeaders(token) });
   const body = await safeJson(res);
