@@ -945,3 +945,7 @@ FROM job_reports GROUP BY status ORDER BY status;
 
 SELECT 'users' AS table_name, status, COUNT(*) 
 FROM users GROUP BY status ORDER BY status;
+
+-- Add created_at column to job_seeker_addresses table
+ALTER TABLE job_seeker_addresses 
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
