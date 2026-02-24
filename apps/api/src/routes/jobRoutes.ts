@@ -37,7 +37,8 @@ router.get('/', [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
   query('status').optional().isIn(['active', 'closed', 'draft']),
-  query('my_jobs').optional().isBoolean().toBoolean()
+  query('my_jobs').optional().isBoolean().toBoolean(),
+  query('company_id').optional().isUUID().withMessage('Invalid company ID')
 ], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -87,6 +88,12 @@ router.get('/', [
       paramIndex++;
     }
 
+    if (req.query.company_id) {
+      whereConditions.push(`company_id = $${paramIndex}`);
+      queryParams.push(req.query.company_id);
+      paramIndex++;
+    }
+
     const whereClause = whereConditions.length > 0 
       ? 'WHERE ' + whereConditions.join(' AND ')
       : '';
@@ -101,9 +108,9 @@ router.get('/', [
     // Get paginated jobs with employer info
     const jobsResult = await dbQuery(
       `SELECT j.*, 
-        u.name as employer_name, 
+        (u.first_name || ' ' || u.last_name) as employer_name, 
         u.email as employer_email,
-        u.company as employer_company,
+        u.company_name as employer_company,
         (SELECT COUNT(*) FROM applications WHERE job_id = j.id) as applications_count
        FROM jobs j
        LEFT JOIN users u ON j.employer_id = u.id
@@ -158,7 +165,7 @@ router.get('/employer/dashboard',
       const recentApplications = await dbQuery(
         `SELECT a.*, 
           j.title as job_title,
-          u.name as applicant_name,
+          (u.first_name || ' ' || u.last_name) as applicant_name,
           u.email as applicant_email
          FROM applications a
          JOIN jobs j ON a.job_id = j.id
@@ -318,8 +325,8 @@ router.get('/search', [
 
     const jobsResult = await dbQuery(
       `SELECT j.*, 
-        u.name as employer_name,
-        u.company as employer_company
+        (u.first_name || ' ' || u.last_name) as employer_name,
+        u.company_name as employer_company
        FROM jobs j
        LEFT JOIN users u ON j.employer_id = u.id
        ${whereClause}
@@ -394,8 +401,8 @@ router.get('/filter', [
 
     const jobsResult = await dbQuery(
       `SELECT j.*, 
-        u.name as employer_name,
-        u.company as employer_company
+        (u.first_name || ' ' || u.last_name) as employer_name,
+        u.company_name as employer_company
        FROM jobs j
        LEFT JOIN users u ON j.employer_id = u.id
        ${whereClause}
@@ -411,7 +418,7 @@ router.get('/filter', [
 });
 
 // GET /api/jobs/:id - Get single job details
-router.get('/:id', [
+router.get('/:id([0-9a-fA-F-]{36})', [
   param('id').isUUID().withMessage('Invalid job ID')
 ], async (req: Request, res: Response) => {
   try {
@@ -423,9 +430,9 @@ router.get('/:id', [
     // Get job details with employer info
     const jobResult = await dbQuery(
       `SELECT j.*, 
-        u.name as employer_name,
+        (u.first_name || ' ' || u.last_name) as employer_name,
         u.email as employer_email,
-        u.company as employer_company
+        u.company_name as employer_company
        FROM jobs j
        LEFT JOIN users u ON j.employer_id = u.id
        WHERE j.id = $1`,
@@ -712,7 +719,7 @@ router.get('/:id/applications',
       // Get applications with pagination
       const applications = await dbQuery(
         `SELECT a.*, 
-          u.name as applicant_name, 
+          (u.first_name || ' ' || u.last_name) as applicant_name, 
           u.email as applicant_email,
           u.phone as applicant_phone,
           u.resume_url as applicant_resume
@@ -1016,7 +1023,7 @@ router.get('/categories/:id', [
       const jobsResult = await dbQuery(
         `SELECT j.id, j.title, j.company, j.location, j.salary_min, j.salary_max,
                 j.salary_currency, j.status, j.created_at,
-                u.name as employer_name
+                (u.first_name || ' ' || u.last_name) as employer_name
          FROM jobs j
          LEFT JOIN users u ON j.employer_id = u.id
          WHERE j.category_id = $1 AND j.status = 'active'

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { getFullProfile } from "../api/client";
+import { usePermissions } from "../auth/usePermissions";
 
 type IconName =
   | "settings"
@@ -168,8 +168,7 @@ export function AppLayout({
   menuItems: readonly { path: string; title: string; icon: IconName }[];
 }) {
   const { accessToken, logout, userName, userEmail } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -203,54 +202,51 @@ export function AppLayout({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }, [displayName]);
 
-  const roles = useMemo(() => {
-    if (!accessToken) return [] as string[];
-    try {
-      const [, payload] = accessToken.split(".");
-      if (!payload) return [];
-      const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-      const json = atob(padded);
-      const parsed = JSON.parse(json) as { roles?: unknown };
-      return Array.isArray(parsed.roles) ? (parsed.roles as string[]) : [];
-    } catch {
-      return [];
-    }
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (!accessToken) return;
-    if (!roles.includes("JOB_SEEKER")) return;
-    if (location.pathname.startsWith("/app/job-seekers")) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const full = await getFullProfile(accessToken);
-        if (cancelled) return;
-
-        // No base profile row yet => force user into the profile creation screen.
-        if (!full.profile) {
-          navigate("/app/job-seekers", { replace: true });
-        }
-      } catch (err) {
-        const status = (err as any)?.status;
-        if (status === 401) {
-          logout();
-          navigate("/login", { replace: true });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, roles, location.pathname, navigate, logout]);
-
   const sidebarClassName =
     (collapsed ? "sidebar sidebarCollapsed" : "sidebar") +
     (mobileOpen ? " sidebarMobileOpen" : "");
+
+  const canManageUsers = hasPermission("MANAGE_USERS");
+  const canManageCompany = hasPermission("MANAGE_COMPANY");
+  const canUseJobs = hasPermission("CREATE_JOB", "VIEW_JOB");
+  const canViewAudit = hasPermission("VIEW_AUDIT_LOGS");
+  const showJobSeekerProfile = !canManageUsers && !canManageCompany;
+
+  const visibleMenuItems = useMemo(
+    () =>
+      menuItems.filter((item) => {
+        switch (item.path) {
+          case "users":
+          case "roles":
+          case "permission":
+            return canManageUsers;
+          case "companies":
+            return canManageCompany;
+          case "jobs":
+            return canUseJobs || showJobSeekerProfile;
+          case "audit":
+          case "reports":
+            return canViewAudit;
+          case "job-seekers":
+            return showJobSeekerProfile;
+          case "global-settings":
+          case "status":
+          case "job-categories":
+          case "email-templates":
+            return canManageUsers;
+          default:
+            return false;
+        }
+      }),
+    [
+      canManageCompany,
+      canManageUsers,
+      canUseJobs,
+      canViewAudit,
+      menuItems,
+      showJobSeekerProfile,
+    ],
+  );
 
   return (
     <div className={collapsed ? "appShell appShellCollapsed" : "appShell"}>
@@ -290,7 +286,7 @@ export function AppLayout({
         </div>
 
         <nav className="nav">
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

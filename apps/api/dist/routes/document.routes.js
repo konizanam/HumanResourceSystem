@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const document_controller_1 = require("../controllers.ts/document.controller");
+const document_controller_1 = require("../controllers/document.controller");
 const auth_1 = require("../middleware/auth");
 const upload_1 = require("../config/upload");
 const router = (0, express_1.Router)();
