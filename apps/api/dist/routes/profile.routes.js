@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/routes/profile.routes.ts
 const express_1 = require("express");
-const profile_controller_1 = require("../controllers.ts/profile.controller");
+const profile_controller_1 = require("../controllers/profile.controller");
 const auth_1 = require("../middleware/auth");
 const validation_1 = require("../utils/validation");
 const router = (0, express_1.Router)();

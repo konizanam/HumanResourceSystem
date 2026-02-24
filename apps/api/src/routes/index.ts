@@ -6,16 +6,16 @@ import documentRoutes from './document.routes';
 import { meRouter } from './me';
 import { geoRouter } from './geo.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
+import { jobSeekerRouter } from './job-seeker';
 import jobRoutes from './jobRoutes';
 import applicationRoutes from './applicationRoutes';
 import employerRoutes from './employerRoutes';
 import jobSeekerResumeRoutes from './jobSeekerResumeRoutes';
 import jobSeekerSkillsRoutes from './jobSeekerSkillsRoutes';
 import jobSeekerCertificationsRoutes from './jobSeekerCertificationsRoutes';
-
 import notificationsRoutes from './notificationsRoutes';
 import adminRoutes from './adminRoutes';
-import rolePermissionRoutes from './rolePermissionRoutes'; // Add this
+import rolePermissionRoutes from './rolePermissionRoutes';
 
 const router = Router();
 
@@ -26,16 +26,16 @@ router.use('/documents', documentRoutes);
 router.use('/users', meRouter);
 router.use('/geo', geoRouter);
 router.use('/email-templates', emailTemplatesRoutes);
+router.use('/job-seeker', jobSeekerRouter);
 router.use('/jobs', jobRoutes);
 router.use('/applications', applicationRoutes);
 router.use('/employers', employerRoutes);
 router.use('/job-seeker/resume', jobSeekerResumeRoutes);
 router.use('/job-seeker/skills', jobSeekerSkillsRoutes);
 router.use('/job-seeker/certifications', jobSeekerCertificationsRoutes);
-
 router.use('/notifications', notificationsRoutes);
 router.use('/admin', adminRoutes);
-router.use('/admin', rolePermissionRoutes); // Add this - mounts at /admin/roles, /admin/permissions etc.
+router.use(rolePermissionRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

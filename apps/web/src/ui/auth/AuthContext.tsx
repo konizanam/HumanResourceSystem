@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { login as loginApi } from "../api/client";
 import type { LoginResult } from "../api/client";
 
@@ -52,6 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }),
     [state.accessToken, state.userEmail, state.userName]
   );
+
+  useEffect(() => {
+    function onUnauthorized() {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_EMAIL_KEY);
+      localStorage.removeItem(STORAGE_NAME_KEY);
+      setState({ accessToken: null, userEmail: null, userName: null });
+    }
+
+    window.addEventListener("hrs:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("hrs:unauthorized", onUnauthorized);
+  }, []);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

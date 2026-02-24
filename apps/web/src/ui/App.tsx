@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
 import { RequireAuth } from "./auth/RequireAuth";
 import { AppLayout } from "./layout/AppLayout";
@@ -7,6 +8,15 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { JobSeekerProfilePage } from "./pages/JobSeekerProfilePage";
 import { CompaniesPage } from "./pages/CompaniesPage";
 import { EmailTemplatesPage } from "./pages/EmailTemplatesPage";
+import { RolesPage } from "./pages/RolesPage";
+import { JobCategoriesPage } from "./pages/JobCategoriesPage";
+import { UsersPage } from "./pages/UsersPage";
+import { JobsPage } from "./pages/JobsPage";
+import { JobApplicationsPage } from "./pages/JobApplicationsPage";
+import { PermissionsPage } from "./pages/PermissionsPage";
+import { AuditPage } from "./pages/AuditPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { StatusPage } from "./pages/StatusPage";
 
 const menu = [
   { path: "global-settings", title: "Global Settings", icon: "settings" },
@@ -28,6 +38,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       <Route
         path="/app"
@@ -39,21 +50,35 @@ export function App() {
       >
         <Route index element={<Navigate to={menu[0].path} replace />} />
 
-        {/* Job Seeker has a real page instead of placeholder */}
+        {/* Real pages connected to backend APIs */}
         <Route path="job-seekers" element={<JobSeekerProfilePage />} />
-
-        {/* Companies has a real page instead of placeholder */}
         <Route path="companies" element={<CompaniesPage />} />
-
-        {/* Email Templates has a real page instead of placeholder */}
         <Route path="email-templates" element={<EmailTemplatesPage />} />
+        <Route path="roles" element={<RolesPage />} />
+        <Route path="job-categories" element={<JobCategoriesPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="jobs" element={<JobsPage />} />
+        <Route path="jobs/:jobId/applications" element={<JobApplicationsPage />} />
+        <Route path="permission" element={<PermissionsPage />} />
+        <Route path="status" element={<StatusPage />} />
+        <Route path="audit" element={<AuditPage />} />
+        <Route path="reports" element={<ReportsPage />} />
 
+        {/* Remaining placeholders: global-settings */}
         {menu
           .filter(
             (m) =>
               m.path !== "job-seekers" &&
               m.path !== "companies" &&
-              m.path !== "email-templates",
+              m.path !== "email-templates" &&
+              m.path !== "roles" &&
+              m.path !== "job-categories" &&
+              m.path !== "users" &&
+              m.path !== "jobs" &&
+              m.path !== "permission" &&
+              m.path !== "status" &&
+              m.path !== "audit" &&
+              m.path !== "reports",
           )
           .map((m) => (
             <Route

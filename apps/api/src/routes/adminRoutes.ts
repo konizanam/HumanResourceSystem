@@ -1026,7 +1026,7 @@ router.get('/statistics',
           COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today,
           COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_this_week,
           COALESCE(SUM(views), 0) as total_views,
-          COALESCE(SUM(applications_count), 0) as total_applications
+          (SELECT COUNT(*) FROM applications) as total_applications
          FROM jobs`
       );
 
@@ -1046,10 +1046,9 @@ router.get('/statistics',
       // Activity statistics
       const activityStats = await dbQuery(
         `SELECT 
-          COUNT(*) as api_requests_today,
+          0 as api_requests_today,
           COUNT(DISTINCT user_id) as active_sessions
-         FROM user_sessions
-         WHERE created_at >= CURRENT_DATE`
+         FROM user_sessions`
       );
 
       // Date range specific statistics
