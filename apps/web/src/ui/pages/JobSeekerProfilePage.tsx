@@ -6,6 +6,7 @@ import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
   getFullProfile,
   getIpLocation,
+  me,
   updateProfile,
   updatePersonalDetails,
   saveAddress,
@@ -203,6 +204,18 @@ export function JobSeekerProfilePage() {
     try {
       setLoading(true);
       const profile = await getFullProfile(accessToken);
+      if (!profile.personalDetails) {
+        try {
+          const session = await me(accessToken);
+          const user = (session as any)?.user ?? {};
+          profile.personalDetails = {
+            first_name: user.first_name ?? "",
+            last_name: user.last_name ?? "",
+          };
+        } catch {
+          // Best-effort fallback only.
+        }
+      }
       setData(profile);
     } catch (err) {
       const status = (err as any)?.status;
