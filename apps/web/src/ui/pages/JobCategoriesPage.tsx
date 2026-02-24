@@ -11,6 +11,7 @@ import {
   deleteJobSubcategory,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
 
 /* ------------------------------------------------------------------ */
 /*  Reusable helpers                                                   */
@@ -107,6 +108,8 @@ function ConfirmModal({
 
 export function JobCategoriesPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageCompany = hasPermission("MANAGE_COMPANY");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -162,7 +165,7 @@ export function JobCategoriesPage() {
 
   /* -- Add category -- */
   async function onAddCategory() {
-    if (!accessToken) return;
+    if (!accessToken || !canManageCompany) return;
     const errs: Record<string, string> = {};
     if (!addName.trim()) errs.name = "Category name is required";
     setAddFieldErrors(errs);
@@ -191,7 +194,7 @@ export function JobCategoriesPage() {
   }
 
   async function onSaveEditCat() {
-    if (!accessToken || !editCatId) return;
+    if (!accessToken || !editCatId || !canManageCompany) return;
     try {
       clearMessages();
       setSaving(true);
@@ -208,7 +211,7 @@ export function JobCategoriesPage() {
 
   /* -- Delete category -- */
   async function onConfirmDeleteCat() {
-    if (!accessToken || !confirmDeleteCat) return;
+    if (!accessToken || !confirmDeleteCat || !canManageCompany) return;
     try {
       clearMessages();
       setSaving(true);
@@ -226,7 +229,7 @@ export function JobCategoriesPage() {
 
   /* -- Add subcategory -- */
   async function onAddSubcategory(categoryId: string) {
-    if (!accessToken) return;
+    if (!accessToken || !canManageCompany) return;
     if (!addSubName.trim()) return;
     try {
       clearMessages();
@@ -257,7 +260,7 @@ export function JobCategoriesPage() {
   }
 
   async function onSaveEditSub(categoryId: string) {
-    if (!accessToken || !editSubId) return;
+    if (!accessToken || !editSubId || !canManageCompany) return;
     try {
       clearMessages();
       setSaving(true);
@@ -280,7 +283,7 @@ export function JobCategoriesPage() {
 
   /* -- Delete subcategory -- */
   async function onConfirmDeleteSub() {
-    if (!accessToken || !confirmDeleteSub) return;
+    if (!accessToken || !confirmDeleteSub || !canManageCompany) return;
     try {
       clearMessages();
       setSaving(true);
@@ -314,14 +317,16 @@ export function JobCategoriesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Job Categories</h1>
-        <button
-          type="button"
-          className="btn btnGhost btnSm stepperSaveBtn"
-          onClick={() => { clearMessages(); setExpandedCatId(null); setAddOpen((v) => !v); }}
-          disabled={saving}
-        >
-          {addOpen ? "Cancel" : "Add Category"}
-        </button>
+        {canManageCompany && (
+          <button
+            type="button"
+            className="btn btnGhost btnSm stepperSaveBtn"
+            onClick={() => { clearMessages(); setExpandedCatId(null); setAddOpen((v) => !v); }}
+            disabled={saving}
+          >
+            {addOpen ? "Cancel" : "Add Category"}
+          </button>
+        )}
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -339,7 +344,7 @@ export function JobCategoriesPage() {
       </div>
 
       {/* Add category panel */}
-      {addOpen && (
+      {addOpen && canManageCompany && (
         <div className="dropPanel" role="region" aria-label="Add category">
           <div className="editForm">
             <h2 className="editFormTitle">Add Category</h2>
@@ -397,6 +402,7 @@ export function JobCategoriesPage() {
                     }}
                     onEdit={() => startEditCat(cat)}
                     onDelete={() => { clearMessages(); setConfirmDeleteCat(cat.id); }}
+                    canManageCompany={canManageCompany}
                   >
                     {/* Inline edit for category name */}
                     {isEditing && (
@@ -431,18 +437,20 @@ export function JobCategoriesPage() {
                             <div className="editForm">
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                                 <h2 className="editFormTitle" style={{ margin: 0 }}>Subcategories — {cat.name}</h2>
-                                <button
-                                  type="button"
-                                  className="btn btnGhost btnSm stepperSaveBtn"
-                                  onClick={() => { setAddSubOpen(addSubOpen === cat.id ? null : cat.id); setAddSubName(""); }}
-                                  disabled={saving}
-                                >
-                                  {addSubOpen === cat.id ? "Cancel" : "Add Subcategory"}
-                                </button>
+                                {canManageCompany && (
+                                  <button
+                                    type="button"
+                                    className="btn btnGhost btnSm stepperSaveBtn"
+                                    onClick={() => { setAddSubOpen(addSubOpen === cat.id ? null : cat.id); setAddSubName(""); }}
+                                    disabled={saving}
+                                  >
+                                    {addSubOpen === cat.id ? "Cancel" : "Add Subcategory"}
+                                  </button>
+                                )}
                               </div>
 
                               {/* Add subcategory form */}
-                              {addSubOpen === cat.id && (
+                              {addSubOpen === cat.id && canManageCompany && (
                                 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                                   <input
                                     className="input"
@@ -496,7 +504,7 @@ export function JobCategoriesPage() {
                                             )}
                                           </td>
                                           <td className="tdRight">
-                                            {!isEditingSub && (
+                                            {!isEditingSub && canManageCompany && (
                                               <ActionMenu
                                                 disabled={saving}
                                                 label="Action"
@@ -562,6 +570,7 @@ function CategoryRow({
   onToggle,
   onEdit,
   onDelete,
+  canManageCompany,
   children,
 }: {
   category: JobCategory;
@@ -570,6 +579,7 @@ function CategoryRow({
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  canManageCompany: boolean;
   children: ReactNode;
 }) {
   return (
@@ -585,8 +595,8 @@ function CategoryRow({
             label="Action"
             items={[
               { key: "subcategories", label: expanded ? "Close" : "Subcategories", onClick: onToggle },
-              { key: "edit", label: "Edit", onClick: onEdit },
-              { key: "delete", label: "Delete", onClick: onDelete, danger: true },
+              ...(canManageCompany ? [{ key: "edit", label: "Edit", onClick: onEdit }] : []),
+              ...(canManageCompany ? [{ key: "delete", label: "Delete", onClick: onDelete, danger: true }] : []),
             ]}
           />
         </td>

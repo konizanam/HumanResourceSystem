@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { type AuditLog, listAuditLogs } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
 
 export function AuditPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canViewAudit = hasPermission("VIEW_AUDIT_LOGS");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -12,6 +15,8 @@ export function AuditPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
   const [actionFilter, setActionFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -37,6 +42,28 @@ export function AuditPage() {
     return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div><p className="pageText">Loading…</p></div>);
   }
 
+  if (!canViewAudit) {
+    return (
+      <div className="page">
+        <div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div>
+        <div className="errorBox">You do not have permission to view audit logs.</div>
+      </div>
+    );
+  }
+
+  const filteredLogs = logs.filter((log) => {
+    const at = log.created_at ? new Date(log.created_at).getTime() : 0;
+    if (fromDate) {
+      const from = new Date(`${fromDate}T00:00:00`).getTime();
+      if (at < from) return false;
+    }
+    if (toDate) {
+      const to = new Date(`${toDate}T23:59:59`).getTime();
+      if (at > to) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="page">
       <div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div>
@@ -45,6 +72,14 @@ export function AuditPage() {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ minWidth: 180 }}>
+          <label className="fieldLabel">From Date</label>
+          <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div style={{ minWidth: 180 }}>
+          <label className="fieldLabel">To Date</label>
+          <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
         <div style={{ minWidth: 160 }}>
           <label className="fieldLabel">Action</label>
           <input className="input" placeholder="Filter by action…" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} />
@@ -75,9 +110,9 @@ export function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {logs.length === 0 ? (
+            {filteredLogs.length === 0 ? (
               <tr><td colSpan={6}><div className="emptyState">No audit logs found.</div></td></tr>
-            ) : logs.map((log) => (
+            ) : filteredLogs.map((log) => (
               <tr key={log.id}>
                 <td>{log.created_at ? new Date(log.created_at).toLocaleString() : "—"}</td>
                 <td>{log.admin_name ?? log.admin_email ?? log.admin_id ?? "—"}</td>

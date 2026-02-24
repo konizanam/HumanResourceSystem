@@ -10,9 +10,9 @@ import {
   deleteRole,
   getRolePermissions,
   setRolePermissions,
-  listPermissions,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
 
 /* ------------------------------------------------------------------ */
 /*  Reusable helpers (same pattern as CompaniesPage)                   */
@@ -121,6 +121,8 @@ type PanelMode = "view" | "edit" | "permissions";
 
 export function RolesPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageUsers = hasPermission("MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -181,7 +183,7 @@ export function RolesPage() {
 
   /* -- Add role -- */
   async function onAddRole() {
-    if (!accessToken) return;
+    if (!accessToken || !canManageUsers) return;
     const errs: Record<string, string> = {};
     if (!addName.trim()) errs.name = "Role name is required";
     setAddFieldErrors(errs);
@@ -241,7 +243,7 @@ export function RolesPage() {
   }
 
   async function onSaveEdit() {
-    if (!accessToken || !openRoleId) return;
+    if (!accessToken || !openRoleId || !canManageUsers) return;
     try {
       clearMessages();
       setSaving(true);
@@ -261,7 +263,7 @@ export function RolesPage() {
   }
 
   async function onSavePermissions() {
-    if (!accessToken || !openRoleId) return;
+    if (!accessToken || !openRoleId || !canManageUsers) return;
     try {
       clearMessages();
       setSaving(true);
@@ -280,7 +282,7 @@ export function RolesPage() {
 
   /* -- Delete -- */
   async function onConfirmDelete() {
-    if (!accessToken || !confirmDeleteId) return;
+    if (!accessToken || !confirmDeleteId || !canManageUsers) return;
     try {
       clearMessages();
       setSaving(true);
@@ -321,14 +323,16 @@ export function RolesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Roles</h1>
-        <button
-          type="button"
-          className="btn btnGhost btnSm stepperSaveBtn"
-          onClick={() => { clearMessages(); setOpenRoleId(null); setAddOpen((v) => !v); }}
-          disabled={saving}
-        >
-          {addOpen ? "Cancel" : "Add Role"}
-        </button>
+        {canManageUsers && (
+          <button
+            type="button"
+            className="btn btnGhost btnSm stepperSaveBtn"
+            onClick={() => { clearMessages(); setOpenRoleId(null); setAddOpen((v) => !v); }}
+            disabled={saving}
+          >
+            {addOpen ? "Cancel" : "Add Role"}
+          </button>
+        )}
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -346,7 +350,7 @@ export function RolesPage() {
       </div>
 
       {/* Add panel */}
-      {addOpen && (
+      {addOpen && canManageUsers && (
         <div className="dropPanel" role="region" aria-label="Add role">
           <div className="editForm">
             <h2 className="editFormTitle">Add Role</h2>
@@ -406,6 +410,7 @@ export function RolesPage() {
                     role={role}
                     open={isOpen}
                     saving={saving}
+                    canManageUsers={canManageUsers}
                     onView={() => openPanel(role, "view")}
                     onEdit={() => openPanel(role, "edit")}
                     onPermissions={() => openPanel(role, "permissions")}
@@ -556,6 +561,7 @@ function RoleRow({
   role,
   open,
   saving,
+  canManageUsers,
   onView,
   onEdit,
   onPermissions,
@@ -566,6 +572,7 @@ function RoleRow({
   role: Role;
   open: boolean;
   saving: boolean;
+  canManageUsers: boolean;
   onView: () => void;
   onEdit: () => void;
   onPermissions: () => void;
@@ -588,9 +595,9 @@ function RoleRow({
             label="Action"
             items={[
               { key: "view", label: open ? "Close" : "View", onClick: open ? onClose : onView },
-              { key: "edit", label: "Edit", onClick: onEdit },
-              { key: "permissions", label: "Permissions", onClick: onPermissions },
-              { key: "delete", label: "Delete", onClick: onDelete, danger: true },
+              ...(canManageUsers ? [{ key: "edit", label: "Edit", onClick: onEdit }] : []),
+              ...(canManageUsers ? [{ key: "permissions", label: "Manage Permissions", onClick: onPermissions }] : []),
+              ...(canManageUsers ? [{ key: "delete", label: "Delete", onClick: onDelete, danger: true }] : []),
             ]}
           />
         </td>

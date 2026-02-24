@@ -12,6 +12,7 @@ import { RolesPage } from "./pages/RolesPage";
 import { JobCategoriesPage } from "./pages/JobCategoriesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { JobsPage } from "./pages/JobsPage";
+import { JobApplicationsPage } from "./pages/JobApplicationsPage";
 import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -56,6 +57,7 @@ export function App() {
         <Route path="job-categories" element={<JobCategoriesPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="jobs" element={<JobsPage />} />
+        <Route path="jobs/:jobId/applications" element={<JobApplicationsPage />} />
         <Route path="permission" element={<PermissionsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="reports" element={<ReportsPage />} />

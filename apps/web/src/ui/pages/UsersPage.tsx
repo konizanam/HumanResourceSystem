@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   type AdminUser,
   listAdminUsers,
   getAdminUser,
   blockUser,
+  getUserRoles,
+  setUserRoles,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
 
 /* ------------------------------------------------------------------ */
 /*  Reusable helpers (same pattern as CompaniesPage)                   */
@@ -125,6 +128,8 @@ function StatusBadge({ blocked, active }: { blocked?: boolean; active?: boolean 
 
 export function UsersPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageUsers = hasPermission("MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -147,6 +152,12 @@ export function UsersPage() {
   const [blockModalUser, setBlockModalUser] = useState<AdminUser | null>(null);
   const [blockAction, setBlockAction] = useState<"block" | "unblock">("block");
   const [blockReason, setBlockReason] = useState("");
+
+  // Assign roles
+  const [rolesModalUser, setRolesModalUser] = useState<AdminUser | null>(null);
+  const [allRoles, setAllRoles] = useState<{ id: string; name: string }[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+  const [rolesLoading, setRolesLoading] = useState(false);
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -193,6 +204,7 @@ export function UsersPage() {
 
   /* -- Block / Unblock -- */
   function startBlock(user: AdminUser) {
+    if (!canManageUsers) return;
     clearMessages();
     const action = user.is_blocked ? "unblock" : "block";
     setBlockAction(action);
@@ -201,7 +213,7 @@ export function UsersPage() {
   }
 
   async function onConfirmBlock() {
-    if (!accessToken || !blockModalUser) return;
+    if (!accessToken || !blockModalUser || !canManageUsers) return;
     try {
       clearMessages();
       setSaving(true);
@@ -242,6 +254,38 @@ export function UsersPage() {
       setBlockReason("");
     } catch (e) {
       setError((e as any)?.message ?? `Failed to ${blockAction} user`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function startAssignRoles(user: AdminUser) {
+    if (!accessToken || !canManageUsers) return;
+    try {
+      setRolesLoading(true);
+      setError(null);
+      const data = await getUserRoles(accessToken, user.id);
+      setAllRoles(data.all_roles ?? []);
+      setSelectedRoleIds(new Set((data.roles ?? []).map((r) => r.id)));
+      setRolesModalUser(user);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to load user roles");
+    } finally {
+      setRolesLoading(false);
+    }
+  }
+
+  async function onSaveAssignedRoles() {
+    if (!accessToken || !rolesModalUser || !canManageUsers) return;
+    try {
+      setSaving(true);
+      setError(null);
+      await setUserRoles(accessToken, rolesModalUser.id, [...selectedRoleIds]);
+      setSuccess("Roles updated successfully");
+      setRolesModalUser(null);
+      await load(pagination.page);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to assign roles");
     } finally {
       setSaving(false);
     }
@@ -340,10 +384,10 @@ export function UsersPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
-              <th>Role</th>
+              <th>Role(s)</th>
               <th>Company</th>
               <th>Status</th>
-              <th>Last Login</th>
+              <th>Joined Date</th>
               <th className="thRight">Action</th>
             </tr>
           </thead>
@@ -360,11 +404,13 @@ export function UsersPage() {
                     open={isOpen}
                     saving={saving}
                     displayName={displayName(user)}
+                    canManageUsers={canManageUsers}
                     onView={() => {
                       if (isOpen) { setOpenUserId(null); return; }
                       openDetail(user);
                     }}
                     onBlock={() => startBlock(user)}
+                    onAssignRoles={() => void startAssignRoles(user)}
                   >
                     {isOpen && (
                       <tr className="tableExpandRow">
@@ -448,14 +494,26 @@ export function UsersPage() {
                                   >
                                     Close
                                   </button>
-                                  <button
-                                    className={userDetail.is_blocked ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnDanger"}
-                                    type="button"
-                                    onClick={() => startBlock(userDetail)}
-                                    disabled={saving}
-                                  >
-                                    {userDetail.is_blocked ? "Unblock User" : "Block User"}
-                                  </button>
+                                  {canManageUsers && (
+                                    <>
+                                      <button
+                                        className={userDetail.is_blocked ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnDanger"}
+                                        type="button"
+                                        onClick={() => startBlock(userDetail)}
+                                        disabled={saving}
+                                      >
+                                        {userDetail.is_blocked ? "Unblock User" : "Block User"}
+                                      </button>
+                                      <button
+                                        className="btn btnGhost btnSm stepperSaveBtn"
+                                        type="button"
+                                        onClick={() => void startAssignRoles(userDetail)}
+                                        disabled={saving}
+                                      >
+                                        Assign Roles
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             ) : (
@@ -529,6 +587,42 @@ export function UsersPage() {
           </div>
         )}
       </ConfirmModal>
+
+      <ConfirmModal
+        open={Boolean(rolesModalUser)}
+        title="Assign Roles"
+        message={rolesModalUser ? `Assign roles for ${rolesModalUser.email}` : ""}
+        confirmLabel={saving ? "Saving..." : "Save Roles"}
+        busy={saving || rolesLoading}
+        onCancel={() => setRolesModalUser(null)}
+        onConfirm={() => void onSaveAssignedRoles()}
+      >
+        <div style={{ padding: "0 24px", marginBottom: 8 }}>
+          {rolesLoading ? (
+            <p className="pageText">Loading roles...</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+              {allRoles.map((role) => (
+                <label key={role.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedRoleIds.has(role.id)}
+                    onChange={() =>
+                      setSelectedRoleIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(role.id)) next.delete(role.id);
+                        else next.add(role.id);
+                        return next;
+                      })
+                    }
+                  />
+                  <span>{role.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </ConfirmModal>
     </div>
   );
 }
@@ -541,20 +635,24 @@ function UserRow({
   user,
   open,
   saving,
+  canManageUsers,
   displayName,
   onView,
   onBlock,
+  onAssignRoles,
   children,
 }: {
   user: AdminUser;
   open: boolean;
   saving: boolean;
+  canManageUsers: boolean;
   displayName: string;
   onView: () => void;
   onBlock: () => void;
+  onAssignRoles: () => void;
   children: ReactNode;
 }) {
-  const lastLogin = user.last_login ? new Date(user.last_login).toLocaleDateString() : "—";
+  const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString() : "—";
   const isBlocked = Boolean(user.is_blocked);
 
   return (
@@ -567,19 +665,24 @@ function UserRow({
         <td>
           <StatusBadge blocked={user.is_blocked} active={user.is_active} />
         </td>
-        <td>{lastLogin}</td>
+        <td>{joinedDate}</td>
         <td className="tdRight">
           <ActionMenu
             disabled={saving}
             label="Action"
             items={[
-              { key: "view", label: open ? "Close" : "View", onClick: onView },
-              {
-                key: isBlocked ? "unblock" : "block",
-                label: isBlocked ? "Unblock" : "Block",
-                onClick: onBlock,
-                danger: !isBlocked,
-              },
+              { key: "view", label: open ? "Close" : "View Details", onClick: onView },
+              ...(canManageUsers
+                ? [{
+                    key: isBlocked ? "unblock" : "block",
+                    label: isBlocked ? "Unblock" : "Block",
+                    onClick: onBlock,
+                    danger: !isBlocked,
+                  }]
+                : []),
+              ...(canManageUsers
+                ? [{ key: "assign-roles", label: "Assign Roles", onClick: onAssignRoles }]
+                : []),
             ]}
           />
         </td>

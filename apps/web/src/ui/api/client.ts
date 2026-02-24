@@ -499,8 +499,11 @@ export async function me(accessToken: string) {
 export async function getFullProfile(
   token: string
 ): Promise<FullProfile> {
+  if (!token) {
+    throw new Error("Missing access token");
+  }
   const res = await fetch(`${API_BASE}/profile/complete`, {
-    headers: authHeaders(token),
+    headers: { authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
     const body = await safeJson(res);
@@ -1097,6 +1100,69 @@ export type AdminJob = {
   created_at?: string;
 };
 
+export type JobApplicationStatus = string;
+
+export type JobApplication = {
+  id: string;
+  job_id: string;
+  applicant_id: string;
+  cover_letter?: string | null;
+  resume_url?: string | null;
+  status: JobApplicationStatus;
+  created_at?: string;
+  updated_at?: string;
+  applicant_name?: string | null;
+  applicant_email?: string | null;
+  applicant_phone?: string | null;
+  applicant_resume?: string | null;
+  workflow_status?: string | null;
+};
+
+export type JobListItem = {
+  id: string;
+  title: string;
+  description?: string | null;
+  company?: string | null;
+  location?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_currency?: string | null;
+  category?: string | null;
+  experience_level?: string | null;
+  employment_type?: string | null;
+  status?: string | null;
+  remote?: boolean | null;
+  requirements?: unknown[] | null;
+  responsibilities?: unknown[] | null;
+  benefits?: unknown[] | null;
+  application_deadline?: string | null;
+  employer_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  employer_name?: string | null;
+  employer_email?: string | null;
+  applications_count?: number | string | null;
+};
+
+export type JobUpsertPayload = {
+  title: string;
+  description: string;
+  company: string;
+  location: string;
+  salary_min: number;
+  salary_max: number;
+  salary_currency?: string;
+  category: string;
+  experience_level: "Entry" | "Intermediate" | "Senior" | "Lead";
+  employment_type: "Full-time" | "Part-time" | "Contract" | "Internship";
+  remote?: boolean;
+  requirements?: string[];
+  responsibilities?: string[];
+  benefits?: string[];
+  application_deadline: string;
+  status?: "active" | "closed" | "draft";
+};
+
 export async function listAdminJobs(
   token: string,
   params?: {
@@ -1147,6 +1213,156 @@ export async function featureAdminJob(
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to update job feature status");
+}
+
+export async function listJobApplicationsForJob(
+  token: string,
+  jobId: string,
+  params?: { page?: number; limit?: number },
+): Promise<{
+  job_title?: string;
+  applications: JobApplication[];
+  pagination: Pagination;
+}> {
+  const url = new URL(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/applications`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job applications");
+  return body;
+}
+
+export async function updateJobApplicationStatus(
+  token: string,
+  jobId: string,
+  applicationId: string,
+  status: string,
+): Promise<JobApplication> {
+  const res = await fetch(
+    `${API_BASE}/jobs/${encodeURIComponent(jobId)}/applications/${encodeURIComponent(applicationId)}/status`,
+    {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ status }),
+    },
+  );
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update application status");
+  return body as JobApplication;
+}
+
+export async function listJobs(
+  token: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    my_jobs?: boolean;
+  },
+): Promise<{
+  jobs: JobListItem[];
+  pagination: Pagination;
+  showing?: string;
+}> {
+  const url = new URL(`${API_BASE}/jobs`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.my_jobs !== undefined) url.searchParams.set("my_jobs", String(params.my_jobs));
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load jobs");
+  return body;
+}
+
+export async function createJob(
+  token: string,
+  payload: JobUpsertPayload,
+): Promise<JobListItem> {
+  const res = await fetch(`${API_BASE}/jobs`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create job");
+  return body as JobListItem;
+}
+
+export async function updateJob(
+  token: string,
+  id: string,
+  payload: JobUpsertPayload,
+): Promise<JobListItem> {
+  const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update job");
+  return body as JobListItem;
+}
+
+export async function deleteJob(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete job");
+}
+
+export async function getUserRoles(
+  token: string,
+  userId: string,
+): Promise<{ user_id: string; roles: { id: string; name: string }[]; all_roles: { id: string; name: string }[] }> {
+  const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/roles`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load user roles");
+  return body;
+}
+
+export async function setUserRoles(
+  token: string,
+  userId: string,
+  roleIds: string[],
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/roles`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ role_ids: roleIds }),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to assign user roles");
+}
+
+export type JobSeekerFullProfile = {
+  profile: Record<string, unknown> | null;
+  personalDetails: Record<string, unknown> | null;
+  addresses: Record<string, unknown>[];
+  education: Record<string, unknown>[];
+  experience: Record<string, unknown>[];
+  references: Record<string, unknown>[];
+};
+
+export async function getJobSeekerFullProfile(
+  token: string,
+  userId?: string,
+): Promise<JobSeekerFullProfile> {
+  const url = new URL(`${API_BASE}/job-seeker/full-profile`);
+  if (userId) url.searchParams.set("user_id", userId);
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job seeker profile");
+  return body as JobSeekerFullProfile;
 }
 
 /* ------------------------------------------------------------------ */

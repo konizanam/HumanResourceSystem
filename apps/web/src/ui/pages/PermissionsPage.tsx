@@ -6,6 +6,7 @@ import {
   deletePermission,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
 
 function ActionMenu({
   label, items, disabled,
@@ -56,6 +57,8 @@ const ACTION_OPTIONS = ["CREATE", "VIEW", "UPDATE", "DELETE", "APPROVE", "MANAGE
 
 export function PermissionsPage() {
   const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageUsers = hasPermission("MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -106,7 +109,7 @@ export function PermissionsPage() {
   function clearMessages() { setError(null); setSuccess(null); }
 
   async function onAddPermission() {
-    if (!accessToken) return;
+    if (!accessToken || !canManageUsers) return;
     const errs: Record<string, string> = {};
     if (!addName.trim()) errs.name = "Permission name is required";
     if (!addModule.trim()) errs.module_name = "Module is required";
@@ -116,7 +119,7 @@ export function PermissionsPage() {
 
     try {
       clearMessages(); setSaving(true);
-      const created = await createPermission(accessToken, {
+      await createPermission(accessToken, {
         name: addName.trim(),
         description: addDesc.trim() || undefined,
         module_name: addModule.trim(),
@@ -133,7 +136,7 @@ export function PermissionsPage() {
   }
 
   async function onConfirmDelete() {
-    if (!accessToken || !confirmDeleteId) return;
+    if (!accessToken || !confirmDeleteId || !canManageUsers) return;
     try {
       clearMessages(); setSaving(true);
       await deletePermission(accessToken, confirmDeleteId);
@@ -157,7 +160,9 @@ export function PermissionsPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Permissions ({permissions.length})</h1>
-        <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={() => { clearMessages(); setAddOpen((v) => !v); }} disabled={saving}>{addOpen ? "Cancel" : "Add Permission"}</button>
+        {canManageUsers && (
+          <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={() => { clearMessages(); setAddOpen((v) => !v); }} disabled={saving}>{addOpen ? "Cancel" : "Add Permission"}</button>
+        )}
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -168,7 +173,7 @@ export function PermissionsPage() {
       </div>
 
       {/* Add form */}
-      {addOpen && (
+      {addOpen && canManageUsers && (
         <div className="dropPanel" role="region" aria-label="Add permission">
           <div className="editForm">
             <h2 className="editFormTitle">Add Permission</h2>
@@ -230,9 +235,13 @@ export function PermissionsPage() {
                       <td>{p.description ?? "—"}</td>
                       <td><span className="chipBadge">{p.action_type}</span></td>
                       <td className="tdRight">
-                        <ActionMenu disabled={saving} label="Action" items={[
-                          { key: "delete", label: "Delete", onClick: () => { clearMessages(); setConfirmDeleteId(p.id); }, danger: true },
-                        ]} />
+                        {canManageUsers ? (
+                          <ActionMenu disabled={saving} label="Action" items={[
+                            { key: "delete", label: "Delete", onClick: () => { clearMessages(); setConfirmDeleteId(p.id); }, danger: true },
+                          ]} />
+                        ) : (
+                          <span className="readValue">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
