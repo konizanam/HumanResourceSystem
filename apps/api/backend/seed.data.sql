@@ -7,13 +7,13 @@ WITH admin_users AS (
         (
             gen_random_uuid(), 'System', 'Administrator', 
             'admin@hrs.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567890', TRUE, TRUE, NOW(), NOW()
         ),
         (
             gen_random_uuid(), 'Jane', 'Doe', 
             'jane.doe@hrs.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567891', TRUE, TRUE, NOW(), NOW()
         )
     RETURNING id
@@ -32,13 +32,13 @@ WITH hr_users AS (
         (
             gen_random_uuid(), 'Sarah', 'Johnson', 
             'sarah.johnson@techcorp.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567892', 'TechCorp Solutions', 'Technology', TRUE, TRUE, NOW()
         ),
         (
             gen_random_uuid(), 'Michael', 'Chen', 
             'michael.chen@healthcare.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567893', 'Healthcare Plus', 'Healthcare', TRUE, TRUE, NOW()
         )
     RETURNING id
@@ -57,13 +57,13 @@ WITH recruiter_users AS (
         (
             gen_random_uuid(), 'David', 'Brown', 
             'david.brown@techcorp.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567895', 'TechCorp Solutions', 'Technology', TRUE, TRUE, NOW()
         ),
         (
             gen_random_uuid(), 'Lisa', 'Garcia', 
             'lisa.garcia@healthcare.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567896', 'Healthcare Plus', 'Healthcare', TRUE, TRUE, NOW()
         )
     RETURNING id
@@ -82,13 +82,13 @@ WITH approver_users AS (
         (
             gen_random_uuid(), 'Robert', 'Taylor', 
             'robert.taylor@techcorp.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567899', 'TechCorp Solutions', TRUE, TRUE, NOW()
         ),
         (
             gen_random_uuid(), 'Jennifer', 'Lee', 
             'jennifer.lee@healthcare.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567900', 'Healthcare Plus', TRUE, TRUE, NOW()
         )
     RETURNING id
@@ -108,7 +108,7 @@ WITH job_seeker_users AS (
         (
             gen_random_uuid(), 'Alice', 'Johnson', 
             'alice.johnson@email.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567901', TRUE, TRUE,
             'Full-stack developer with 5 years experience in React and Node.js',
             'Software Development', 5, 'https://storage.hrs.com/resumes/alice_johnson.pdf', NOW()
@@ -116,7 +116,7 @@ WITH job_seeker_users AS (
         (
             gen_random_uuid(), 'Bob', 'Smith', 
             'bob.smith@email.com', 
-            '$2b$10$SAi3XebpbdDEB2BTSV2oxOpIgUTjntQtiXYB4BnYomN4tXUV85C.m',
+            '$2b$10$Im1QQmhFd7mov9ADFFzkTu20Z/w2sJJorHorhvgF9cyDlAaU.6ZpG',
             '+1234567902', TRUE, TRUE,
             'Data scientist specializing in machine learning and AI',
             'Data Science', 3, 'https://storage.hrs.com/resumes/bob_smith.pdf', NOW()
