@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
+import { getUnreadNotificationCount } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
@@ -168,9 +169,10 @@ export function AppLayout({
   menuItems: readonly { path: string; title: string; icon: IconName }[];
 }) {
   const { accessToken, logout, userName, userEmail } = useAuth();
-  const { hasPermission } = usePermissions();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const displayName = useMemo(() => {
     const name = (userName ?? "").trim();
@@ -206,47 +208,62 @@ export function AppLayout({
     (collapsed ? "sidebar sidebarCollapsed" : "sidebar") +
     (mobileOpen ? " sidebarMobileOpen" : "");
 
-  const canManageUsers = hasPermission("MANAGE_USERS");
-  const canManageCompany = hasPermission("MANAGE_COMPANY");
-  const canUseJobs = hasPermission("CREATE_JOB", "VIEW_JOB", "MANAGE_USERS");
-  const canViewAudit = hasPermission("VIEW_AUDIT_LOGS");
-  const showJobSeekerProfile = !canManageUsers && !canManageCompany;
+  const isAdminView = hasPermission("MANAGE_USERS");
+  const isEmployerView = hasPermission("CREATE_JOB") && !isAdminView;
+  const isJobSeekerView = !isAdminView && !hasPermission("CREATE_JOB");
 
   const visibleMenuItems = useMemo(
-    () =>
-      menuItems.filter((item) => {
-        switch (item.path) {
-          case "users":
-          case "roles":
-          case "permission":
-            return canManageUsers;
-          case "companies":
-            return canManageCompany;
-          case "jobs":
-            return canUseJobs || showJobSeekerProfile;
-          case "audit":
-          case "reports":
-            return canViewAudit;
-          case "job-seekers":
-            return showJobSeekerProfile;
-          case "global-settings":
-          case "status":
-          case "job-categories":
-          case "email-templates":
-            return canManageUsers;
-          default:
-            return false;
-        }
-      }),
+    () => {
+      let allowedPaths: Set<string>;
+
+      if (isAdminView) {
+        allowedPaths = new Set(menuItems.map((item) => item.path));
+      } else if (isEmployerView) {
+        allowedPaths = new Set(["jobs", "companies", "applications", "notifications"]);
+      } else if (isJobSeekerView) {
+        allowedPaths = new Set(["job-seekers", "jobs", "notifications"]);
+      } else {
+        allowedPaths = new Set(["notifications"]);
+      }
+
+      return menuItems.filter((item) => allowedPaths.has(item.path));
+    },
     [
-      canManageCompany,
-      canManageUsers,
-      canUseJobs,
-      canViewAudit,
+      isAdminView,
+      isEmployerView,
+      isJobSeekerView,
       menuItems,
-      showJobSeekerProfile,
     ],
   );
+
+  useEffect(() => {
+    if (!accessToken) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUnreadCount = async () => {
+      try {
+        const count = await getUnreadNotificationCount(accessToken);
+        if (!cancelled) {
+          setUnreadNotificationCount(Number(count.total ?? 0));
+        }
+      } catch {
+        if (!cancelled) {
+          setUnreadNotificationCount(0);
+        }
+      }
+    };
+
+    void loadUnreadCount();
+    const timer = window.setInterval(() => void loadUnreadCount(), 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [accessToken]);
 
   return (
     <div className={collapsed ? "appShell appShellCollapsed" : "appShell"}>
@@ -299,6 +316,14 @@ export function AppLayout({
                 <Icon name={item.icon} />
               </span>
               <span className="navItemLabel">{item.title}</span>
+              {item.path === "notifications" && unreadNotificationCount > 0 ? (
+                <span
+                  className="chipBadge"
+                  style={{ marginLeft: "auto", minWidth: 24, textAlign: "center" }}
+                >
+                  {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                </span>
+              ) : null}
             </NavLink>
           ))}
         </nav>
@@ -330,7 +355,7 @@ export function AppLayout({
       </aside>
 
       <main className="content">
-        <Outlet />
+        {permissionsLoading ? <div className="pageText">Loading permissions...</div> : <Outlet />}
       </main>
     </div>
   );

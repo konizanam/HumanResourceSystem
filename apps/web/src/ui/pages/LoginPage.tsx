@@ -1,12 +1,26 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { forgotPassword, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+import { forgotPassword, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+
+function hasPermission(permissions: string[], target: string) {
+  const normalized = target.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return permissions.some((permission) =>
+    permission.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") === normalized,
+  );
+}
+
+function resolveDashboardFromPermissions(permissions: string[]) {
+  if (hasPermission(permissions, "MANAGE_USERS")) return "/app/global-settings";
+  if (hasPermission(permissions, "CREATE_JOB") && !hasPermission(permissions, "MANAGE_USERS")) {
+    return "/app/jobs";
+  }
+  return "/app/job-seekers";
+}
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin@1234");
   const [code, setCode] = useState("");
@@ -20,19 +34,32 @@ export function LoginPage() {
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
 
-  const redirectTo = useMemo(() => {
-    const state = location.state as { from?: string } | null;
-    if (!state?.from || !state.from.startsWith("/")) {
-      return "/app";
-    }
-    return state.from;
-  }, [location.state]);
-
   useEffect(() => {
-    if (accessToken) {
-      navigate(redirectTo, { replace: true });
-    }
-  }, [accessToken, navigate, redirectTo]);
+    if (!accessToken) return;
+    let cancelled = false;
+
+    const resolveExistingSession = async () => {
+      try {
+        const payload = await me(accessToken);
+        const permissions = Array.isArray((payload as any)?.user?.permissions)
+          ? (payload as any).user.permissions.map((p: unknown) => String(p))
+          : [];
+        if (!cancelled) {
+          navigate(resolveDashboardFromPermissions(permissions), { replace: true });
+        }
+      } catch {
+        if (!cancelled) {
+          navigate("/app", { replace: true });
+        }
+      }
+    };
+
+    void resolveExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, navigate]);
 
   useEffect(() => {
     if (!twoFactorExpiresAt || step !== "twoFactor") {
@@ -75,7 +102,11 @@ export function LoginPage() {
         }
 
         setSession(result.accessToken, result.user.email, result.user.name);
-        navigate(redirectTo, { replace: true });
+        const payload = await me(result.accessToken);
+        const permissions = Array.isArray((payload as any)?.user?.permissions)
+          ? (payload as any).user.permissions.map((p: unknown) => String(p))
+          : [];
+        navigate(resolveDashboardFromPermissions(permissions), { replace: true });
         return;
       }
 
@@ -101,7 +132,11 @@ export function LoginPage() {
 
       const result = await verifyTwoFactor(pending.challengeId, normalized);
       setSession(result.accessToken, result.user.email, result.user.name);
-      navigate(redirectTo, { replace: true });
+      const payload = await me(result.accessToken);
+      const permissions = Array.isArray((payload as any)?.user?.permissions)
+        ? (payload as any).user.permissions.map((p: unknown) => String(p))
+        : [];
+      navigate(resolveDashboardFromPermissions(permissions), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

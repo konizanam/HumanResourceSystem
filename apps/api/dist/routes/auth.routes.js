@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authRouter = void 0;
 const express_1 = require("express");
-const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const uuid_1 = require("uuid");
 const zod_1 = require("zod");
@@ -138,7 +138,7 @@ exports.authRouter.post("/register", async (req, res, next) => {
                 .status(409)
                 .json({ error: { message: "Email is already registered" } });
         }
-        const passwordHash = await bcryptjs_1.default.hash(data.password, 12);
+        const passwordHash = await bcrypt_1.default.hash(data.password, 12);
         await client.query("BEGIN");
         // Insert user
         const { rows: userRows } = await client.query(`INSERT INTO users (first_name, last_name, email, password_hash, is_active)
@@ -241,7 +241,7 @@ exports.authRouter.post("/login", async (req, res, next) => {
                 .status(401)
                 .json({ error: { message: "Invalid credentials" } });
         }
-        const ok = await bcryptjs_1.default.compare(password, user.password_hash);
+        const ok = await bcrypt_1.default.compare(password, user.password_hash);
         if (!ok) {
             return res
                 .status(401)
@@ -288,7 +288,7 @@ exports.authRouter.post("/2fa/challenge", async (req, res, next) => {
                 .status(401)
                 .json({ error: { message: "Invalid credentials" } });
         }
-        const ok = await bcryptjs_1.default.compare(password, user.password_hash);
+        const ok = await bcrypt_1.default.compare(password, user.password_hash);
         if (!ok) {
             return res
                 .status(401)
@@ -429,7 +429,7 @@ exports.authRouter.post("/reset-password", async (req, res, next) => {
                 .status(400)
                 .json({ error: { message: "Invalid or expired reset token" } });
         }
-        const passwordHash = await bcryptjs_1.default.hash(password, 12);
+        const passwordHash = await bcrypt_1.default.hash(password, 12);
         await (0, db_1.query)(`UPDATE users
        SET password_hash = $1,
            password_reset_token = NULL,

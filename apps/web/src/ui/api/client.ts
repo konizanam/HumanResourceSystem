@@ -113,6 +113,8 @@ export type Company = {
   status?: string | null;
 };
 
+export type CompanyApprovalMode = "auto_approved" | "pending";
+
 export type UserSearchResult = {
   id: string;
   name: string;
@@ -123,6 +125,7 @@ export type UserSearchResult = {
 
 export type EmailTemplateKey =
   | "registration_activation"
+  | "application_received"
   | "application_success"
   | "interview_invitation"
   | "application_rejected"
@@ -265,6 +268,42 @@ export async function reactivateCompany(token: string, id: string): Promise<Comp
   return envelope.data;
 }
 
+export async function getCompanyApprovalMode(token: string): Promise<CompanyApprovalMode> {
+  const res = await fetch(`${API_BASE}/companies/approval-mode`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load company approval mode");
+  const mode = (body as any)?.data?.company_approval_mode;
+  return mode === "pending" ? "pending" : "auto_approved";
+}
+
+export async function updateCompanyApprovalMode(
+  token: string,
+  company_approval_mode: CompanyApprovalMode,
+): Promise<CompanyApprovalMode> {
+  const res = await fetch(`${API_BASE}/companies/approval-mode`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ company_approval_mode }),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update company approval mode");
+  const mode = (body as any)?.data?.company_approval_mode;
+  return mode === "pending" ? "pending" : "auto_approved";
+}
+
+export async function approveCompany(token: string, id: string): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}/approve`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to approve company");
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
 export async function addUserToCompany(
   token: string,
   companyId: string,
@@ -365,6 +404,130 @@ export async function updateEmailTemplate(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Notifications                                                      */
+/* ------------------------------------------------------------------ */
+
+export type NotificationItem = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+  priority?: "low" | "normal" | "high" | "urgent";
+};
+
+export type NotificationListResponse = {
+  notifications: NotificationItem[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+  unread_count?: { total: number; by_priority?: Record<string, number> };
+};
+
+export type NotificationUnreadCount = {
+  total: number;
+  by_priority?: Record<string, number>;
+};
+
+export type NotificationPreferences = {
+  email_notifications: boolean;
+  job_alerts: boolean;
+  application_updates: boolean;
+  in_app_notifications?: boolean;
+  push_notifications?: boolean;
+  message_notifications?: boolean;
+  marketing_emails?: boolean;
+};
+
+export async function listNotifications(
+  token: string,
+  params?: { page?: number; limit?: number; is_read?: boolean },
+): Promise<NotificationListResponse> {
+  const url = new URL(`${API_BASE}/notifications`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.is_read !== undefined) {
+    url.searchParams.set("is_read", String(params.is_read));
+  }
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load notifications");
+
+  const data = (body ?? {}) as NotificationListResponse;
+  return {
+    notifications: Array.isArray(data.notifications) ? data.notifications : [],
+    pagination: data.pagination ?? { page: 1, limit: 20, total: 0, pages: 1 },
+    unread_count: data.unread_count,
+  };
+}
+
+export async function getUnreadNotificationCount(token: string): Promise<NotificationUnreadCount> {
+  const res = await fetch(`${API_BASE}/notifications/unread-count`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load unread notification count");
+  return {
+    total: Number((body as any)?.total ?? 0),
+    by_priority: (body as any)?.by_priority ?? {},
+  };
+}
+
+export async function markNotificationAsRead(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
+    method: "PUT",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to mark notification as read");
+}
+
+export async function markAllNotificationsAsRead(token: string): Promise<number> {
+  const res = await fetch(`${API_BASE}/notifications/read-all`, {
+    method: "PUT",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to mark all notifications as read");
+  return Number((body as any)?.count ?? 0);
+}
+
+export async function deleteNotification(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete notification");
+}
+
+export async function getNotificationPreferences(token: string): Promise<NotificationPreferences> {
+  const res = await fetch(`${API_BASE}/notifications/preferences`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load notification preferences");
+  return body as NotificationPreferences;
+}
+
+export async function updateNotificationPreferences(
+  token: string,
+  payload: Partial<NotificationPreferences>,
+): Promise<NotificationPreferences> {
+  const res = await fetch(`${API_BASE}/notifications/preferences`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update notification preferences");
+  return body as NotificationPreferences;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Auth                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -386,11 +549,19 @@ export async function login(
   email: string,
   password: string
 ): Promise<LoginResult> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Cannot reach API server at ${API_URL}. Check that the backend is running.`);
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const body = await safeJson(res);
@@ -1125,6 +1296,11 @@ export type JobApplication = {
   workflow_status?: string | null;
 };
 
+export type MyApplicationsResponse = {
+  applications: JobApplication[];
+  pagination: Pagination;
+};
+
 export type JobListItem = {
   id: string;
   company_id?: string | null;
@@ -1260,6 +1436,35 @@ export async function updateJobApplicationStatus(
   );
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to update application status");
+  return body as JobApplication;
+}
+
+export async function listMyApplications(
+  token: string,
+  params?: { page?: number; limit?: number; status?: string; sort?: "newest" | "oldest" },
+): Promise<MyApplicationsResponse> {
+  const url = new URL(`${API_BASE}/applications`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.sort) url.searchParams.set("sort", params.sort);
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load applications");
+  return body as MyApplicationsResponse;
+}
+
+export async function applyToJob(
+  token: string,
+  payload: { job_id: string; cover_letter?: string; resume_url?: string },
+): Promise<JobApplication> {
+  const res = await fetch(`${API_BASE}/applications`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to apply for this job");
   return body as JobApplication;
 }
 

@@ -1,5 +1,14 @@
 # React + TypeScript + Vite
 
+This frontend expects the API server to be reachable from the browser.
+
+Set the API host in your shell before running Vite:
+
+- PowerShell: `$env:VITE_API_URL="http://localhost:4000"`
+- CMD: `set VITE_API_URL=http://localhost:4000`
+
+If this variable is not set, the app defaults to `http://localhost:4000`.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

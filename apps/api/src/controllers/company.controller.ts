@@ -1,7 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { CompanyService } from '../services/company.service';
-import { ForbiddenError } from '../utils/errors';
+import { BadRequestError, ForbiddenError } from '../utils/errors';
 import { getStringParam } from '../utils/params';
+import { getCompanyApprovalMode, setCompanyApprovalMode } from '../services/systemSettings.service';
+
+function hasPermission(req: Request, permission: string): boolean {
+  const permissions = Array.isArray(req.user?.permissions) ? req.user?.permissions : [];
+  return permissions.includes(permission);
+}
+
+function hasAnyPermission(req: Request, candidates: string[]): boolean {
+  return candidates.some((permission) => hasPermission(req, permission));
+}
 
 export class CompanyController {
   private companyService: CompanyService;
@@ -19,6 +29,9 @@ export class CompanyController {
     this.getCompanyUsers = this.getCompanyUsers.bind(this);
     this.addUserToCompany = this.addUserToCompany.bind(this);
     this.removeUserFromCompany = this.removeUserFromCompany.bind(this);
+    this.approveCompany = this.approveCompany.bind(this);
+    this.getApprovalMode = this.getApprovalMode.bind(this);
+    this.updateApprovalMode = this.updateApprovalMode.bind(this);
   }
 
   // Get all companies
@@ -57,10 +70,8 @@ export class CompanyController {
   async createCompany(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Check if user has permission to create company (ADMIN or HR_MANAGER)
-      if (!userRoles.includes('ADMIN') && !userRoles.includes('HR_MANAGER')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY', 'CREATE_JOB'])) {
         throw new ForbiddenError('You do not have permission to create companies');
       }
 
@@ -80,10 +91,8 @@ export class CompanyController {
     try {
       const id = getStringParam(req, 'id');
       const userId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Check if user has edit permission
-      if (!userRoles.includes('ADMIN') && !userRoles.includes('HR_MANAGER')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY'])) {
         throw new ForbiddenError('You do not have permission to edit companies');
       }
 
@@ -103,10 +112,8 @@ export class CompanyController {
     try {
       const id = getStringParam(req, 'id');
       const userId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Only ADMIN can deactivate companies
-      if (!userRoles.includes('ADMIN')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY'])) {
         throw new ForbiddenError('You do not have permission to deactivate companies');
       }
 
@@ -127,10 +134,8 @@ export class CompanyController {
     try {
       const id = getStringParam(req, 'id');
       const userId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Only ADMIN can reactivate companies
-      if (!userRoles.includes('ADMIN')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY'])) {
         throw new ForbiddenError('You do not have permission to reactivate companies');
       }
 
@@ -169,10 +174,8 @@ export class CompanyController {
       const id = getStringParam(req, 'id');
       const { userId: targetUserId } = req.body;
       const currentUserId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Check if user has permission to manage company users
-      if (!userRoles.includes('ADMIN') && !userRoles.includes('HR_MANAGER')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY_USERS'])) {
         throw new ForbiddenError('You do not have permission to manage company users');
       }
 
@@ -193,10 +196,8 @@ export class CompanyController {
       const id = getStringParam(req, 'id');
       const targetUserId = getStringParam(req, 'userId');
       const currentUserId = req.user!.userId;
-      const userRoles = req.user!.roles || [];
-      
-      // Check if user has permission to manage company users
-      if (!userRoles.includes('ADMIN') && !userRoles.includes('HR_MANAGER')) {
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY_USERS'])) {
         throw new ForbiddenError('You do not have permission to manage company users');
       }
 
@@ -205,6 +206,63 @@ export class CompanyController {
       res.json({
         status: 'success',
         message: 'User removed from company successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async approveCompany(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = getStringParam(req, 'id');
+      const userId = req.user!.userId;
+
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'APPROVE_COMPANY'])) {
+        throw new ForbiddenError('You do not have permission to approve companies');
+      }
+
+      const company = await this.companyService.approveCompany(id, userId);
+      res.json({
+        status: 'success',
+        data: company,
+        message: 'Company approved successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getApprovalMode(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!hasPermission(req, 'MANAGE_USERS')) {
+        throw new ForbiddenError('You do not have permission to view company approval settings');
+      }
+
+      const mode = await getCompanyApprovalMode();
+      res.json({
+        status: 'success',
+        data: { company_approval_mode: mode },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateApprovalMode(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!hasPermission(req, 'MANAGE_USERS')) {
+        throw new ForbiddenError('You do not have permission to update company approval settings');
+      }
+
+      const modeRaw = String(req.body?.company_approval_mode ?? '').trim();
+      if (modeRaw !== 'auto_approved' && modeRaw !== 'pending') {
+        throw new BadRequestError('Invalid company approval mode');
+      }
+
+      const mode = await setCompanyApprovalMode(modeRaw);
+      res.json({
+        status: 'success',
+        data: { company_approval_mode: mode },
       });
     } catch (error) {
       next(error);

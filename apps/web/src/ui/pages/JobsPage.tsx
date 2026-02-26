@@ -1,12 +1,15 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  applyToJob,
   type Company,
   createJob,
   deleteJob,
+  getJobSeekerFullProfile,
   listCompanies,
   listJobApplicationsForJob,
   listJobs,
+  listMyApplications,
   type JobListItem,
   type JobUpsertPayload,
   updateJob,
@@ -179,14 +182,14 @@ export function JobsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const canCreate = hasPermission("CREATE_JOB", "MANAGE_USERS");
-  const canEdit = hasPermission("EDIT_JOB");
-  const canDelete = hasPermission("DELETE_JOB");
+  const canManageAllJobs = hasPermission("MANAGE_USERS");
+  const canCreate = hasPermission("CREATE_JOB");
   const canViewApplications = hasPermission("VIEW_APPLICATIONS");
   const canManageCompany = hasPermission("MANAGE_COMPANY");
-  const canViewJob = hasPermission("VIEW_JOB", "MANAGE_USERS");
+  const canViewJob = hasPermission("VIEW_JOB");
+  const canApplyJob = hasPermission("APPLY_JOB") && !canCreate && !canManageAllJobs;
   const shouldRestrictToAssignedCompanies =
-    !canManageCompany && !canViewJob && (canCreate || canEdit || canDelete || canViewApplications);
+    !canManageCompany && !canViewJob && (canCreate || canViewApplications);
 
   const companyIdFromUrl = searchParams.get("company_id")?.trim() || "";
 
@@ -201,14 +204,41 @@ export function JobsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [applicationCounts, setApplicationCounts] = useState<Record<string, number>>({});
+  const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
+  const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
 
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editJobId, setEditJobId] = useState<string | null>(null);
   const [form, setForm] = useState<JobFormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const currentUserId = useMemo(() => {
+    if (!accessToken) return "";
+    try {
+      const [, payload] = accessToken.split(".");
+      if (!payload) return "";
+      const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+      const json = atob(padded);
+      const parsed = JSON.parse(json) as { sub?: unknown };
+      return typeof parsed.sub === "string" ? parsed.sub : "";
+    } catch {
+      return "";
+    }
+  }, [accessToken]);
+
+  function isOwnJob(job: JobListItem) {
+    const ownerFromCreatedBy = String((job as any).created_by ?? "");
+    const ownerFromEmployerId = String(job.employer_id ?? "");
+    return Boolean(currentUserId) && (
+      ownerFromCreatedBy === currentUserId ||
+      ownerFromEmployerId === currentUserId
+    );
+  }
 
   useEffect(() => {
     if (!accessToken) return;
@@ -256,17 +286,36 @@ export function JobsPage() {
         pages: Math.max(1, Math.ceil(total / Number(data.pagination?.limit ?? pagination.limit))),
       });
 
-      const countsEntries = await Promise.all(
-        list.map(async (job) => {
-          try {
-            const stats = await listJobApplicationsForJob(accessToken, job.id, { page: 1, limit: 1 });
-            return [job.id, Number(stats.pagination?.total ?? 0)] as const;
-          } catch {
-            return [job.id, Number(job.applications_count ?? 0)] as const;
-          }
-        }),
-      );
-      setApplicationCounts(Object.fromEntries(countsEntries));
+      if (canViewApplications) {
+        const countsEntries = await Promise.all(
+          list.map(async (job) => {
+            try {
+              const stats = await listJobApplicationsForJob(accessToken, job.id, { page: 1, limit: 1 });
+              return [job.id, Number(stats.pagination?.total ?? 0)] as const;
+            } catch {
+              return [job.id, Number(job.applications_count ?? 0)] as const;
+            }
+          }),
+        );
+        setApplicationCounts(Object.fromEntries(countsEntries));
+      } else {
+        setApplicationCounts({});
+      }
+
+      if (canApplyJob) {
+        try {
+          // Backend caps limit at 100; higher values return 400.
+          const applications = await listMyApplications(accessToken, { page: 1, limit: 100 });
+          const appliedIds = Array.from(
+            new Set((applications.applications ?? []).map((item) => String(item.job_id)).filter(Boolean)),
+          );
+          setAppliedJobIds(appliedIds);
+        } catch {
+          setAppliedJobIds([]);
+        }
+      } else {
+        setAppliedJobIds([]);
+      }
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load jobs");
     } finally {
@@ -279,6 +328,8 @@ export function JobsPage() {
     pagination.limit,
     shouldRestrictToAssignedCompanies,
     statusFilter,
+    canViewApplications,
+    canApplyJob,
   ]);
 
   useEffect(() => {
@@ -332,6 +383,7 @@ export function JobsPage() {
 
   async function onSaveModal() {
     if (!accessToken || !modalMode) return;
+    if (!canCreate) return;
     if (!validateForm()) return;
     try {
       setSaving(true);
@@ -365,6 +417,90 @@ export function JobsPage() {
       await load(pagination.page);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to delete job");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function getApplyProfileCompleteness(profile: Awaited<ReturnType<typeof getJobSeekerFullProfile>>) {
+    const profileObj = (profile ?? {}) as Record<string, unknown>;
+    const details = (
+      profileObj.personalDetails ??
+      profileObj.personal_details ??
+      null
+    ) as Record<string, unknown> | null;
+
+    const firstName = String(
+      details?.first_name ?? details?.firstName ?? "",
+    ).trim();
+    const lastName = String(
+      details?.last_name ?? details?.lastName ?? "",
+    ).trim();
+
+    const education = Array.isArray(profileObj.education)
+      ? profileObj.education
+      : Array.isArray(profileObj.educations)
+        ? profileObj.educations
+        : [];
+
+    const reasons: string[] = [];
+    if (!details) reasons.push("missing personal details object");
+    if (!firstName) reasons.push("missing first name (first_name or firstName)");
+    if (!lastName) reasons.push("missing last name (last_name or lastName)");
+    if (!Array.isArray(education) || education.length < 1) {
+      reasons.push("education array missing or empty");
+    }
+
+    return {
+      complete: reasons.length === 0,
+      reasons,
+      debug: {
+        rootKeys: Object.keys(profileObj),
+        detailsKeys: details ? Object.keys(details) : [],
+        educationCount: Array.isArray(education) ? education.length : 0,
+        firstName,
+        lastName,
+      },
+    };
+  }
+
+  async function onApplyClick(job: JobListItem) {
+    if (!accessToken || !canApplyJob) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const profile = await getJobSeekerFullProfile(accessToken);
+      console.log("[JobsPage] /job-seeker/full-profile response:", profile);
+      const completeness = getApplyProfileCompleteness(profile);
+      if (!completeness.complete) {
+        console.log(
+          "[JobsPage] Profile marked incomplete for apply:",
+          completeness.reasons,
+          completeness.debug,
+        );
+        setProfileIncompleteModalOpen(true);
+        return;
+      }
+      console.log("[JobsPage] Profile marked complete for apply:", completeness.debug);
+      setApplyConfirmJob(job);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to validate profile completeness");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onConfirmApply() {
+    if (!accessToken || !applyConfirmJob) return;
+    try {
+      setSaving(true);
+      setError(null);
+      await applyToJob(accessToken, { job_id: applyConfirmJob.id });
+      setAppliedJobIds((prev) => (prev.includes(applyConfirmJob.id) ? prev : [...prev, applyConfirmJob.id]));
+      setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
+      setApplyConfirmJob(null);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to apply for job");
     } finally {
       setSaving(false);
     }
@@ -436,29 +572,31 @@ export function JobsPage() {
               <th>Company</th>
               <th>Category</th>
               <th>Status</th>
-              <th className="thRight">Applications</th>
+              {canViewApplications ? <th className="thRight">Applications</th> : null}
               <th>Deadline</th>
               <th className="thRight">Actions</th>
             </tr>
           </thead>
           <tbody>
             {visibleJobs.length === 0 ? (
-              <tr><td colSpan={7}><div className="emptyState">No jobs found.</div></td></tr>
+              <tr><td colSpan={canViewApplications ? 7 : 6}><div className="emptyState">No jobs found.</div></td></tr>
             ) : (
               visibleJobs.map((job) => {
                 const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
+                const canManageThisJob = canCreate && (canManageAllJobs || isOwnJob(job));
+                const alreadyApplied = appliedJobIds.includes(job.id);
                 const actions = [
                   {
                     key: "view",
                     label: openJobId === job.id ? "Close Details" : "View Details",
                     onClick: () => setOpenJobId((prev) => (prev === job.id ? null : job.id)),
                   },
-                  ...(canEdit ? [{
+                  ...(canManageThisJob ? [{
                     key: "edit",
                     label: "Edit",
                     onClick: () => openEditModal(job),
                   }] : []),
-                  ...(canDelete ? [{
+                  ...(canManageThisJob ? [{
                     key: "delete",
                     label: "Delete",
                     danger: true,
@@ -478,15 +616,27 @@ export function JobsPage() {
                       <td>{job.company ?? "—"}</td>
                       <td>{job.category ?? "—"}</td>
                       <td>{job.status ?? "—"}</td>
-                      <td className="tdRight">{applications}</td>
+                      {canViewApplications ? <td className="tdRight">{applications}</td> : null}
                       <td>{job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "—"}</td>
                       <td className="tdRight">
-                        <ActionMenu label="Action" items={actions} disabled={saving} />
+                        <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                          {canApplyJob ? (
+                            <button
+                              type="button"
+                              className="btn btnGhost btnSm stepperSaveBtn"
+                              onClick={() => void onApplyClick(job)}
+                              disabled={saving || alreadyApplied}
+                            >
+                              {alreadyApplied ? "Applied" : "Apply"}
+                            </button>
+                          ) : null}
+                          <ActionMenu label="Action" items={actions} disabled={saving} />
+                        </div>
                       </td>
                     </tr>
                     {openJobId === job.id && (
                       <tr className="tableExpandRow">
-                        <td colSpan={7}>
+                        <td colSpan={canViewApplications ? 7 : 6}>
                           <div className="dropPanel">
                             <h2 className="editFormTitle">Job Details</h2>
                             <div className="profileReadGrid">
@@ -590,6 +740,57 @@ export function JobsPage() {
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={onConfirmDelete}
       />
+
+      {profileIncompleteModalOpen ? (
+        <div
+          className="modalOverlay"
+          role="presentation"
+          onMouseDown={() => !saving && setProfileIncompleteModalOpen(false)}
+        >
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Profile Incomplete</div>
+            <div className="modalMessage">
+              Your profile is incomplete. Please fill in your personal details and at least one education
+              record before applying.
+            </div>
+            <div className="modalActions">
+              <button
+                className="btn btnGhost"
+                type="button"
+                onClick={() => setProfileIncompleteModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={() => navigate("/app/job-seekers")}
+              >
+                Go to Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {applyConfirmJob ? (
+        <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setApplyConfirmJob(null)}>
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Confirm Application</div>
+            <div className="modalMessage">
+              Apply for <strong>{applyConfirmJob.title}</strong>?
+            </div>
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={() => setApplyConfirmJob(null)} disabled={saving}>
+                Cancel
+              </button>
+              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onConfirmApply} disabled={saving}>
+                {saving ? "Applying..." : "Confirm Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

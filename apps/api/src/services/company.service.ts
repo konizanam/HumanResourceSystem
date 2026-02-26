@@ -1,6 +1,7 @@
 import { DatabaseService } from './database.service';
 import { query } from '../config/database';  // Add this import
 import { NotFoundError, ForbiddenError } from '../utils/errors';
+import { getCompanyApprovalMode } from './systemSettings.service';
 
 export class CompanyService {
   private db: DatabaseService;
@@ -10,12 +11,12 @@ export class CompanyService {
   }
 
   async getAllCompanies(userId: string) {
-    // Determine admin via roles (permissions list does not include role names).
-    const userRoles = await this.db.getUserRoles(userId);
+    const userPermissions = await this.db.getUserPermissions(userId);
+    const isSystemManager = userPermissions.includes('MANAGE_USERS');
 
     // Get companies based on role / association
     let companies;
-    if (userRoles.includes('ADMIN')) {
+    if (isSystemManager) {
       // Admin sees all companies - use query directly
       companies = await query(
         `SELECT c.*, 
@@ -85,15 +86,17 @@ export class CompanyService {
 
   async createCompany(userId: string, companyData: any) {
     const { name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
+    const approvalMode = await getCompanyApprovalMode();
+    const initialStatus = approvalMode === 'pending' ? 'pending' : 'active';
 
     // Create company
     const result = await query(
       `INSERT INTO companies (
         name, industry, description, website, logo_url, contact_email, contact_phone,
-        address_line1, address_line2, city, country, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        address_line1, address_line2, city, country, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
-      [name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country, userId]
+      [name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country, userId, initialStatus]
     );
 
     const company = result.rows[0];
@@ -239,6 +242,42 @@ export class CompanyService {
     return enriched.rows[0];
   }
 
+  async approveCompany(companyId: string, userId: string) {
+    const hasApprovePermission = await this.checkCompanyPermission(companyId, userId, 'APPROVE_COMPANY');
+    if (!hasApprovePermission) {
+      throw new ForbiddenError('You do not have permission to approve this company');
+    }
+
+    const result = await query(
+      `UPDATE companies
+         SET status = 'active'
+       WHERE id = $1
+       RETURNING id`,
+      [companyId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundError('Company not found');
+    }
+
+    const enriched = await query(
+      `SELECT c.*,
+        (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+        (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
+           FROM company_users cu2
+           JOIN users u2 ON u2.id = cu2.user_id
+          WHERE cu2.company_id = c.id) as user_names,
+        u.first_name || ' ' || u.last_name as created_by_name,
+        COALESCE(c.status, 'active') as status
+       FROM companies c
+       LEFT JOIN users u ON c.created_by = u.id
+       WHERE c.id = $1`,
+      [companyId]
+    );
+
+    return enriched.rows[0];
+  }
+
   async getCompanyUsers(companyId: string, userId: string) {
     // Check if user has access to this company
     const hasAccess = await this.db.checkCompanyAccess(companyId, userId);
@@ -314,14 +353,13 @@ export class CompanyService {
   }
 
   private async checkCompanyPermission(companyId: string, userId: string, permission: string): Promise<boolean> {
-    // Check if user is admin via roles
-    const userRoles = await this.db.getUserRoles(userId);
-    if (userRoles.includes('ADMIN')) {
+    // MANAGE_USERS acts as system admin capability in permission-based checks.
+    const userPermissions = await this.db.getUserPermissions(userId);
+    if (userPermissions.includes('MANAGE_USERS')) {
       return true;
     }
 
     // Check if user has specific permission and is associated with company
-    const userPermissions = await this.db.getUserPermissions(userId);
     if (!userPermissions.includes(permission)) {
       return false;
     }

@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const express_validator_1 = require("express-validator");
 const database_1 = require("../config/database");
 const auth_1 = require("../middleware/auth");
+const notificationsRoutes_1 = require("./notificationsRoutes");
 const router = express_1.default.Router();
 // Express Request 'user' type is declared in src/types/index.ts
 // Validation middleware
@@ -397,7 +398,7 @@ router.get('/:id([0-9a-fA-F-]{36})', [
     }
 });
 // POST /api/jobs - Create job (Employer only)
-router.post('/', auth_1.authenticate, (0, auth_1.authorize)('EMPLOYER', 'ADMIN'), validateJob, async (req, res) => {
+router.post('/', auth_1.authenticate, (0, auth_1.authorizePermission)('CREATE_JOB'), validateJob, async (req, res) => {
     try {
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty()) {
@@ -418,7 +419,25 @@ router.post('/', auth_1.authenticate, (0, auth_1.authorize)('EMPLOYER', 'ADMIN')
             remote, JSON.stringify(requirements), JSON.stringify(responsibilities), JSON.stringify(benefits),
             application_deadline, status, req.user.userId
         ]);
-        res.status(201).json(result.rows[0]);
+        const createdJob = result.rows[0];
+        try {
+            // Notify job seekers with matching expertise who opted into job alerts.
+            const seekers = await (0, database_1.query)(`SELECT jsp.user_id
+             FROM job_seeker_profiles jsp
+             JOIN notification_preferences np ON np.user_id = jsp.user_id
+            WHERE np.job_alerts = true
+              AND np.in_app_notifications = true
+              AND (
+                COALESCE(jsp.field_of_expertise, '') ILIKE $1
+                OR COALESCE($2, '') ILIKE ('%' || COALESCE(jsp.field_of_expertise, '') || '%')
+              )
+            LIMIT 300`, [`%${category}%`, category]);
+            await Promise.allSettled(seekers.rows.map((row) => (0, notificationsRoutes_1.createNotification)(row.user_id, 'job_posted', 'New job matching your profile', `A new "${title}" position was posted in ${category}.`, { job_id: createdJob.id, category, title }, '/app/jobs', 'normal')));
+        }
+        catch (notificationError) {
+            console.error('Failed to notify job seekers for new job posting:', notificationError);
+        }
+        res.status(201).json(createdJob);
     }
     catch (error) {
         console.error('Error creating job:', error);

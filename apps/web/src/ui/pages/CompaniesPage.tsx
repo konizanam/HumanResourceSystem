@@ -6,6 +6,7 @@ import {
   type JobUpsertPayload,
   type UserSearchResult,
   addUserToCompany,
+  approveCompany,
   createJob,
   createCompany,
   deactivateCompany,
@@ -199,6 +200,7 @@ export function CompaniesPage() {
   const navigate = useNavigate();
   const canPostJob = hasPermission("CREATE_JOB", "MANAGE_USERS");
   const canViewJobs = hasPermission("VIEW_JOB", "MANAGE_USERS");
+  const canApproveCompany = hasPermission("APPROVE_COMPANY", "MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -569,6 +571,21 @@ export function CompaniesPage() {
       setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
     } catch (e) {
       setError((e as any)?.message ?? "Failed to activate company");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onApproveCompany(id: string) {
+    if (!accessToken) return;
+    try {
+      clearMessages();
+      setSaving(true);
+      const updated = await approveCompany(accessToken, id);
+      setSuccess("Company approved successfully");
+      setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
+    } catch (e) {
+      setError((e as any)?.message ?? "Failed to approve company");
     } finally {
       setSaving(false);
     }
@@ -947,8 +964,10 @@ export function CompaniesPage() {
                     onView={() => startView(c)}
                     onEdit={() => startEdit(c)}
                     onShowUsers={() => setUsersModalCompany(c)}
+                    canApproveCompany={canApproveCompany}
                     canPostJob={canPostJob}
                     canViewJobs={canViewJobs}
+                    onApprove={() => onApproveCompany(c.id)}
                     onPostJob={() => openPostJobModal(c)}
                     onViewJobs={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
                     onActivate={() => onActivateCompany(c.id)}
@@ -1373,8 +1392,10 @@ function FragmentCompanyRow({
   onActivate,
   onDeactivate,
   onShowUsers,
+  canApproveCompany,
   canPostJob,
   canViewJobs,
+  onApprove,
   onPostJob,
   onViewJobs,
   onClose,
@@ -1389,14 +1410,20 @@ function FragmentCompanyRow({
   onActivate: () => void;
   onDeactivate: () => void;
   onShowUsers: () => void;
+  canApproveCompany: boolean;
   canPostJob: boolean;
   canViewJobs: boolean;
+  onApprove: () => void;
   onPostJob: () => void;
   onViewJobs: () => void;
   onClose: () => void;
   children: ReactNode;
 }) {
   const status = (company.status ?? "").toString();
+  const normalizedStatus = status.trim().toLowerCase();
+  const isPending = normalizedStatus === "pending";
+  const isApproved =
+    normalizedStatus === "active" || normalizedStatus === "approved";
   const isDeactivated = status.toLowerCase() === "deactivated";
   const userNames = getCompanyUserNames(company);
   const userCount = userNames.length;
@@ -1418,7 +1445,22 @@ function FragmentCompanyRow({
           )}
         </td>
         <td>{company.created_by_name ?? "—"}</td>
-        <td>{status ? status : "—"}</td>
+        <td>
+          {status ? (
+            <span
+              className="chipBadge"
+              style={
+                isPending
+                  ? { background: "#fef3c7", color: "#92400e" }
+                  : isApproved
+                    ? { background: "#dcfce7", color: "#166534" }
+                    : undefined
+              }
+            >
+              {isPending ? "Pending" : isApproved ? "Approved" : status}
+            </span>
+          ) : "—"}
+        </td>
         <td className="tdRight">
           <ActionMenu
             disabled={saving}
@@ -1452,6 +1494,15 @@ function FragmentCompanyRow({
                       key: "post-job",
                       label: "Post Job",
                       onClick: onPostJob,
+                    },
+                  ]
+                : []),
+              ...(canApproveCompany && isPending
+                ? [
+                    {
+                      key: "approve",
+                      label: "Approve",
+                      onClick: onApprove,
                     },
                   ]
                 : []),

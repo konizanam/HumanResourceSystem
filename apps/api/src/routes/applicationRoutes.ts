@@ -1,8 +1,9 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
+import { createNotification } from './notificationsRoutes';
 
 const router = express.Router();
 
@@ -121,6 +122,7 @@ const isHRorEmployer = (user: any): boolean => {
  */
 router.post('/',
   authenticate,
+  authorizePermission('APPLY_JOB'),
   validateApplication,
   async (req: Request, res: Response) => {
     try {
@@ -143,6 +145,15 @@ router.post('/',
       }
 
       const job = jobCheck.rows[0];
+      const applicantResult = await dbQuery(
+        `SELECT
+           COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [applicant_id]
+      );
+      const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
 
       // Check if job is active
       if (job.status !== 'active') {
@@ -172,22 +183,95 @@ router.post('/',
         const result = await dbQuery(
           `INSERT INTO applications (
             job_id, applicant_id, cover_letter, resume_url, status, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
+          ) VALUES ($1, $2, $3, $4, 'applied', NOW(), NOW())
           RETURNING *`,
           [job_id, applicant_id, cover_letter, resume_url]
         );
 
-        // Increment applications count on job
-        await dbQuery(
-          'UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1',
-          [job_id]
-        );
+        // Increment applications count on job if the column exists in this environment.
+        // Some databases in this project history do not have jobs.applications_count.
+        try {
+          await dbQuery(
+            'UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1',
+            [job_id]
+          );
+        } catch (countError: any) {
+          if (countError?.code !== '42703') {
+            throw countError;
+          }
+          console.warn('jobs.applications_count missing; skipping increment');
+        }
 
         await dbQuery('COMMIT');
 
         // Get job details for response
         const application = result.rows[0];
         application.job_title = job.title;
+
+        // Notify the employer that a new application was submitted.
+        if (job.employer_id) {
+          try {
+            await createNotification(
+              job.employer_id,
+              'application_received',
+              'New Application Received',
+              `${applicantName} has applied for ${job.title}`,
+              { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
+              `/app/jobs/${job_id}/applications`,
+              'high'
+            );
+          } catch (notificationError) {
+            console.error('Failed to create employer notification:', notificationError);
+          }
+        }
+
+        // Notify admins (users with MANAGE_USERS permission).
+        try {
+          const adminsResult = await dbQuery(
+            `SELECT DISTINCT u.id
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN role_permissions rp ON rp.role_id = ur.role_id
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE p.name = 'MANAGE_USERS'
+               AND u.is_active = TRUE`
+          );
+
+          const adminIds = adminsResult.rows
+            .map((row: any) => String(row.id))
+            .filter((id: string) => id && id !== applicant_id && id !== String(job.employer_id ?? ''));
+
+          await Promise.allSettled(
+            adminIds.map((adminId: string) =>
+              createNotification(
+                adminId,
+                'application_received',
+                'New Job Application',
+                `${applicantName} applied for ${job.title}`,
+                { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
+                `/app/jobs/${job_id}/applications`,
+                'normal'
+              )
+            )
+          );
+        } catch (notificationError) {
+          console.error('Failed to create admin notifications:', notificationError);
+        }
+
+        // Notify the applicant that submission succeeded.
+        try {
+          await createNotification(
+            applicant_id,
+            'application_success',
+            'Application Submitted',
+            `Your application for ${job.title} has been submitted successfully`,
+            { application_id: application.id, job_id, status: 'applied', job_title: job.title },
+            '/app/job-applications',
+            'normal'
+          );
+        } catch (notificationError) {
+          console.error('Failed to create applicant submission notification:', notificationError);
+        }
 
         res.status(201).json(application);
       } catch (error) {
@@ -500,7 +584,7 @@ router.get('/:id',
  */
 router.put('/:id/status',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN', 'HR'),
+  authorizePermission('UPDATE_APPLICATION_STATUS'),
   param('id').isUUID().withMessage('Invalid application ID'),
   validateStatusUpdate,
   async (req: Request, res: Response) => {
@@ -529,8 +613,9 @@ router.put('/:id/status',
 
       const application = appCheck.rows[0];
 
-      // Check if user is authorized (employer who posted the job or admin/HR)
-      if (application.employer_id !== userId && !req.user!.roles.includes('ADMIN') && !req.user!.roles.includes('HR')) {
+      const hasManageUsers = req.user!.permissions?.includes('MANAGE_USERS');
+      // Check if user is authorized (employer who posted the job, or permissioned admin)
+      if (application.employer_id !== userId && !hasManageUsers) {
         return res.status(403).json({ error: 'Not authorized to update this application' });
       }
 
@@ -551,8 +636,19 @@ router.put('/:id/status',
         [status, notes, applicationId]
       );
 
-      // If status is accepted or rejected, we might want to notify the applicant
-      // This would be handled by a notification service
+      try {
+        await createNotification(
+          application.applicant_id,
+          'application_update',
+          'Application Status Update',
+          `Your application for ${application.job_title} has been updated to ${status}`,
+          { application_id: applicationId, job_id: application.job_id, status },
+          '/app/job-applications',
+          status === 'rejected' ? 'normal' : 'high'
+        );
+      } catch (notificationError) {
+        console.error('Failed to create applicant notification:', notificationError);
+      }
 
       res.json(result.rows[0]);
     } catch (error) {

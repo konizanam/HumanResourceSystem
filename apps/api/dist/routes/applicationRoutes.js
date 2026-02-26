@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const express_validator_1 = require("express-validator");
 const database_1 = require("../config/database");
 const auth_1 = require("../middleware/auth");
+const notificationsRoutes_1 = require("./notificationsRoutes");
 const router = express_1.default.Router();
 // Validation middleware
 const validateApplication = [
@@ -114,7 +115,7 @@ const isHRorEmployer = (user) => {
  *       403:
  *         description: Cannot apply to closed/draft job
  */
-router.post('/', auth_1.authenticate, validateApplication, async (req, res) => {
+router.post('/', auth_1.authenticate, (0, auth_1.authorizePermission)('APPLY_JOB'), validateApplication, async (req, res) => {
     try {
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty()) {
@@ -128,6 +129,12 @@ router.post('/', auth_1.authenticate, validateApplication, async (req, res) => {
             return res.status(404).json({ error: 'Job not found' });
         }
         const job = jobCheck.rows[0];
+        const applicantResult = await (0, database_1.query)(`SELECT
+           COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+         FROM users
+         WHERE id = $1
+         LIMIT 1`, [applicant_id]);
+        const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
         // Check if job is active
         if (job.status !== 'active') {
             return res.status(403).json({ error: 'Cannot apply to a job that is not active' });
@@ -147,14 +154,56 @@ router.post('/', auth_1.authenticate, validateApplication, async (req, res) => {
             // Create application
             const result = await (0, database_1.query)(`INSERT INTO applications (
             job_id, applicant_id, cover_letter, resume_url, status, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
+          ) VALUES ($1, $2, $3, $4, 'applied', NOW(), NOW())
           RETURNING *`, [job_id, applicant_id, cover_letter, resume_url]);
-            // Increment applications count on job
-            await (0, database_1.query)('UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1', [job_id]);
+            // Increment applications count on job if the column exists in this environment.
+            // Some databases in this project history do not have jobs.applications_count.
+            try {
+                await (0, database_1.query)('UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1', [job_id]);
+            }
+            catch (countError) {
+                if (countError?.code !== '42703') {
+                    throw countError;
+                }
+                console.warn('jobs.applications_count missing; skipping increment');
+            }
             await (0, database_1.query)('COMMIT');
             // Get job details for response
             const application = result.rows[0];
             application.job_title = job.title;
+            // Notify the employer that a new application was submitted.
+            if (job.employer_id) {
+                try {
+                    await (0, notificationsRoutes_1.createNotification)(job.employer_id, 'application_received', 'New Application Received', `${applicantName} has applied for ${job.title}`, { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title }, `/app/jobs/${job_id}/applications`, 'high');
+                }
+                catch (notificationError) {
+                    console.error('Failed to create employer notification:', notificationError);
+                }
+            }
+            // Notify admins (users with MANAGE_USERS permission).
+            try {
+                const adminsResult = await (0, database_1.query)(`SELECT DISTINCT u.id
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN role_permissions rp ON rp.role_id = ur.role_id
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE p.name = 'MANAGE_USERS'
+               AND u.is_active = TRUE`);
+                const adminIds = adminsResult.rows
+                    .map((row) => String(row.id))
+                    .filter((id) => id && id !== applicant_id && id !== String(job.employer_id ?? ''));
+                await Promise.allSettled(adminIds.map((adminId) => (0, notificationsRoutes_1.createNotification)(adminId, 'application_received', 'New Job Application', `${applicantName} applied for ${job.title}`, { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title }, `/app/jobs/${job_id}/applications`, 'normal')));
+            }
+            catch (notificationError) {
+                console.error('Failed to create admin notifications:', notificationError);
+            }
+            // Notify the applicant that submission succeeded.
+            try {
+                await (0, notificationsRoutes_1.createNotification)(applicant_id, 'application_success', 'Application Submitted', `Your application for ${job.title} has been submitted successfully`, { application_id: application.id, job_id, status: 'applied', job_title: job.title }, '/app/job-applications', 'normal');
+            }
+            catch (notificationError) {
+                console.error('Failed to create applicant submission notification:', notificationError);
+            }
             res.status(201).json(application);
         }
         catch (error) {
@@ -431,7 +480,7 @@ router.get('/:id', auth_1.authenticate, (0, express_validator_1.param)('id').isU
  *       404:
  *         description: Application not found
  */
-router.put('/:id/status', auth_1.authenticate, (0, auth_1.authorize)('EMPLOYER', 'ADMIN', 'HR'), (0, express_validator_1.param)('id').isUUID().withMessage('Invalid application ID'), validateStatusUpdate, async (req, res) => {
+router.put('/:id/status', auth_1.authenticate, (0, auth_1.authorizePermission)('UPDATE_APPLICATION_STATUS'), (0, express_validator_1.param)('id').isUUID().withMessage('Invalid application ID'), validateStatusUpdate, async (req, res) => {
     try {
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty()) {
@@ -449,8 +498,9 @@ router.put('/:id/status', auth_1.authenticate, (0, auth_1.authorize)('EMPLOYER',
             return res.status(404).json({ error: 'Application not found' });
         }
         const application = appCheck.rows[0];
-        // Check if user is authorized (employer who posted the job or admin/HR)
-        if (application.employer_id !== userId && !req.user.roles.includes('ADMIN') && !req.user.roles.includes('HR')) {
+        const hasManageUsers = req.user.permissions?.includes('MANAGE_USERS');
+        // Check if user is authorized (employer who posted the job, or permissioned admin)
+        if (application.employer_id !== userId && !hasManageUsers) {
             return res.status(403).json({ error: 'Not authorized to update this application' });
         }
         // Check if application is already withdrawn
@@ -465,8 +515,12 @@ router.put('/:id/status', auth_1.authenticate, (0, auth_1.authorize)('EMPLOYER',
              updated_at = NOW()
          WHERE id = $3
          RETURNING *`, [status, notes, applicationId]);
-        // If status is accepted or rejected, we might want to notify the applicant
-        // This would be handled by a notification service
+        try {
+            await (0, notificationsRoutes_1.createNotification)(application.applicant_id, 'application_update', 'Application Status Update', `Your application for ${application.job_title} has been updated to ${status}`, { application_id: applicationId, job_id: application.job_id, status }, '/app/job-applications', status === 'rejected' ? 'normal' : 'high');
+        }
+        catch (notificationError) {
+            console.error('Failed to create applicant notification:', notificationError);
+        }
         res.json(result.rows[0]);
     }
     catch (error) {

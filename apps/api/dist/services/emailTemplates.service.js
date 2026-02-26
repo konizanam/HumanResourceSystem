@@ -57,6 +57,20 @@ const DEFAULT_TEMPLATES = {
         body_html: '',
         placeholders: ['app_name', 'user_full_name', 'job_title', 'company_name', 'job_link'],
     },
+    application_received: {
+        key: 'application_received',
+        title: 'Application Received (Employer/Admin)',
+        description: 'Sent to employer/admin when a job seeker submits an application.',
+        subject: 'New application for {{job_title}}',
+        body_text: 'Dear {{user_full_name}},\n\n'
+            + '{{applicant_name}} has applied for {{job_title}}.\n\n'
+            + 'Open applications:\n'
+            + '{{job_link}}\n\n'
+            + 'Regards,\n'
+            + '{{app_name}} Team',
+        body_html: '',
+        placeholders: ['app_name', 'user_full_name', 'applicant_name', 'job_title', 'job_link'],
+    },
     interview_invitation: {
         key: 'interview_invitation',
         title: 'Interview Invitation',

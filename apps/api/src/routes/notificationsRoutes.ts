@@ -3,6 +3,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { Request, Response } from 'express';
+import { appName, sendTemplatedEmail, webOrigin } from '../services/emailSender.service';
 
 const router = express.Router();
 
@@ -404,7 +405,7 @@ router.get('/unread-count',
  *       404:
  *         description: Notification not found
  */
-router.get('/:id',
+router.get('/:id([0-9a-fA-F-]{36})',
   authenticate,
   validateNotificationId,
   async (req: Request, res: Response) => {
@@ -474,7 +475,7 @@ router.get('/:id',
  *       404:
  *         description: Notification not found
  */
-router.put('/:id/read',
+router.put('/:id([0-9a-fA-F-]{36})/read',
   authenticate,
   validateNotificationId,
   async (req: Request, res: Response) => {
@@ -648,7 +649,7 @@ router.put('/read-all',
  *       404:
  *         description: Notification not found
  */
-router.delete('/:id',
+router.delete('/:id([0-9a-fA-F-]{36})',
   authenticate,
   validateNotificationId,
   async (req: Request, res: Response) => {
@@ -957,13 +958,22 @@ export async function createNotification(
   priority: string = 'normal'
 ): Promise<any> {
   try {
+    // DB currently constrains notification types; map new semantic types to a stored type.
+    const dbType =
+      type === 'application_success' || type === 'application_update'
+        ? 'application_status_changed'
+        : type;
+
     // Check user's notification preferences
     const prefsResult = await dbQuery(
-      'SELECT in_app_notifications FROM notification_preferences WHERE user_id = $1',
+      'SELECT in_app_notifications, email_notifications FROM notification_preferences WHERE user_id = $1',
       [userId]
     );
 
-    const preferences = prefsResult.rows[0] || { in_app_notifications: true };
+    const preferences = prefsResult.rows[0] || {
+      in_app_notifications: true,
+      email_notifications: true,
+    };
 
     // Only create notification if in-app notifications are enabled
     if (!preferences.in_app_notifications) {
@@ -975,8 +985,68 @@ export async function createNotification(
         user_id, type, title, message, data, action_url, priority, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
       RETURNING *`,
-      [userId, type, title, message, JSON.stringify(data), action_url, priority]
+      [userId, dbType, title, message, JSON.stringify(data), action_url, priority]
     );
+
+    // Best-effort email notification using configured templates.
+    if (preferences.email_notifications) {
+      const userResult = await dbQuery(
+        `SELECT email, first_name, last_name
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [userId]
+      );
+
+      const userRow = userResult.rows[0];
+      const toEmail = typeof userRow?.email === 'string' ? userRow.email.trim() : '';
+      if (toEmail) {
+        const statusRaw = String((data as any)?.status ?? '').toLowerCase();
+        const templateKey =
+          type === 'interview_scheduled'
+            ? 'interview_invitation'
+            : type === 'job_posted'
+              ? 'job_alert'
+              : type === 'application_received'
+                ? 'application_received'
+                : type === 'application_success'
+                  ? 'application_success'
+                  : type === 'application_update'
+                    ? (
+                      statusRaw.includes('interview')
+                        ? 'interview_invitation'
+                        : statusRaw.includes('reject')
+                          ? 'application_rejected'
+                          : 'application_success'
+                    )
+                    : type === 'application_status_changed'
+                      ? (statusRaw.includes('reject') ? 'application_rejected' : 'application_success')
+                      : null;
+
+        if (templateKey) {
+          const fullName = `${String(userRow?.first_name ?? '').trim()} ${String(userRow?.last_name ?? '').trim()}`.trim() || 'User';
+          const link = String(action_url ?? (webOrigin() ? `${webOrigin()}/app/notifications` : ''));
+          await sendTemplatedEmail({
+            templateKey,
+            to: toEmail,
+            data: {
+              app_name: appName(),
+              user_full_name: fullName,
+              company_name: String((data as any)?.company_name ?? (data as any)?.company ?? 'Human Resource System'),
+              applicant_name: String((data as any)?.applicant_name ?? ''),
+              job_title: String((data as any)?.job_title ?? title ?? 'Job update'),
+              job_link: link,
+              activation_link: link,
+              interview_date: String((data as any)?.interview_date ?? (data as any)?.date ?? ''),
+              interview_time: String((data as any)?.interview_time ?? (data as any)?.time ?? ''),
+              interview_location: String((data as any)?.interview_location ?? (data as any)?.location ?? ''),
+              unsubscribe_link: webOrigin() ? `${webOrigin()}/app/notifications` : '',
+              support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || '',
+            },
+          });
+        }
+      }
+    }
 
     return result.rows[0];
   } catch (error) {

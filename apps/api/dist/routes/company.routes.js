@@ -71,10 +71,13 @@ const companyUpdateValidation = [
     (0, express_validator_1.body)('country').optional({ checkFalsy: true })
 ];
 // Company CRUD routes
+router.get('/approval-mode', companyController.getApprovalMode);
+router.put('/approval-mode', companyController.updateApprovalMode);
 router.get('/', companyController.getAllCompanies);
 router.get('/:id', companyController.getCompanyById);
 router.post('/', companyCreateValidation, validation_1.validateRequest, companyController.createCompany);
 router.put('/:id', companyUpdateValidation, validation_1.validateRequest, companyController.updateCompany);
+router.patch('/:id/approve', companyController.approveCompany);
 router.patch('/:id/deactivate', companyController.deactivateCompany);
 router.patch('/:id/reactivate', companyController.reactivateCompany);
 // Company user management routes

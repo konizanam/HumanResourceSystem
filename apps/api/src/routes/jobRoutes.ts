@@ -3,6 +3,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
+import { createNotification } from './notificationsRoutes';
 
 const router = express.Router();
 
@@ -490,7 +491,7 @@ router.get('/:id([0-9a-fA-F-]{36})', [
 // POST /api/jobs - Create job (Employer only)
 router.post('/', 
   authenticate, 
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CREATE_JOB'),
   validateJob, 
   async (req: Request, res: Response) => {
     try {
@@ -525,7 +526,41 @@ router.post('/',
         ]
       );
 
-      res.status(201).json(result.rows[0]);
+      const createdJob = result.rows[0];
+      try {
+        // Notify job seekers with matching expertise who opted into job alerts.
+        const seekers = await dbQuery(
+          `SELECT jsp.user_id
+             FROM job_seeker_profiles jsp
+             JOIN notification_preferences np ON np.user_id = jsp.user_id
+            WHERE np.job_alerts = true
+              AND np.in_app_notifications = true
+              AND (
+                COALESCE(jsp.field_of_expertise, '') ILIKE $1
+                OR COALESCE($2, '') ILIKE ('%' || COALESCE(jsp.field_of_expertise, '') || '%')
+              )
+            LIMIT 300`,
+          [`%${category}%`, category]
+        );
+
+        await Promise.allSettled(
+          seekers.rows.map((row) =>
+            createNotification(
+              row.user_id,
+              'job_posted',
+              'New job matching your profile',
+              `A new "${title}" position was posted in ${category}.`,
+              { job_id: createdJob.id, category, title },
+              '/app/jobs',
+              'normal'
+            )
+          )
+        );
+      } catch (notificationError) {
+        console.error('Failed to notify job seekers for new job posting:', notificationError);
+      }
+
+      res.status(201).json(createdJob);
     } catch (error) {
       console.error('Error creating job:', error);
       res.status(500).json({ error: 'Server error' });

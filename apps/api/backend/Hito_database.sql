@@ -331,6 +331,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     
     -- Application permissions
     ('VIEW_APPLICATIONS', 'View job applications', 'Applications', 'VIEW'),
+    ('APPLY_JOB', 'Can apply for jobs', 'Applications', 'CREATE'),
     ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
     ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
     
@@ -342,6 +343,8 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     -- Company permissions
     ('MANAGE_COMPANY', 'Edit company profile', 'Company', 'UPDATE'),
     ('MANAGE_COMPANY_USERS', 'Add/remove company HR users', 'Company', 'UPDATE'),
+    ('APPROVE_COMPANY', 'Can approve pending companies', 'Company', 'APPROVE'),
+    ('MANAGE_NOTIFICATIONS', 'Can manage notification preferences', 'Notifications', 'MANAGE'),
     
     -- User management
     ('MANAGE_USERS', 'Create and manage users', 'Users', 'MANAGE'),
@@ -361,7 +364,8 @@ WHERE r.name = 'HR_MANAGER'
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB', 'APPROVE_JOB',
                'VIEW_APPLICATIONS', 'UPDATE_APPLICATION_STATUS', 
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE',
-               'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS');
+               'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS',
+               'APPROVE_COMPANY', 'MANAGE_NOTIFICATIONS');
 
 -- Recruiter permissions
 INSERT INTO role_permissions (role_id, permission_id)
@@ -384,7 +388,7 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'JOB_SEEKER'
-AND p.name IN ('VIEW_JOB');
+AND p.name IN ('VIEW_JOB', 'APPLY_JOB', 'MANAGE_NOTIFICATIONS');
 
 -- Insert default job categories
 INSERT INTO job_categories (name) VALUES

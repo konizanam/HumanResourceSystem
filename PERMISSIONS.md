@@ -4,6 +4,10 @@
 - Edit Company: `MANAGE_COMPANY`
 - Deactivate / Reactivate Company: `MANAGE_COMPANY`
 - Add user to company: `MANAGE_COMPANY`
+- Approve pending company: `APPROVE_COMPANY`
+- Company status badges:
+  - `Pending` (yellow)
+  - `Approved` (green)
 
 ## Page: Job Seeker Profile
 - View page: authenticated user
@@ -20,7 +24,13 @@
 - Edit Job: `EDIT_JOB`
 - Delete Job: `DELETE_JOB`
 - View Applications action: `VIEW_APPLICATIONS`
+- Apply for job: `APPLY_JOB` (job seekers)
 - View Details: authenticated user
+
+## Page: Notifications
+- View page: authenticated user
+- Mark read / mark all / delete own notifications: authenticated user
+- Manage notification preferences (email/job alerts/application updates): `MANAGE_NOTIFICATIONS`
 
 ## Page: Job Applications
 - View page: `VIEW_APPLICATIONS` or route access from Jobs action
@@ -73,3 +83,8 @@
 ## Page: Global Settings / Status (placeholder routes)
 - View page: authenticated user
 - Mutations: TBD (define dedicated permissions before enabling)
+
+## New Permissions
+- `APPROVE_COMPANY` — Can approve pending companies
+- `APPLY_JOB` — Can apply for jobs (job seekers)
+- `MANAGE_NOTIFICATIONS` — Can manage notification preferences

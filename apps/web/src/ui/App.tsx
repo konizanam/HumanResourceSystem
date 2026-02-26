@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
 import { RequireAuth } from "./auth/RequireAuth";
+import { usePermissions } from "./auth/usePermissions";
 import { AppLayout } from "./layout/AppLayout";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { JobSeekerProfilePage } from "./pages/JobSeekerProfilePage";
@@ -17,13 +19,18 @@ import { PermissionsPage } from "./pages/PermissionsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { StatusPage } from "./pages/StatusPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { ApplicationsPage } from "./pages/ApplicationsPage";
+import { GlobalSettingsPage } from "./pages/GlobalSettingsPage";
 
 const menu = [
   { path: "global-settings", title: "Global Settings", icon: "settings" },
   { path: "job-seekers", title: "Job Seeker", icon: "users" },
-  { path: "users", title: "Users", icon: "users" },
   { path: "jobs", title: "Jobs", icon: "briefcase" },
+  { path: "applications", title: "Applications", icon: "list" },
   { path: "companies", title: "Companies", icon: "building" },
+  { path: "notifications", title: "Notifications", icon: "file" },
+  { path: "users", title: "Users", icon: "users" },
   { path: "roles", title: "Roles", icon: "shield" },
   { path: "permission", title: "Permission", icon: "key" },
   { path: "status", title: "Status", icon: "list" },
@@ -32,6 +39,44 @@ const menu = [
   { path: "email-templates", title: "Email Templates", icon: "file" },
   { path: "reports", title: "Reports", icon: "chart" },
 ] as const;
+
+type HasPermissionFn = (...candidates: string[]) => boolean;
+
+function resolveDashboardPath(hasPermission: HasPermissionFn) {
+  if (hasPermission("MANAGE_USERS")) return "/app/global-settings";
+  if (hasPermission("CREATE_JOB") && !hasPermission("MANAGE_USERS")) return "/app/jobs";
+  return "/app/job-seekers";
+}
+
+function DashboardHomeRedirect() {
+  const { loading, hasPermission } = usePermissions();
+
+  if (loading) {
+    return <PlaceholderPage title="Loading dashboard..." />;
+  }
+
+  return <Navigate to={resolveDashboardPath(hasPermission)} replace />;
+}
+
+function PermissionGate({
+  allow,
+  children,
+}: {
+  allow: (hasPermission: HasPermissionFn) => boolean;
+  children: ReactNode;
+}) {
+  const { loading, hasPermission } = usePermissions();
+
+  if (loading) {
+    return <PlaceholderPage title="Loading..." />;
+  }
+
+  if (!allow(hasPermission)) {
+    return <Navigate to={resolveDashboardPath(hasPermission)} replace />;
+  }
+
+  return children;
+}
 
 export function App() {
   return (
@@ -48,45 +93,131 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to={menu[0].path} replace />} />
+        <Route index element={<DashboardHomeRedirect />} />
 
-        {/* Real pages connected to backend APIs */}
-        <Route path="job-seekers" element={<JobSeekerProfilePage />} />
-        <Route path="companies" element={<CompaniesPage />} />
-        <Route path="email-templates" element={<EmailTemplatesPage />} />
-        <Route path="roles" element={<RolesPage />} />
-        <Route path="job-categories" element={<JobCategoriesPage />} />
-        <Route path="users" element={<UsersPage />} />
+        <Route
+          path="global-settings"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <GlobalSettingsPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="job-seekers"
+          element={
+            <PermissionGate
+              allow={(hasPermission) =>
+                hasPermission("MANAGE_USERS") ||
+                (!hasPermission("MANAGE_USERS") && !hasPermission("CREATE_JOB"))
+              }
+            >
+              <JobSeekerProfilePage />
+            </PermissionGate>
+          }
+        />
         <Route path="jobs" element={<JobsPage />} />
-        <Route path="jobs/:jobId/applications" element={<JobApplicationsPage />} />
-        <Route path="permission" element={<PermissionsPage />} />
-        <Route path="status" element={<StatusPage />} />
-        <Route path="audit" element={<AuditPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-
-        {/* Remaining placeholders: global-settings */}
-        {menu
-          .filter(
-            (m) =>
-              m.path !== "job-seekers" &&
-              m.path !== "companies" &&
-              m.path !== "email-templates" &&
-              m.path !== "roles" &&
-              m.path !== "job-categories" &&
-              m.path !== "users" &&
-              m.path !== "jobs" &&
-              m.path !== "permission" &&
-              m.path !== "status" &&
-              m.path !== "audit" &&
-              m.path !== "reports",
-          )
-          .map((m) => (
-            <Route
-              key={m.path}
-              path={m.path}
-              element={<PlaceholderPage title={m.title} />}
-            />
-          ))}
+        <Route
+          path="applications"
+          element={
+            <PermissionGate
+              allow={(hasPermission) =>
+                hasPermission("MANAGE_USERS", "VIEW_APPLICATIONS")
+              }
+            >
+              <ApplicationsPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="jobs/:jobId/applications"
+          element={
+            <PermissionGate
+              allow={(hasPermission) =>
+                hasPermission("MANAGE_USERS", "VIEW_APPLICATIONS")
+              }
+            >
+              <JobApplicationsPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="companies"
+          element={
+            <PermissionGate
+              allow={(hasPermission) =>
+                hasPermission("MANAGE_USERS") || hasPermission("CREATE_JOB")
+              }
+            >
+              <CompaniesPage />
+            </PermissionGate>
+          }
+        />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route
+          path="users"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <UsersPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="roles"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <RolesPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="permission"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <PermissionsPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="status"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <StatusPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="job-categories"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <JobCategoriesPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="audit"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <AuditPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="email-templates"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <EmailTemplatesPage />
+            </PermissionGate>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+              <ReportsPage />
+            </PermissionGate>
+          }
+        />
       </Route>
 
       <Route path="/" element={<Navigate to="/app" replace />} />
