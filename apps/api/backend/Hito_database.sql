@@ -1,7 +1,13 @@
 -- =====================================================
+-- COMPLETE DATABASE SCHEMA FOR HRS (HUMAN RESOURCE SYSTEM)
+-- =====================================================
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================
 -- MODULE 1: User & Role Management (RBAC)
+-- =====================================================
 
 -- 1.1 users table
 CREATE TABLE users (
@@ -14,6 +20,24 @@ CREATE TABLE users (
     password_reset_expires_at TIMESTAMP,
     password_reset_requested_at TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
+    phone VARCHAR(50),
+    company_name VARCHAR(255),
+    company_description TEXT,
+    company_website VARCHAR(255),
+    company_logo_url TEXT,
+    company_size VARCHAR(50),
+    industry VARCHAR(100),
+    founded_year INTEGER,
+    headquarters_location VARCHAR(255),
+    is_blocked BOOLEAN DEFAULT FALSE,
+    blocked_at TIMESTAMP,
+    block_reason TEXT,
+    email_verified BOOLEAN DEFAULT FALSE,
+    last_login TIMESTAMP,
+    professional_summary TEXT,
+    field_of_expertise VARCHAR(100),
+    years_experience INTEGER,
+    resume_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -25,7 +49,7 @@ CREATE TABLE roles (
     description TEXT
 );
 
--- 1.3 permissions table (separate from role_permissions for cleaner design)
+-- 1.3 permissions table
 CREATE TABLE permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) UNIQUE NOT NULL,
@@ -66,6 +90,7 @@ CREATE TABLE companies (
     address_line2 VARCHAR(255),
     city VARCHAR(100),
     country VARCHAR(100),
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended', 'pending')),
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -119,7 +144,8 @@ CREATE TABLE job_seeker_addresses (
     state VARCHAR(100),
     country VARCHAR(100),
     postal_code VARCHAR(20),
-    is_primary BOOLEAN DEFAULT TRUE
+    is_primary BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3.4 job_seeker_education table
@@ -165,6 +191,49 @@ CREATE TABLE job_seeker_references (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 3.7 resumes table
+CREATE TABLE resumes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    uploaded_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 3.8 skills table
+CREATE TABLE skills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    proficiency_level VARCHAR(50) CHECK (proficiency_level IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')),
+    years_of_experience INTEGER,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(job_seeker_id, name)
+);
+
+-- 3.9 certifications table
+CREATE TABLE certifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    issuing_organization VARCHAR(200) NOT NULL,
+    issue_date DATE NOT NULL,
+    expiration_date DATE,
+    credential_id VARCHAR(100),
+    credential_url TEXT,
+    does_not_expire BOOLEAN DEFAULT FALSE,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- =====================================================
 -- MODULE 4: Job Management
 -- =====================================================
@@ -193,10 +262,46 @@ CREATE TABLE jobs (
     salary_min NUMERIC(12,2),
     salary_max NUMERIC(12,2),
     is_urgent BOOLEAN DEFAULT FALSE,
-    status VARCHAR(20) CHECK (status IN ('DRAFT', 'PENDING', 'APPROVED', 'CLOSED')),
+    status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PENDING', 'APPROVED', 'CLOSED')),
     application_deadline DATE,
     created_by UUID REFERENCES users(id),
+    views INTEGER DEFAULT 0,
+    applications_count INTEGER DEFAULT 0,
+    is_featured BOOLEAN DEFAULT FALSE,
+    is_flagged BOOLEAN DEFAULT FALSE,
+    flag_reason TEXT,
+    location VARCHAR(255),
+    remote BOOLEAN DEFAULT FALSE,
+    requirements JSONB DEFAULT '[]',
+    responsibilities JSONB DEFAULT '[]',
+    benefits JSONB DEFAULT '[]',
+    employment_type VARCHAR(50),
+    experience_level VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4.4 saved_jobs table
+CREATE TABLE saved_jobs (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    saved_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, job_id)
+);
+
+-- 4.5 job_alerts table
+CREATE TABLE job_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    keywords TEXT,
+    category_id UUID REFERENCES job_categories(id),
+    location VARCHAR(255),
+    salary_min NUMERIC(12,2),
+    frequency VARCHAR(20) DEFAULT 'daily' CHECK (frequency IN ('instant', 'daily', 'weekly')),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- =====================================================
@@ -208,16 +313,16 @@ CREATE TABLE applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    status VARCHAR(30) CHECK (status IN (
+    status VARCHAR(30) DEFAULT 'APPLIED' CHECK (status IN (
         'APPLIED', 'SCREENING', 'LONG_LISTED', 'SHORTLISTED',
         'ORAL_INTERVIEW', 'PRACTICAL_INTERVIEW', 'FINAL_INTERVIEW',
         'OFFER_MADE', 'HIRED', 'REJECTED', 'WITHDRAWN'
-    )) DEFAULT 'APPLIED',
+    )),
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(job_id, user_id)
 );
 
--- 5.2 application_notes table (for recruiter comments)
+-- 5.2 application_notes table
 CREATE TABLE application_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     application_id UUID REFERENCES applications(id) ON DELETE CASCADE,
@@ -227,10 +332,107 @@ CREATE TABLE application_notes (
 );
 
 -- =====================================================
--- MODULE 6: Audit Logging
+-- MODULE 6: Documents
 -- =====================================================
 
--- 6.1 audit_logs table
+-- 6.1 documents table
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_url VARCHAR(500) NOT NULL,
+    document_type VARCHAR(100),
+    category VARCHAR(100),
+    description TEXT,
+    is_public BOOLEAN DEFAULT FALSE,
+    uploaded_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6.2 job_seeker_documents junction table
+CREATE TABLE job_seeker_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    document_type VARCHAR(100) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, document_id)
+);
+
+-- 6.3 company_documents table
+CREATE TABLE company_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    document_type VARCHAR(100) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(company_id, document_id)
+);
+
+-- =====================================================
+-- MODULE 7: Notifications
+-- =====================================================
+
+-- 7.1 notifications table
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL CHECK (type IN (
+        'application_received', 'application_status_changed',
+        'job_posted', 'job_closed', 'interview_scheduled',
+        'message_received', 'profile_viewed', 'system_alert'
+    )),
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB DEFAULT '{}',
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    action_url TEXT,
+    priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 7.2 notification_preferences table
+CREATE TABLE notification_preferences (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email_notifications BOOLEAN DEFAULT TRUE,
+    push_notifications BOOLEAN DEFAULT TRUE,
+    in_app_notifications BOOLEAN DEFAULT TRUE,
+    application_updates BOOLEAN DEFAULT TRUE,
+    job_alerts BOOLEAN DEFAULT TRUE,
+    message_notifications BOOLEAN DEFAULT TRUE,
+    marketing_emails BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- =====================================================
+-- MODULE 8: Audit & Admin
+-- =====================================================
+
+-- 8.1 admin_logs table
+CREATE TABLE admin_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    target_type VARCHAR(50) NOT NULL CHECK (target_type IN ('user', 'job', 'application', 'company')),
+    target_id UUID,
+    details JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 8.2 audit_logs table
 CREATE TABLE audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -245,8 +447,55 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 8.3 user_sessions table
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    ip_address INET,
+    user_agent TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_activity TIMESTAMP DEFAULT NOW()
+);
+
+-- 8.4 job_reports table
+CREATE TABLE job_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason VARCHAR(50) NOT NULL CHECK (reason IN ('spam', 'inappropriate', 'fraud', 'other')),
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'dismissed', 'action_taken')),
+    reviewed_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 8.5 backups table
+CREATE TABLE backups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filename VARCHAR(255) NOT NULL,
+    size_bytes BIGINT,
+    status VARCHAR(50) DEFAULT 'completed' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 8.6 employer_stats table
+CREATE TABLE employer_stats (
+    employer_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    total_jobs_posted INTEGER DEFAULT 0,
+    active_jobs INTEGER DEFAULT 0,
+    total_applications_received INTEGER DEFAULT 0,
+    total_views INTEGER DEFAULT 0,
+    average_response_time INTEGER,
+    last_active TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- =====================================================
--- INDEXES & PERFORMANCE OPTIMISATION
+-- INDEXES
 -- =====================================================
 
 -- Users indexes
@@ -275,8 +524,18 @@ CREATE INDEX idx_jsex_company ON job_seeker_experience(company_name);
 CREATE INDEX idx_jsex_current ON job_seeker_experience(is_current);
 CREATE INDEX idx_jsex_dates ON job_seeker_experience(start_date, end_date);
 
--- Job Seeker References indexes
-CREATE INDEX idx_jsref_user ON job_seeker_references(user_id);
+-- Skills indexes
+CREATE INDEX idx_skills_job_seeker ON skills(job_seeker_id);
+CREATE INDEX idx_skills_name ON skills(name);
+
+-- Certifications indexes
+CREATE INDEX idx_certifications_job_seeker ON certifications(job_seeker_id);
+CREATE INDEX idx_certifications_name ON certifications(name);
+CREATE INDEX idx_certifications_issue_date ON certifications(issue_date);
+
+-- Resumes indexes
+CREATE INDEX idx_resumes_job_seeker ON resumes(job_seeker_id);
+CREATE INDEX idx_resumes_is_primary ON resumes(is_primary);
 
 -- Jobs indexes
 CREATE INDEX idx_jobs_status ON jobs(status);
@@ -287,12 +546,33 @@ CREATE INDEX idx_jobs_urgent ON jobs(is_urgent);
 CREATE INDEX idx_jobs_deadline ON jobs(application_deadline);
 CREATE INDEX idx_jobs_created_by ON jobs(created_by);
 CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+CREATE INDEX idx_jobs_location ON jobs(location);
+CREATE INDEX idx_jobs_remote ON jobs(remote);
 
 -- Applications indexes
 CREATE INDEX idx_applications_job ON applications(job_id);
 CREATE INDEX idx_applications_user ON applications(user_id);
 CREATE INDEX idx_applications_status ON applications(status);
 CREATE INDEX idx_applications_applied_at ON applications(applied_at);
+
+-- Documents indexes
+CREATE INDEX idx_documents_user ON documents(user_id);
+CREATE INDEX idx_documents_company ON documents(company_id);
+CREATE INDEX idx_documents_type ON documents(document_type);
+CREATE INDEX idx_documents_category ON documents(category);
+CREATE INDEX idx_documents_created ON documents(created_at);
+
+-- Notifications indexes
+CREATE INDEX idx_notifications_user ON notifications(user_id);
+CREATE INDEX idx_notifications_user_read ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_type ON notifications(type);
+
+-- Admin logs indexes
+CREATE INDEX idx_admin_logs_admin ON admin_logs(admin_id);
+CREATE INDEX idx_admin_logs_action ON admin_logs(action);
+CREATE INDEX idx_admin_logs_target ON admin_logs(target_type, target_id);
+CREATE INDEX idx_admin_logs_created_at ON admin_logs(created_at DESC);
 
 -- Audit logs indexes
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
@@ -308,8 +588,115 @@ CREATE INDEX idx_companies_name ON companies(name);
 CREATE INDEX idx_companies_industry ON companies(industry);
 CREATE INDEX idx_companies_country ON companies(country);
 
+-- Job alerts indexes
+CREATE INDEX idx_alerts_user ON job_alerts(user_id);
+CREATE INDEX idx_alerts_active ON job_alerts(is_active);
+
+-- Saved jobs indexes
+CREATE INDEX idx_saved_jobs_user ON saved_jobs(user_id);
+
+-- Job reports indexes
+CREATE INDEX idx_reports_job ON job_reports(job_id);
+CREATE INDEX idx_reports_status ON job_reports(status);
+
+-- User sessions indexes
+CREATE INDEX idx_sessions_user ON user_sessions(user_id);
+CREATE INDEX idx_sessions_token ON user_sessions(token);
+CREATE INDEX idx_sessions_expires ON user_sessions(expires_at);
+
 -- =====================================================
--- SEED DATA
+-- VIEWS
+-- =====================================================
+
+-- View for active jobs with company and category info
+CREATE VIEW v_active_jobs AS
+SELECT 
+    j.id,
+    j.title,
+    j.description,
+    j.salary_min,
+    j.salary_max,
+    j.is_urgent,
+    j.created_at,
+    j.location,
+    j.remote,
+    j.employment_type,
+    j.experience_level,
+    c.name AS company_name,
+    c.city AS company_city,
+    c.country AS company_country,
+    cat.name AS category_name,
+    subcat.name AS subcategory_name,
+    u.first_name || ' ' || u.last_name AS created_by_name
+FROM jobs j
+JOIN companies c ON j.company_id = c.id
+LEFT JOIN job_categories cat ON j.category_id = cat.id
+LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
+LEFT JOIN users u ON j.created_by = u.id
+WHERE j.status = 'APPROVED'
+AND (j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE);
+
+-- View for application statistics by job
+CREATE VIEW v_job_application_stats AS
+SELECT 
+    j.id AS job_id,
+    j.title AS job_title,
+    c.name AS company_name,
+    COUNT(a.id) AS total_applications,
+    COUNT(CASE WHEN a.status = 'APPLIED' THEN 1 END) AS applied,
+    COUNT(CASE WHEN a.status = 'SCREENING' THEN 1 END) AS screening,
+    COUNT(CASE WHEN a.status = 'LONG_LISTED' THEN 1 END) AS long_listed,
+    COUNT(CASE WHEN a.status = 'SHORTLISTED' THEN 1 END) AS shortlisted,
+    COUNT(CASE WHEN a.status LIKE '%INTERVIEW%' THEN 1 END) AS interviewing,
+    COUNT(CASE WHEN a.status = 'OFFER_MADE' THEN 1 END) AS offers_made,
+    COUNT(CASE WHEN a.status = 'HIRED' THEN 1 END) AS hired,
+    COUNT(CASE WHEN a.status = 'REJECTED' THEN 1 END) AS rejected
+FROM jobs j
+JOIN companies c ON j.company_id = c.id
+LEFT JOIN applications a ON j.id = a.job_id
+GROUP BY j.id, j.title, c.name;
+
+-- View for candidate profile summaries
+CREATE VIEW v_candidate_search AS
+SELECT 
+    u.id AS user_id,
+    u.first_name,
+    u.last_name,
+    u.email,
+    jsp.field_of_expertise,
+    jsp.qualification_level,
+    jsp.years_experience,
+    jsp.professional_summary,
+    jpd.gender,
+    jpd.date_of_birth,
+    jpd.nationality,
+    jpd.disability_status,
+    ja.city AS current_city,
+    ja.country AS current_country,
+    (SELECT COUNT(*) FROM job_seeker_education jse WHERE jse.user_id = u.id) AS education_count,
+    (SELECT COUNT(*) FROM job_seeker_experience jsex WHERE jsex.user_id = u.id) AS experience_count
+FROM users u
+JOIN job_seeker_profiles jsp ON u.id = jsp.user_id
+LEFT JOIN job_seeker_personal_details jpd ON u.id = jpd.user_id
+LEFT JOIN job_seeker_addresses ja ON u.id = ja.user_id AND ja.is_primary = TRUE
+WHERE u.is_active = TRUE;
+
+-- =====================================================
+-- COMMENTS (Documentation)
+-- =====================================================
+
+COMMENT ON TABLE users IS 'Central user registry for all system users';
+COMMENT ON TABLE roles IS 'System roles that group permissions together';
+COMMENT ON TABLE permissions IS 'Granular system permissions';
+COMMENT ON TABLE companies IS 'Multi-tenant company profiles';
+COMMENT ON TABLE jobs IS 'Core table for job postings/vacancies';
+COMMENT ON TABLE applications IS 'Tracks job applications and candidate progression';
+COMMENT ON TABLE audit_logs IS 'Comprehensive activity tracking for compliance';
+COMMENT ON TABLE job_seeker_profiles IS 'Professional summary and searchable profile data';
+COMMENT ON TABLE job_seeker_personal_details IS 'Sensitive PII with restricted access';
+
+-- =====================================================
+-- INITIAL SEED DATA
 -- =====================================================
 
 -- Insert default roles
@@ -383,7 +770,7 @@ FROM roles r, permissions p
 WHERE r.name = 'APPROVER'
 AND p.name IN ('VIEW_JOB', 'APPROVE_JOB', 'VIEW_APPLICATIONS');
 
--- Job Seeker permissions (minimal)
+-- Job Seeker permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
@@ -403,7 +790,7 @@ INSERT INTO job_categories (name) VALUES
     ('Hospitality'),
     ('Retail');
 
--- Insert sample subcategories for Technology
+-- Insert subcategories for Technology
 WITH tech_cat AS (SELECT id FROM job_categories WHERE name = 'Technology')
 INSERT INTO job_subcategories (category_id, name)
 SELECT id, subcat
@@ -445,355 +832,20 @@ FROM finance_cat, (VALUES
 ) AS s(subcat);
 
 -- =====================================================
--- ADDITIONAL USEFUL VIEWS
+-- VERIFICATION
 -- =====================================================
 
--- View for active jobs with company and category info
-CREATE VIEW v_active_jobs AS
-SELECT 
-    j.id,
-    j.title,
-    j.description,
-    j.salary_min,
-    j.salary_max,
-    j.is_urgent,
-    j.created_at,
-    c.name AS company_name,
-    c.city AS company_city,
-    c.country AS company_country,
-    cat.name AS category_name,
-    subcat.name AS subcategory_name,
-    u.first_name || ' ' || u.last_name AS created_by_name
-FROM jobs j
-JOIN companies c ON j.company_id = c.id
-LEFT JOIN job_categories cat ON j.category_id = cat.id
-LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
-LEFT JOIN users u ON j.created_by = u.id
-WHERE j.status = 'APPROVED'
-AND (j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE);
+SELECT '✅ Database schema created successfully!' AS message;
+SELECT COUNT(*) AS total_tables FROM information_schema.tables WHERE table_schema = 'public';
 
--- View for application statistics by job
-CREATE VIEW v_job_application_stats AS
-SELECT 
-    j.id AS job_id,
-    j.title AS job_title,
-    c.name AS company_name,
-    COUNT(a.id) AS total_applications,
-    COUNT(CASE WHEN a.status = 'APPLIED' THEN 1 END) AS applied,
-    COUNT(CASE WHEN a.status = 'SCREENING' THEN 1 END) AS screening,
-    COUNT(CASE WHEN a.status = 'SHORTLISTED' THEN 1 END) AS shortlisted,
-    COUNT(CASE WHEN a.status LIKE '%INTERVIEW%' THEN 1 END) AS interviewing,
-    COUNT(CASE WHEN a.status = 'OFFER_MADE' THEN 1 END) AS offers_made,
-    COUNT(CASE WHEN a.status = 'HIRED' THEN 1 END) AS hired,
-    COUNT(CASE WHEN a.status = 'REJECTED' THEN 1 END) AS rejected
-FROM jobs j
-JOIN companies c ON j.company_id = c.id
-LEFT JOIN applications a ON j.id = a.job_id
-GROUP BY j.id, j.title, c.name;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS employer_id UUID REFERENCES users(id);
 
--- View for candidate profile summaries (for recruiter search)
-CREATE VIEW v_candidate_search AS
-SELECT 
-    u.id AS user_id,
-    u.first_name,
-    u.last_name,
-    u.email,
-    jsp.field_of_expertise,
-    jsp.qualification_level,
-    jsp.years_experience,
-    jsp.professional_summary,
-    jpd.gender,
-    jpd.date_of_birth,
-    jpd.nationality,
-    jpd.disability_status,
-    ja.city AS current_city,
-    ja.country AS current_country,
-    (SELECT COUNT(*) FROM job_seeker_education jse WHERE jse.user_id = u.id) AS education_count,
-    (SELECT COUNT(*) FROM job_seeker_experience jsex WHERE jsex.user_id = u.id) AS experience_count
-FROM users u
-JOIN job_seeker_profiles jsp ON u.id = jsp.user_id
-LEFT JOIN job_seeker_personal_details jpd ON u.id = jpd.user_id
-LEFT JOIN job_seeker_addresses ja ON u.id = ja.user_id AND ja.is_primary = TRUE
-WHERE u.is_active = TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50);
 
--- =====================================================
--- COMMENTS (Documentation)
--- =====================================================
+DROP TABLE IF EXISTS employer_stats;
 
-COMMENT ON TABLE users IS 'Central user registry for all system users';
-COMMENT ON TABLE roles IS 'System roles that group permissions together';
-COMMENT ON TABLE permissions IS 'Granular system permissions';
-COMMENT ON TABLE companies IS 'Multi-tenant company profiles';
-COMMENT ON TABLE jobs IS 'Core table for job postings/vacancies';
-COMMENT ON TABLE applications IS 'Tracks job applications and candidate progression';
-COMMENT ON TABLE audit_logs IS 'Comprehensive activity tracking for compliance';
-COMMENT ON TABLE job_seeker_profiles IS 'Professional summary and searchable profile data';
-COMMENT ON TABLE job_seeker_personal_details IS 'Sensitive PII with restricted access';
-
--- Create documents table
-CREATE TABLE IF NOT EXISTS documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    file_name VARCHAR(255) NOT NULL,
-    original_name VARCHAR(255) NOT NULL,
-    file_size INTEGER NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
-    file_path VARCHAR(500) NOT NULL,
-    file_url VARCHAR(500) NOT NULL,
-    document_type VARCHAR(100),
-    category VARCHAR(100),
-    description TEXT,
-    is_public BOOLEAN DEFAULT FALSE,
-    uploaded_by UUID REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create indexes
-CREATE INDEX idx_documents_user ON documents(user_id);
-CREATE INDEX idx_documents_company ON documents(company_id);
-CREATE INDEX idx_documents_type ON documents(document_type);
-CREATE INDEX idx_documents_category ON documents(category);
-CREATE INDEX idx_documents_created ON documents(created_at);
-
--- Create job_seeker_documents junction table (for multiple document types)
-CREATE TABLE IF NOT EXISTS job_seeker_documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-    document_type VARCHAR(100) NOT NULL, -- 'resume', 'cover_letter', 'certificate', 'id', etc.
-    is_primary BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, document_id)
-);
-
--- Create company_documents table
-CREATE TABLE IF NOT EXISTS company_documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-    document_type VARCHAR(100) NOT NULL, -- 'logo', 'registration', 'tax', etc.
-    is_primary BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id, document_id)
-);
-
--- Resumes table for multiple resume uploads
-CREATE TABLE IF NOT EXISTS resumes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    file_name VARCHAR(255) NOT NULL,
-    file_path TEXT NOT NULL,
-    file_size INTEGER NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
-    is_primary BOOLEAN DEFAULT FALSE,
-    uploaded_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_resumes_job_seeker ON resumes(job_seeker_id);
-CREATE INDEX idx_resumes_is_primary ON resumes(is_primary);
-
--- Skills table
-CREATE TABLE IF NOT EXISTS skills (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    proficiency_level VARCHAR(50) CHECK (proficiency_level IN ('Beginner', 'Intermediate', 'Advanced', 'Expert')),
-    years_of_experience INTEGER,
-    is_primary BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(job_seeker_id, name)
-);
-
-CREATE INDEX idx_skills_job_seeker ON skills(job_seeker_id);
-CREATE INDEX idx_skills_name ON skills(name);
-
--- Certifications table
-CREATE TABLE IF NOT EXISTS certifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_seeker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(200) NOT NULL,
-    issuing_organization VARCHAR(200) NOT NULL,
-    issue_date DATE NOT NULL,
-    expiration_date DATE,
-    credential_id VARCHAR(100),
-    credential_url TEXT,
-    does_not_expire BOOLEAN DEFAULT FALSE,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_certifications_job_seeker ON certifications(job_seeker_id);
-CREATE INDEX idx_certifications_name ON certifications(name);
-CREATE INDEX idx_certifications_issue_date ON certifications(issue_date);
-
--- Notifications table
-CREATE TABLE IF NOT EXISTS notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL CHECK (type IN (
-        'application_received', 'application_status_changed',
-        'job_posted', 'job_closed', 'interview_scheduled',
-        'message_received', 'profile_viewed', 'system_alert'
-    )),
-    title VARCHAR(255) NOT NULL,
-    message TEXT NOT NULL,
-    data JSONB DEFAULT '{}',
-    is_read BOOLEAN DEFAULT FALSE,
-    read_at TIMESTAMP,
-    action_url TEXT,
-    priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_notifications_user ON notifications(user_id);
-CREATE INDEX idx_notifications_user_read ON notifications(user_id, is_read);
-CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
-CREATE INDEX idx_notifications_type ON notifications(type);
-
--- Notification preferences table
-CREATE TABLE IF NOT EXISTS notification_preferences (
+CREATE TABLE employer_stats (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    email_notifications BOOLEAN DEFAULT TRUE,
-    push_notifications BOOLEAN DEFAULT TRUE,
-    in_app_notifications BOOLEAN DEFAULT TRUE,
-    application_updates BOOLEAN DEFAULT TRUE,
-    job_alerts BOOLEAN DEFAULT TRUE,
-    message_notifications BOOLEAN DEFAULT TRUE,
-    marketing_emails BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Admin logs table for audit trail
-CREATE TABLE IF NOT EXISTS admin_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    admin_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    action VARCHAR(100) NOT NULL,
-    target_type VARCHAR(50) NOT NULL CHECK (target_type IN ('user', 'job', 'application', 'company')),
-    target_id UUID,
-    details JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_admin_logs_admin ON admin_logs(admin_id);
-CREATE INDEX idx_admin_logs_action ON admin_logs(action);
-CREATE INDEX idx_admin_logs_target ON admin_logs(target_type, target_id);
-CREATE INDEX idx_admin_logs_created_at ON admin_logs(created_at DESC);
-
--- Backups tracking table
-CREATE TABLE IF NOT EXISTS backups (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    filename VARCHAR(255) NOT NULL,
-    size_bytes BIGINT,
-    status VARCHAR(50) DEFAULT 'completed',
-    created_by UUID REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- User sessions table
-CREATE TABLE IF NOT EXISTS user_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token VARCHAR(255) NOT NULL UNIQUE,
-    ip_address INET,
-    user_agent TEXT,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    last_activity TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_sessions_user ON user_sessions(user_id);
-CREATE INDEX idx_sessions_token ON user_sessions(token);
-CREATE INDEX idx_sessions_expires ON user_sessions(expires_at);
-
--- Job reports table (for users to report inappropriate jobs)
-CREATE TABLE IF NOT EXISTS job_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-    reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    reason VARCHAR(50) NOT NULL CHECK (reason IN ('spam', 'inappropriate', 'fraud', 'other')),
-    description TEXT,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'dismissed', 'action_taken')),
-    reviewed_by UUID REFERENCES users(id),
-    reviewed_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_reports_job ON job_reports(job_id);
-CREATE INDEX idx_reports_status ON job_reports(status);
-
--- Saved jobs table
-CREATE TABLE IF NOT EXISTS saved_jobs (
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
-    saved_at TIMESTAMP DEFAULT NOW(),
-    PRIMARY KEY (user_id, job_id)
-);
-
-CREATE INDEX idx_saved_jobs_user ON saved_jobs(user_id);
-
--- Job alerts table
-CREATE TABLE IF NOT EXISTS job_alerts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    keywords TEXT,
-    category_id UUID REFERENCES job_categories(id),
-    location VARCHAR(255),
-    salary_min NUMERIC(12,2),
-    frequency VARCHAR(20) DEFAULT 'daily' CHECK (frequency IN ('instant', 'daily', 'weekly')),
-    is_active BOOLEAN DEFAULT TRUE,
-    last_sent_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_alerts_user ON job_alerts(user_id);
-CREATE INDEX idx_alerts_active ON job_alerts(is_active);
-
-ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS company_description TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS company_website VARCHAR(255);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS company_logo_url TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS company_size VARCHAR(50);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS industry VARCHAR(100);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS founded_year INTEGER;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS headquarters_location VARCHAR(255);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS block_reason TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS professional_summary TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS field_of_expertise VARCHAR(100);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS years_experience INTEGER;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS resume_url TEXT;
-
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS applications_count INTEGER DEFAULT 0;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS flag_reason TEXT;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location VARCHAR(255);
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS remote BOOLEAN DEFAULT FALSE;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS requirements JSONB DEFAULT '[]';
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS responsibilities JSONB DEFAULT '[]';
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]';
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50);
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_level VARCHAR(50);
-
-CREATE TABLE IF NOT EXISTS employer_stats (
-    employer_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     total_jobs_posted INTEGER DEFAULT 0,
     active_jobs INTEGER DEFAULT 0,
     total_applications_received INTEGER DEFAULT 0,
@@ -803,153 +855,54 @@ CREATE TABLE IF NOT EXISTS employer_stats (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-SELECT 
-    table_name,
-    column_name,
-    data_type,
-    is_nullable,
-    column_default
-FROM information_schema.columns
-WHERE table_schema = 'public'
-ORDER BY table_name, ordinal_position;
+CREATE INDEX IF NOT EXISTS idx_jobs_employer ON jobs(employer_id);
 
--- Drop the existing constraint first
-ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
+CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
 
--- Then add it again with your desired values
-ALTER TABLE jobs 
-ADD CONSTRAINT jobs_status_check 
-CHECK (status IN ('draft', 'active', 'closed', 'expired', 'flagged'));
-
--- Or if you want to modify the allowed values
-ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
-ALTER TABLE jobs 
-ADD CONSTRAINT jobs_status_check 
-CHECK (status IN ('draft', 'active', 'closed', 'expired', 'flagged', 'archived'));
-
-ALTER TABLE IF EXISTS applications DROP CONSTRAINT IF EXISTS applications_status_check;
-
-ALTER TABLE IF EXISTS companies DROP CONSTRAINT IF EXISTS companies_status_check;
-ALTER TABLE IF EXISTS backups DROP CONSTRAINT IF EXISTS backups_status_check;
-ALTER TABLE IF EXISTS job_reports DROP CONSTRAINT IF EXISTS job_reports_status_check;
-ALTER TABLE IF EXISTS users DROP CONSTRAINT IF EXISTS users_status_check;
-
-ALTER TABLE applications ALTER COLUMN status SET DEFAULT 'applied';
-UPDATE applications SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
-UPDATE applications SET status = 'applied' WHERE status IS NULL OR status = '';
-
-UPDATE companies SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
-UPDATE companies SET status = 'active' WHERE status IS NULL OR status = '';
-
-UPDATE backups SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
-UPDATE backups SET status = 'completed' WHERE status IS NULL OR status = '';
-
-UPDATE job_reports SET status = LOWER(TRIM(status)) WHERE status IS NOT NULL;
-UPDATE job_reports SET status = 'pending' WHERE status IS NULL OR status = '';
-
-DO $$
+CREATE OR REPLACE FUNCTION get_user_primary_role(p_user_id UUID)
+RETURNS VARCHAR AS $$
+DECLARE
+    v_role VARCHAR;
 BEGIN
-    -- Add status column to users if it doesn't exist
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'users' AND column_name = 'status'
-    ) THEN
-        ALTER TABLE users ADD COLUMN status VARCHAR(50);
-    END IF;
-END $$;
+    SELECT r.name INTO v_role
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = p_user_id
+    LIMIT 1;
+    
+    RETURN v_role;
+END;
+$$ LANGUAGE plpgsql;
 
-UPDATE users 
-SET status = CASE 
-    WHEN is_active = true THEN 'active'
-    ELSE 'inactive'
-END 
-WHERE status IS NULL;
+DROP VIEW IF EXISTS v_active_jobs;
 
-ALTER TABLE users ALTER COLUMN status SET DEFAULT 'active';
-
-ALTER TABLE applications 
-ADD CONSTRAINT applications_status_check 
-CHECK (status IN (
-    'applied', 
-    'screening', 
-    'shortlisted', 
-    'interviewing', 
-    'offered', 
-    'hired', 
-    'rejected'
-));
-
-ALTER TABLE companies 
-ADD CONSTRAINT companies_status_check 
-CHECK (status IN (
-    'active', 
-    'inactive', 
-    'suspended', 
-    'pending'
-));
-
-ALTER TABLE backups 
-ADD CONSTRAINT backups_status_check 
-CHECK (status IN (
-    'pending', 
-    'processing', 
-    'completed', 
-    'failed'
-));
-
-ALTER TABLE job_reports 
-ADD CONSTRAINT job_reports_status_check 
-CHECK (status IN (
-    'pending', 
-    'reviewed', 
-    'resolved', 
-    'dismissed'
-));
-
-ALTER TABLE users 
-ADD CONSTRAINT users_status_check 
-CHECK (status IN (
-    'active', 
-    'inactive', 
-    'suspended', 
-    'pending_verification',
-    'blocked'
-));
-
+CREATE VIEW v_active_jobs AS
 SELECT 
-    conrelid::regclass AS table_name,
-    conname AS constraint_name,
-    pg_get_constraintdef(oid) AS constraint_definition
-FROM pg_constraint
-WHERE contype = 'c'  -- 'c' for check constraints
-AND conrelid::regclass IN (
-    'applications', 
-    'jobs', 
-    'companies', 
-    'backups', 
-    'job_reports',
-    'users'
-)
-ORDER BY table_name, constraint_name;
-
-SELECT 'applications' AS table_name, status, COUNT(*) 
-FROM applications GROUP BY status ORDER BY status;
-
-SELECT 'jobs' AS table_name, status, COUNT(*) 
-FROM jobs GROUP BY status ORDER BY status;
-
-SELECT 'companies' AS table_name, status, COUNT(*) 
-FROM companies GROUP BY status ORDER BY status;
-
-SELECT 'backups' AS table_name, status, COUNT(*) 
-FROM backups GROUP BY status ORDER BY status;
-
-SELECT 'job_reports' AS table_name, status, COUNT(*) 
-FROM job_reports GROUP BY status ORDER BY status;
-
-SELECT 'users' AS table_name, status, COUNT(*) 
-FROM users GROUP BY status ORDER BY status;
-
--- Add created_at column to job_seeker_addresses table
-ALTER TABLE job_seeker_addresses 
-ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    j.id,
+    j.title,
+    j.description,
+    j.salary_min,
+    j.salary_max,
+    j.is_urgent,
+    j.created_at,
+    j.location,
+    j.remote,
+    j.employment_type,
+    j.experience_level,
+    j.employer_id,
+    c.name AS company_name,
+    c.city AS company_city,
+    c.country AS company_country,
+    cat.name AS category_name,
+    subcat.name AS subcategory_name,
+    u.first_name || ' ' || u.last_name AS created_by_name,
+    emp.first_name || ' ' || emp.last_name AS employer_name
+FROM jobs j
+JOIN companies c ON j.company_id = c.id
+LEFT JOIN job_categories cat ON j.category_id = cat.id
+LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
+LEFT JOIN users u ON j.created_by = u.id
+LEFT JOIN users emp ON j.employer_id = emp.id
+WHERE j.status = 'APPROVED'
+AND (j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE);

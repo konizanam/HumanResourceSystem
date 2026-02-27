@@ -1,4 +1,3 @@
-// src/controllers/profile.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { ProfileService } from '../services/profile.service';
 
@@ -99,7 +98,7 @@ export class ProfileController {
   updateAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const addressId = String((req.params as any).addressId);
+      const { addressId } = req.params;
       const address = await this.profileService.updateAddress(addressId, userId, req.body);
       
       res.json({
@@ -114,7 +113,7 @@ export class ProfileController {
   deleteAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const addressId = String((req.params as any).addressId);
+      const { addressId } = req.params;
       await this.profileService.deleteAddress(addressId, userId);
       
       res.status(204).send();
@@ -126,7 +125,7 @@ export class ProfileController {
   setPrimaryAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const addressId = String((req.params as any).addressId);
+      const { addressId } = req.params;
       await this.profileService.setPrimaryAddress(addressId, userId);
       
       res.json({
@@ -170,7 +169,7 @@ export class ProfileController {
   updateEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const educationId = String((req.params as any).educationId);
+      const { educationId } = req.params;
       const education = await this.profileService.updateEducation(educationId, userId, req.body);
       
       res.json({
@@ -185,7 +184,7 @@ export class ProfileController {
   deleteEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const educationId = String((req.params as any).educationId);
+      const { educationId } = req.params;
       await this.profileService.deleteEducation(educationId, userId);
       
       res.status(204).send();
@@ -226,7 +225,7 @@ export class ProfileController {
   updateExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const experienceId = String((req.params as any).experienceId);
+      const { experienceId } = req.params;
       const experience = await this.profileService.updateExperience(experienceId, userId, req.body);
       
       res.json({
@@ -241,7 +240,7 @@ export class ProfileController {
   deleteExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const experienceId = String((req.params as any).experienceId);
+      const { experienceId } = req.params;
       await this.profileService.deleteExperience(experienceId, userId);
       
       res.status(204).send();
@@ -282,7 +281,7 @@ export class ProfileController {
   updateReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const referenceId = String((req.params as any).referenceId);
+      const { referenceId } = req.params;
       const reference = await this.profileService.updateReference(referenceId, userId, req.body);
       
       res.json({
@@ -297,7 +296,7 @@ export class ProfileController {
   deleteReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const referenceId = String((req.params as any).referenceId);
+      const { referenceId } = req.params;
       await this.profileService.deleteReference(referenceId, userId);
       
       res.status(204).send();
