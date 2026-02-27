@@ -2,7 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { CompanyService } from '../services/company.service';
 import { BadRequestError, ForbiddenError } from '../utils/errors';
 import { getStringParam } from '../utils/params';
-import { getCompanyApprovalMode, setCompanyApprovalMode } from '../services/systemSettings.service';
+import {
+  getCompanyApprovalMode,
+  getSystemSettings,
+  setCompanyApprovalMode,
+  updateSystemSettings,
+} from '../services/systemSettings.service';
+import { logAudit } from '../helpers/auditLogger';
 
 function hasPermission(req: Request, permission: string): boolean {
   const permissions = Array.isArray(req.user?.permissions) ? req.user?.permissions : [];
@@ -32,6 +38,8 @@ export class CompanyController {
     this.approveCompany = this.approveCompany.bind(this);
     this.getApprovalMode = this.getApprovalMode.bind(this);
     this.updateApprovalMode = this.updateApprovalMode.bind(this);
+    this.getSystemSettings = this.getSystemSettings.bind(this);
+    this.updateSystemSettings = this.updateSystemSettings.bind(this);
   }
 
   // Get all companies
@@ -76,6 +84,12 @@ export class CompanyController {
       }
 
       const company = await this.companyService.createCompany(userId, req.body);
+      await logAudit({
+        userId,
+        action: 'COMPANY_CREATED',
+        targetType: 'company',
+        targetId: company.id,
+      });
       
       res.status(201).json({
         status: 'success',
@@ -97,6 +111,12 @@ export class CompanyController {
       }
 
       const company = await this.companyService.updateCompany(id, userId, req.body);
+      await logAudit({
+        userId,
+        action: 'COMPANY_UPDATED',
+        targetType: 'company',
+        targetId: id,
+      });
       
       res.json({
         status: 'success',
@@ -222,6 +242,12 @@ export class CompanyController {
       }
 
       const company = await this.companyService.approveCompany(id, userId);
+      await logAudit({
+        userId,
+        action: 'COMPANY_APPROVED',
+        targetType: 'company',
+        targetId: id,
+      });
       res.json({
         status: 'success',
         data: company,
@@ -263,6 +289,52 @@ export class CompanyController {
       res.json({
         status: 'success',
         data: { company_approval_mode: mode },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getSystemSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!hasPermission(req, 'MANAGE_USERS')) {
+        throw new ForbiddenError('You do not have permission to view system settings');
+      }
+
+      const settings = await getSystemSettings();
+      res.json({
+        status: 'success',
+        data: settings,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateSystemSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!hasPermission(req, 'MANAGE_USERS')) {
+        throw new ForbiddenError('You do not have permission to update system settings');
+      }
+
+      const systemName =
+        req.body?.system_name === undefined ? undefined : String(req.body.system_name);
+      const brandingLogo =
+        req.body?.branding_logo_url === undefined
+          ? undefined
+          : String(req.body.branding_logo_url);
+
+      if (systemName !== undefined && !systemName.trim()) {
+        throw new BadRequestError('System name is required');
+      }
+
+      const settings = await updateSystemSettings({
+        system_name: systemName,
+        branding_logo_url: brandingLogo,
+      });
+      res.json({
+        status: 'success',
+        data: settings,
       });
     } catch (error) {
       next(error);

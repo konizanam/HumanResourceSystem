@@ -114,6 +114,11 @@ export type Company = {
 };
 
 export type CompanyApprovalMode = "auto_approved" | "pending";
+export type SystemSettings = {
+  company_approval_mode: CompanyApprovalMode;
+  system_name: string;
+  branding_logo_url: string;
+};
 
 export type UserSearchResult = {
   id: string;
@@ -232,6 +237,18 @@ export async function updateCompany(
   return envelope.data;
 }
 
+export async function getCompany(token: string, id: string): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to load company");
+  }
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
 export async function deactivateCompany(token: string, id: string): Promise<Company> {
   const res = await fetch(
     `${API_BASE}/companies/${encodeURIComponent(id)}/deactivate`,
@@ -291,6 +308,41 @@ export async function updateCompanyApprovalMode(
   if (!res.ok) throw apiError(res, body, "Failed to update company approval mode");
   const mode = (body as any)?.data?.company_approval_mode;
   return mode === "pending" ? "pending" : "auto_approved";
+}
+
+export async function getSystemSettings(token: string): Promise<SystemSettings> {
+  const res = await fetch(`${API_BASE}/companies/settings`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load system settings");
+  const data = (body as any)?.data ?? {};
+  return {
+    company_approval_mode:
+      data.company_approval_mode === "pending" ? "pending" : "auto_approved",
+    system_name: String(data.system_name ?? "Human Resource System"),
+    branding_logo_url: String(data.branding_logo_url ?? ""),
+  };
+}
+
+export async function updateSystemSettings(
+  token: string,
+  payload: { system_name: string; branding_logo_url: string },
+): Promise<SystemSettings> {
+  const res = await fetch(`${API_BASE}/companies/settings`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update system settings");
+  const data = (body as any)?.data ?? {};
+  return {
+    company_approval_mode:
+      data.company_approval_mode === "pending" ? "pending" : "auto_approved",
+    system_name: String(data.system_name ?? "Human Resource System"),
+    branding_logo_url: String(data.branding_logo_url ?? ""),
+  };
 }
 
 export async function approveCompany(token: string, id: string): Promise<Company> {
@@ -439,6 +491,9 @@ export type NotificationPreferences = {
   push_notifications?: boolean;
   message_notifications?: boolean;
   marketing_emails?: boolean;
+  category_ids?: string[];
+  company_ids?: string[];
+  industry_names?: string[];
 };
 
 export async function listNotifications(
@@ -1333,6 +1388,7 @@ export type JobUpsertPayload = {
   description: string;
   company: string;
   company_id?: string;
+  category_id?: string;
   subcategory?: string;
   location: string;
   salary_min: number;
@@ -1609,6 +1665,17 @@ export type AdminStatistics = {
   };
 };
 
+export type EmployerDashboardData = {
+  profile?: Record<string, unknown> | null;
+  stats?: {
+    total_jobs_posted?: number;
+    active_jobs?: number;
+    total_applications_received?: number;
+  } | null;
+  recent_jobs?: JobListItem[];
+  recent_applications?: JobApplication[];
+};
+
 export async function getAdminStatistics(token: string): Promise<AdminStatistics> {
   const res = await fetch(`${API_BASE}/admin/statistics`, {
     headers: authHeaders(token),
@@ -1618,15 +1685,28 @@ export async function getAdminStatistics(token: string): Promise<AdminStatistics
   return body as AdminStatistics;
 }
 
+export async function getEmployerDashboard(token: string): Promise<EmployerDashboardData> {
+  const res = await fetch(`${API_BASE}/employers/dashboard`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load employer dashboard");
+  return body as EmployerDashboardData;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Admin Audit Logs                                                   */
 /* ------------------------------------------------------------------ */
 
 export type AuditLog = {
   id: string;
-  admin_id: string;
+  admin_id?: string;
+  user_id?: string;
   admin_name?: string;
   admin_email?: string;
+  user_email?: string;
+  first_name?: string;
+  last_name?: string;
   action: string;
   target_type: string;
   target_id?: string;

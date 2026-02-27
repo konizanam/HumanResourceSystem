@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
 type IconName =
+  | "home"
   | "settings"
   | "users"
   | "briefcase"
@@ -24,6 +25,14 @@ type IconName =
 function Icon({ name }: { name: IconName }) {
   const paths = useMemo(() => {
     switch (name) {
+      case "home":
+        return (
+          <>
+            <path d="M3 11.5 12 4l9 7.5" />
+            <path d="M5.5 10.5V20h13v-9.5" />
+            <path d="M10 20v-5h4v5" />
+          </>
+        );
       case "settings":
         return (
           <>
@@ -219,11 +228,11 @@ export function AppLayout({
       if (isAdminView) {
         allowedPaths = new Set(menuItems.map((item) => item.path));
       } else if (isEmployerView) {
-        allowedPaths = new Set(["jobs", "companies", "applications", "notifications"]);
+        allowedPaths = new Set(["dashboard", "jobs", "companies", "applications", "notifications"]);
       } else if (isJobSeekerView) {
-        allowedPaths = new Set(["job-seekers", "jobs", "notifications"]);
+        allowedPaths = new Set(["dashboard", "job-seekers", "jobs", "notifications"]);
       } else {
-        allowedPaths = new Set(["notifications"]);
+        allowedPaths = new Set(["dashboard", "notifications"]);
       }
 
       return menuItems.filter((item) => allowedPaths.has(item.path));

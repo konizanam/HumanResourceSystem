@@ -5,11 +5,14 @@ import {
   type Company,
   createJob,
   deleteJob,
+  getCompany,
   getJobSeekerFullProfile,
   listCompanies,
+  listJobCategories,
   listJobApplicationsForJob,
   listJobs,
   listMyApplications,
+  type JobCategory,
   type JobListItem,
   type JobUpsertPayload,
   updateJob,
@@ -188,6 +191,7 @@ export function JobsPage() {
   const canManageCompany = hasPermission("MANAGE_COMPANY");
   const canViewJob = hasPermission("VIEW_JOB");
   const canApplyJob = hasPermission("APPLY_JOB") && !canCreate && !canManageAllJobs;
+  const isJobSeekerView = !canCreate && !canManageAllJobs;
   const shouldRestrictToAssignedCompanies =
     !canManageCompany && !canViewJob && (canCreate || canViewApplications);
 
@@ -215,6 +219,20 @@ export function JobsPage() {
   const [form, setForm] = useState<JobFormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [addInlineOpen, setAddInlineOpen] = useState(false);
+  const [jobCategories, setJobCategories] = useState<JobCategory[]>([]);
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [companyResults, setCompanyResults] = useState<Company[]>([]);
+  const [categoryResults, setCategoryResults] = useState<JobCategory[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState("");
+  const [descriptionHtml, setDescriptionHtml] = useState("");
+  const descriptionRef = useRef<HTMLDivElement | null>(null);
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [companyModalLoading, setCompanyModalLoading] = useState(false);
+  const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
 
   const currentUserId = useMemo(() => {
     if (!accessToken) return "";
@@ -259,6 +277,54 @@ export function JobsPage() {
       cancelled = true;
     };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken || !addInlineOpen) return;
+    let cancelled = false;
+    void listJobCategories(accessToken)
+      .then((data) => {
+        if (cancelled) return;
+        setJobCategories(Array.isArray(data.categories) ? data.categories : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setJobCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, addInlineOpen]);
+
+  useEffect(() => {
+    if (!accessToken || !addInlineOpen) return;
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      try {
+        const allCompanies = await listCompanies(accessToken);
+        if (cancelled) return;
+        const q = companyQuery.trim().toLowerCase();
+        const matches = q
+          ? allCompanies.filter((company) => String(company.name ?? "").toLowerCase().includes(q))
+          : allCompanies;
+        setCompanyResults(matches.slice(0, 10));
+      } catch {
+        if (!cancelled) setCompanyResults([]);
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [accessToken, addInlineOpen, companyQuery]);
+
+  useEffect(() => {
+    if (!addInlineOpen) return;
+    const q = categoryQuery.trim().toLowerCase();
+    const matches = q
+      ? jobCategories.filter((category) => String(category.name ?? "").toLowerCase().includes(q))
+      : jobCategories;
+    setCategoryResults(matches.slice(0, 10));
+  }, [addInlineOpen, categoryQuery, jobCategories]);
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -368,10 +434,16 @@ export function JobsPage() {
   }
 
   function openCreateModal() {
+    setAddInlineOpen((prev) => !prev);
     setEditJobId(null);
     setForm(EMPTY_FORM);
     setFormErrors({});
-    setModalMode("create");
+    setSelectedCompany(null);
+    setSelectedCategory(null);
+    setSelectedSubcategory("");
+    setCompanyQuery("");
+    setCategoryQuery("");
+    setDescriptionHtml("");
   }
 
   function openEditModal(job: JobListItem) {
@@ -382,17 +454,14 @@ export function JobsPage() {
   }
 
   async function onSaveModal() {
-    if (!accessToken || !modalMode) return;
+    if (!accessToken || modalMode !== "edit") return;
     if (!canCreate) return;
     if (!validateForm()) return;
     try {
       setSaving(true);
       setError(null);
       const payload = mapFormToPayload(form);
-      if (modalMode === "create") {
-        await createJob(accessToken, payload);
-        setSuccess("Job created successfully");
-      } else if (editJobId) {
+      if (editJobId) {
         await updateJob(accessToken, editJobId, payload);
         setSuccess("Job updated successfully");
       }
@@ -404,6 +473,70 @@ export function JobsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onCreateInlineJob() {
+    if (!accessToken || !canCreate) return;
+    const plainDescription = (descriptionRef.current?.innerText ?? "").trim();
+    const errs: Record<string, string> = {};
+    if (!form.title.trim()) errs.title = "Title is required";
+    if (!selectedCompany?.id) errs.company = "Company is required";
+    if (!selectedCategory?.id) errs.category = "Category is required";
+    if (!selectedSubcategory.trim()) errs.subcategory = "Subcategory is required";
+    if (!plainDescription) errs.description = "Description is required";
+    if (!form.location.trim()) errs.location = "Location is required";
+    if (!form.salary_min.trim()) errs.salary_min = "Minimum salary is required";
+    if (!form.salary_max.trim()) errs.salary_max = "Maximum salary is required";
+    if (!form.application_deadline.trim()) errs.application_deadline = "Deadline is required";
+    setFormErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      await createJob(accessToken, {
+        title: form.title.trim(),
+        description: descriptionHtml || plainDescription,
+        company: selectedCompany.name,
+        company_id: selectedCompany.id,
+        category: selectedCategory.name,
+        category_id: selectedCategory.id,
+        subcategory: selectedSubcategory.trim(),
+        employment_type: form.employment_type,
+        experience_level: form.experience_level,
+        location: form.location.trim(),
+        remote: form.remote,
+        salary_min: Number(form.salary_min),
+        salary_max: Number(form.salary_max),
+        salary_currency: "NAD",
+        requirements: [],
+        responsibilities: [],
+        benefits: [],
+        application_deadline: form.application_deadline,
+        status: form.status,
+      });
+      setSuccess("Job created successfully");
+      setAddInlineOpen(false);
+      setForm(EMPTY_FORM);
+      setFormErrors({});
+      setSelectedCompany(null);
+      setSelectedCategory(null);
+      setSelectedSubcategory("");
+      setCompanyQuery("");
+      setCategoryQuery("");
+      setDescriptionHtml("");
+      await load(1);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to create job");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function formatCommand(command: string) {
+    document.execCommand(command);
+    const html = descriptionRef.current?.innerHTML ?? "";
+    setDescriptionHtml(html);
   }
 
   async function onConfirmDelete() {
@@ -506,6 +639,36 @@ export function JobsPage() {
     }
   }
 
+  async function onOpenCompanyInfo(job: JobListItem) {
+    if (!accessToken) return;
+    try {
+      setCompanyModalOpen(true);
+      setCompanyModalLoading(true);
+      setCompanyDetails(null);
+      setError(null);
+      const id = String(job.company_id ?? "").trim();
+      if (id) {
+        const company = await getCompany(accessToken, id);
+        setCompanyDetails(company);
+        return;
+      }
+      const fallback = companies.find(
+        (item) =>
+          String(item.name ?? "").trim().toLowerCase() ===
+          String(job.company ?? "").trim().toLowerCase(),
+      );
+      if (fallback) {
+        setCompanyDetails(fallback);
+      } else {
+        setError("Company details are not available for this job.");
+      }
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to load company details");
+    } finally {
+      setCompanyModalLoading(false);
+    }
+  }
+
   if (loading && jobs.length === 0) {
     return (
       <div className="page">
@@ -521,10 +684,103 @@ export function JobsPage() {
         <h1 className="pageTitle">Jobs</h1>
         {canCreate && (
           <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={openCreateModal}>
-            Add Job
+            {addInlineOpen ? "Cancel" : "Add Job"}
           </button>
         )}
       </div>
+      {addInlineOpen && canCreate && (
+        <div className="dropPanel" style={{ marginBottom: 16 }}>
+          <div className="editForm">
+            <h2 className="editFormTitle">Add Job</h2>
+            <div className="editGrid">
+              <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
+              <div className="field">
+                <label className="fieldLabel">Company</label>
+                <input className="input" value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Search company..." />
+                {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
+                {companyResults.length > 0 && (
+                  <div className="typeaheadList">
+                    {companyResults.map((company) => (
+                      <button key={company.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCompany(company); setCompanyQuery(company.name); setCompanyResults([]); }}>
+                        {company.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Category</label>
+                <input className="input" value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Search category..." />
+                {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
+                {categoryResults.length > 0 && (
+                  <div className="typeaheadList">
+                    {categoryResults.map((category) => (
+                      <button key={category.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCategory(category); setCategoryQuery(category.name); setCategoryResults([]); }}>
+                        {category.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Subcategory</label>
+                <select className="input" value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
+                  <option value="">Select subcategory</option>
+                  {(selectedCategory?.subcategories ?? []).map((sub) => (
+                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                  ))}
+                </select>
+                {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
+              </div>
+              <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
+              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
+              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
+              <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} />
+              <div className="field">
+                <label className="fieldLabel">Employment Type</label>
+                <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))}>
+                  <option value="Full-time">Full-time</option><option value="Part-time">Part-time</option><option value="Contract">Contract</option><option value="Internship">Internship</option>
+                </select>
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Experience Level</label>
+                <select className="input" value={form.experience_level} onChange={(e) => setForm((p) => ({ ...p, experience_level: e.target.value as JobUpsertPayload["experience_level"] }))}>
+                  <option value="Entry">Entry</option><option value="Intermediate">Intermediate</option><option value="Senior">Senior</option><option value="Lead">Lead</option>
+                </select>
+              </div>
+              <label className="field fieldCheckbox">
+                <input type="checkbox" checked={form.remote} onChange={(e) => setForm((p) => ({ ...p, remote: e.target.checked }))} />
+                <span className="fieldLabel">Remote</span>
+              </label>
+              <div className="field fieldFull">
+                <label className="fieldLabel">Description</label>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("bold")}>Bold</button>
+                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("italic")}>Italic</button>
+                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("insertUnorderedList")}>Bullets</button>
+                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("insertOrderedList")}>Numbered</button>
+                </div>
+                <div
+                  ref={descriptionRef}
+                  className="input textarea"
+                  contentEditable
+                  role="textbox"
+                  onInput={() => setDescriptionHtml(descriptionRef.current?.innerHTML ?? "")}
+                  style={{ minHeight: 120 }}
+                />
+                {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
+              </div>
+            </div>
+            <div className="stepperActions">
+              <button className="btn btnGhost" type="button" onClick={() => setAddInlineOpen(false)} disabled={saving}>Cancel</button>
+              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onCreateInlineJob} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
@@ -613,7 +869,20 @@ export function JobsPage() {
                   <Fragment key={job.id}>
                     <tr className={openJobId === job.id ? "tableRowActive" : undefined}>
                       <td className="tdStrong">{job.title}</td>
-                      <td>{job.company ?? "—"}</td>
+                      <td>
+                        {isJobSeekerView ? (
+                          <button
+                            type="button"
+                            className="linkBtn"
+                            onClick={() => void onOpenCompanyInfo(job)}
+                            disabled={saving}
+                          >
+                            {job.company ?? "—"}
+                          </button>
+                        ) : (
+                          job.company ?? "—"
+                        )}
+                      </td>
                       <td>{job.category ?? "—"}</td>
                       <td>{job.status ?? "—"}</td>
                       {canViewApplications ? <td className="tdRight">{applications}</td> : null}
@@ -675,10 +944,10 @@ export function JobsPage() {
         </div>
       )}
 
-      {modalMode && (
+      {modalMode === "edit" && (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setModalMode(null)}>
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
-            <div className="modalTitle">{modalMode === "create" ? "Add Job" : "Edit Job"}</div>
+            <div className="modalTitle">Edit Job</div>
             <div className="editGrid">
               <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
               <Field label="Company" value={form.company} onChange={(v) => setForm((p) => ({ ...p, company: v }))} error={formErrors.company} />
@@ -786,6 +1055,37 @@ export function JobsPage() {
               </button>
               <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onConfirmApply} disabled={saving}>
                 {saving ? "Applying..." : "Confirm Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {companyModalOpen ? (
+        <div className="modalOverlay" role="presentation" onMouseDown={() => !companyModalLoading && setCompanyModalOpen(false)}>
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Company Information</div>
+            <div className="modalMessage">
+              {companyModalLoading ? (
+                "Loading company details..."
+              ) : companyDetails ? (
+                <div className="profileReadGrid">
+                  <ReadField label="Company Name" value={companyDetails.name} />
+                  <ReadField label="Industry" value={companyDetails.industry} />
+                  <ReadField label="Contact Email" value={companyDetails.contact_email} />
+                  <ReadField label="Contact Phone" value={companyDetails.contact_phone} />
+                  <ReadField label="City" value={companyDetails.city} />
+                  <ReadField label="Country" value={companyDetails.country} />
+                  <ReadField label="Website" value={companyDetails.website} />
+                  <ReadField label="Description" value={companyDetails.description} />
+                </div>
+              ) : (
+                "No company details found."
+              )}
+            </div>
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={() => setCompanyModalOpen(false)}>
+                Close
               </button>
             </div>
           </div>

@@ -1,3 +1,9 @@
+## Page: Dashboard
+- View page: authenticated user
+- Admin widgets (system statistics + audit preview): `MANAGE_USERS`
+- Employer widgets (my jobs/applications overview): `CREATE_JOB` (without `MANAGE_USERS`)
+- Job seeker widgets (profile completion/jobs/applications): authenticated user without `MANAGE_USERS`/`CREATE_JOB`
+
 ## Page: Companies
 - View page: `VIEW_JOB` (any authenticated user with access to app menu)
 - Add Company: `MANAGE_COMPANY`
@@ -30,7 +36,7 @@
 ## Page: Notifications
 - View page: authenticated user
 - Mark read / mark all / delete own notifications: authenticated user
-- Manage notification preferences (email/job alerts/application updates): `MANAGE_NOTIFICATIONS`
+- Manage notification preferences (email/job alerts/category/company/industry): authenticated user
 
 ## Page: Job Applications
 - View page: `VIEW_APPLICATIONS` or route access from Jobs action
@@ -48,7 +54,7 @@
 ## Page: Permissions
 - View permissions list/grouping: authenticated user
 - Add Permission: `MANAGE_USERS`
-- Delete Permission: `MANAGE_USERS`
+- Delete Permission: not allowed (system-defined)
 
 ## Page: Users
 - View users list/details: authenticated user

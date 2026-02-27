@@ -2,49 +2,64 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteNotification,
   getNotificationPreferences,
+  listCompanies,
+  listJobCategories,
   listNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  type Company,
+  type JobCategory,
   type NotificationItem,
   type NotificationPreferences,
   updateNotificationPreferences,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { usePermissions } from "../auth/usePermissions";
 
 export function NotificationsPage() {
   const { accessToken } = useAuth();
-  const { hasPermission } = usePermissions();
-  const canManageNotifications = hasPermission("MANAGE_NOTIFICATIONS", "MANAGE_USERS");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
+  const [categories, setCategories] = useState<JobCategory[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.is_read).length,
     [notifications],
   );
+  const industries = useMemo(() => {
+    const names = new Set<string>();
+    for (const company of companies) {
+      const value = String(company.industry ?? "").trim();
+      if (value) names.add(value);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [companies]);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
       setLoading(true);
       setError(null);
-      const [data, pref] = await Promise.all([
+      const [data, pref, categoryData, companyData] = await Promise.all([
         listNotifications(accessToken, { page: 1, limit: 100 }),
-        canManageNotifications ? getNotificationPreferences(accessToken) : Promise.resolve(null),
+        getNotificationPreferences(accessToken),
+        listJobCategories(accessToken),
+        listCompanies(accessToken),
       ]);
       setNotifications(Array.isArray(data.notifications) ? data.notifications : []);
+      setCategories(Array.isArray(categoryData.categories) ? categoryData.categories : []);
+      setCompanies(Array.isArray(companyData) ? companyData : []);
       setPreferences(pref);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [accessToken, canManageNotifications]);
+  }, [accessToken]);
 
   useEffect(() => {
     void load();
@@ -96,7 +111,7 @@ export function NotificationsPage() {
   }
 
   async function onSavePreferences() {
-    if (!accessToken || !canManageNotifications || !preferences) return;
+    if (!accessToken || !preferences) return;
     try {
       setSaving(true);
       setError(null);
@@ -104,6 +119,9 @@ export function NotificationsPage() {
         email_notifications: preferences.email_notifications,
         job_alerts: preferences.job_alerts,
         application_updates: preferences.application_updates,
+        category_ids: Array.isArray(preferences.category_ids) ? preferences.category_ids : [],
+        company_ids: Array.isArray(preferences.company_ids) ? preferences.company_ids : [],
+        industry_names: Array.isArray(preferences.industry_names) ? preferences.industry_names : [],
       });
       setPreferences(updated);
       setSuccess("Notification preferences updated.");
@@ -112,6 +130,19 @@ export function NotificationsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function toggleSelection(
+    source: string[] | undefined,
+    value: string,
+    checked: boolean,
+  ): string[] {
+    const current = Array.isArray(source) ? source : [];
+    if (checked) {
+      if (current.includes(value)) return current;
+      return [...current, value];
+    }
+    return current.filter((item) => item !== value);
   }
 
   if (loading && notifications.length === 0) {
@@ -148,7 +179,7 @@ export function NotificationsPage() {
       {error ? <div className="errorBox">{error}</div> : null}
       {success ? <div className="successBox">{success}</div> : null}
 
-      {canManageNotifications && preferences ? (
+      {preferences ? (
         <div className="dropPanel" style={{ marginBottom: 12 }}>
           <h2 className="editFormTitle">Notification Preferences</h2>
           <div style={{ display: "grid", gap: 10 }}>
@@ -188,6 +219,104 @@ export function NotificationsPage() {
               />
               <span className="fieldLabel">Application update notifications</span>
             </label>
+          </div>
+          <div className="editGrid" style={{ marginTop: 12 }}>
+            <div className="field">
+              <span className="fieldLabel">Job Categories</span>
+              {categories.length === 0 ? (
+                <p className="pageText">No categories found.</p>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {categories.map((category) => (
+                    <label key={category.id} className="fieldCheckbox">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(preferences.category_ids?.includes(category.id))}
+                        onChange={(e) =>
+                          setPreferences((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  category_ids: toggleSelection(
+                                    prev.category_ids,
+                                    category.id,
+                                    e.target.checked,
+                                  ),
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                      <span className="fieldLabel">{category.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <span className="fieldLabel">Companies</span>
+              {companies.length === 0 ? (
+                <p className="pageText">No companies found.</p>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {companies.map((company) => (
+                    <label key={company.id} className="fieldCheckbox">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(preferences.company_ids?.includes(company.id))}
+                        onChange={(e) =>
+                          setPreferences((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  company_ids: toggleSelection(
+                                    prev.company_ids,
+                                    company.id,
+                                    e.target.checked,
+                                  ),
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                      <span className="fieldLabel">{company.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field fieldFull">
+              <span className="fieldLabel">Industries</span>
+              {industries.length === 0 ? (
+                <p className="pageText">No industries found.</p>
+              ) : (
+                <div style={{ display: "grid", gap: 6, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                  {industries.map((industry) => (
+                    <label key={industry} className="fieldCheckbox">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(preferences.industry_names?.includes(industry))}
+                        onChange={(e) =>
+                          setPreferences((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  industry_names: toggleSelection(
+                                    prev.industry_names,
+                                    industry,
+                                    e.target.checked,
+                                  ),
+                                }
+                              : prev,
+                          )
+                        }
+                      />
+                      <span className="fieldLabel">{industry}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="stepperActions">
             <button

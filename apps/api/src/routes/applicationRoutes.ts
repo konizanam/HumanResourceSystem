@@ -4,6 +4,8 @@ import { query as dbQuery } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
+import { logAdminAction } from '../middleware/adminLogger';
+import { logAudit } from '../helpers/auditLogger';
 
 const router = express.Router();
 
@@ -207,6 +209,13 @@ router.post('/',
         // Get job details for response
         const application = result.rows[0];
         application.job_title = job.title;
+        await logAudit({
+          userId: applicant_id,
+          action: 'APPLICATION_CREATED',
+          targetType: 'application',
+          targetId: application.id,
+          details: { job_id, applicant_id },
+        });
 
         // Notify the employer that a new application was submitted.
         if (job.employer_id) {
@@ -499,6 +508,16 @@ router.get('/:id',
          WHERE a.id = $1`,
         [applicationId]
       );
+      await logAudit({
+        userId,
+        action: 'APPLICATION_STATUS_UPDATED',
+        targetType: 'application',
+        targetId: applicationId,
+        details: {
+          old_status: application.status,
+          new_status: status,
+        },
+      });
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Application not found' });
@@ -585,6 +604,7 @@ router.get('/:id',
 router.put('/:id/status',
   authenticate,
   authorizePermission('UPDATE_APPLICATION_STATUS'),
+  logAdminAction('UPDATE_APPLICATION_STATUS', 'application'),
   param('id').isUUID().withMessage('Invalid application ID'),
   validateStatusUpdate,
   async (req: Request, res: Response) => {

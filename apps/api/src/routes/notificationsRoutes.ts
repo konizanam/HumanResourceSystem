@@ -21,8 +21,35 @@ const validatePreferences = [
   body('application_updates').optional().isBoolean().toBoolean(),
   body('job_alerts').optional().isBoolean().toBoolean(),
   body('message_notifications').optional().isBoolean().toBoolean(),
-  body('marketing_emails').optional().isBoolean().toBoolean()
+  body('marketing_emails').optional().isBoolean().toBoolean(),
+  body('category_ids').optional().isArray(),
+  body('category_ids.*').optional().isUUID().withMessage('category_ids must contain valid UUID values'),
+  body('company_ids').optional().isArray(),
+  body('company_ids.*').optional().isUUID().withMessage('company_ids must contain valid UUID values'),
+  body('industry_names').optional().isArray(),
+  body('industry_names.*').optional().isString().trim().notEmpty()
 ];
+
+async function ensureNotificationPreferenceColumns(): Promise<void> {
+  await dbQuery(
+    `ALTER TABLE notification_preferences
+       ADD COLUMN IF NOT EXISTS category_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+       ADD COLUMN IF NOT EXISTS company_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+       ADD COLUMN IF NOT EXISTS industry_names JSONB NOT NULL DEFAULT '[]'::jsonb`
+  );
+}
+
+function normalizePreferenceRow(row: any) {
+  const categoryIds = Array.isArray(row?.category_ids) ? row.category_ids : [];
+  const companyIds = Array.isArray(row?.company_ids) ? row.company_ids : [];
+  const industryNames = Array.isArray(row?.industry_names) ? row.industry_names : [];
+  return {
+    ...row,
+    category_ids: categoryIds.map((v: unknown) => String(v)),
+    company_ids: companyIds.map((v: unknown) => String(v)),
+    industry_names: industryNames.map((v: unknown) => String(v)),
+  };
+}
 
 /**
  * @swagger
@@ -800,6 +827,7 @@ router.get('/preferences',
   authenticate,
   async (req: Request, res: Response) => {
     try {
+      await ensureNotificationPreferenceColumns();
       const userId = req.user!.userId;
 
       const result = await dbQuery(
@@ -814,10 +842,10 @@ router.get('/preferences',
            VALUES ($1) RETURNING *`,
           [userId]
         );
-        return res.json(newPrefs.rows[0]);
+        return res.json(normalizePreferenceRow(newPrefs.rows[0]));
       }
 
-      res.json(result.rows[0]);
+      res.json(normalizePreferenceRow(result.rows[0]));
     } catch (error) {
       console.error('Error fetching notification preferences:', error);
       res.status(500).json({ error: 'Server error' });
@@ -874,6 +902,7 @@ router.put('/preferences',
   validatePreferences,
   async (req: Request, res: Response) => {
     try {
+      await ensureNotificationPreferenceColumns();
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -887,7 +916,10 @@ router.put('/preferences',
         application_updates,
         job_alerts,
         message_notifications,
-        marketing_emails
+        marketing_emails,
+        category_ids,
+        company_ids,
+        industry_names,
       } = req.body;
 
       // Build update query dynamically
@@ -923,6 +955,18 @@ router.put('/preferences',
         updateFields.push(`marketing_emails = $${paramIndex++}`);
         values.push(marketing_emails);
       }
+      if (category_ids !== undefined) {
+        updateFields.push(`category_ids = $${paramIndex++}::jsonb`);
+        values.push(JSON.stringify(category_ids));
+      }
+      if (company_ids !== undefined) {
+        updateFields.push(`company_ids = $${paramIndex++}::jsonb`);
+        values.push(JSON.stringify(company_ids));
+      }
+      if (industry_names !== undefined) {
+        updateFields.push(`industry_names = $${paramIndex++}::jsonb`);
+        values.push(JSON.stringify(industry_names));
+      }
 
       if (updateFields.length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
@@ -939,7 +983,7 @@ router.put('/preferences',
         values
       );
 
-      res.json(result.rows[0]);
+      res.json(normalizePreferenceRow(result.rows[0]));
     } catch (error) {
       console.error('Error updating notification preferences:', error);
       res.status(500).json({ error: 'Server error' });

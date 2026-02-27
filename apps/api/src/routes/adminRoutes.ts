@@ -1,8 +1,10 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
+import { logAdminAction } from '../middleware/adminLogger';
+import { logAudit } from '../helpers/auditLogger';
 
 const router = express.Router();
 
@@ -547,6 +549,7 @@ router.get('/users/:id',
 router.put('/users/:id/block',
   authenticate,
   authorize('ADMIN'),
+  logAdminAction('UPDATE_USER_BLOCK_STATUS', 'user'),
   validateUserId,
   [
     body('block').isBoolean().withMessage('Block status must be a boolean'),
@@ -603,6 +606,12 @@ router.put('/users/:id/block',
           [userId]
         );
       }
+      await logAudit({
+        userId: req.user!.userId,
+        action: block ? 'USER_BLOCKED' : 'USER_UNBLOCKED',
+        targetType: 'user',
+        targetId: userId,
+      });
 
       res.json({
         message: block ? 'User blocked successfully' : 'User unblocked successfully',
@@ -1034,9 +1043,13 @@ router.get('/statistics',
       const appStats = await dbQuery(
         `SELECT 
           COUNT(*) as total,
-          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
-          COUNT(CASE WHEN status = 'reviewed' THEN 1 END) as reviewed,
-          COUNT(CASE WHEN status = 'accepted' THEN 1 END) as accepted,
+          COUNT(CASE WHEN status IN ('applied', 'pending') THEN 1 END) as applied,
+          COUNT(CASE WHEN status IN ('screening', 'reviewed') THEN 1 END) as screening,
+          COUNT(CASE WHEN status IN ('longlisted', 'long_listed') THEN 1 END) as longlisted,
+          COUNT(CASE WHEN status = 'shortlisted' THEN 1 END) as shortlisted,
+          COUNT(CASE WHEN status IN ('interview', 'oral_interview', 'practical_interview', 'final_interview') THEN 1 END) as interview,
+          COUNT(CASE WHEN status = 'assessment' THEN 1 END) as assessment,
+          COUNT(CASE WHEN status IN ('hired', 'accepted') THEN 1 END) as hired,
           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected,
           COUNT(CASE WHEN status = 'withdrawn' THEN 1 END) as withdrawn,
           COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today
@@ -1106,9 +1119,13 @@ router.get('/statistics',
         },
         applications: {
           total: parseInt(appStats.rows[0].total),
-          pending: parseInt(appStats.rows[0].pending),
-          reviewed: parseInt(appStats.rows[0].reviewed),
-          accepted: parseInt(appStats.rows[0].accepted),
+          applied: parseInt(appStats.rows[0].applied),
+          screening: parseInt(appStats.rows[0].screening),
+          longlisted: parseInt(appStats.rows[0].longlisted),
+          shortlisted: parseInt(appStats.rows[0].shortlisted),
+          interview: parseInt(appStats.rows[0].interview),
+          assessment: parseInt(appStats.rows[0].assessment),
+          hired: parseInt(appStats.rows[0].hired),
           rejected: parseInt(appStats.rows[0].rejected),
           withdrawn: parseInt(appStats.rows[0].withdrawn),
           new_today: parseInt(appStats.rows[0].new_today),
@@ -1203,7 +1220,7 @@ router.get('/statistics',
  */
 router.get('/audit-logs',
   authenticate,
-  authorize('ADMIN'),
+  authorizePermission('MANAGE_USERS'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -1229,17 +1246,17 @@ router.get('/audit-logs',
       let paramIndex = 1;
 
       if (admin_id) {
-        whereConditions.push(`admin_id = $${paramIndex++}`);
+        whereConditions.push(`al.user_id = $${paramIndex++}`);
         queryParams.push(admin_id);
       }
 
       if (action) {
-        whereConditions.push(`action = $${paramIndex++}`);
+        whereConditions.push(`al.action_type = $${paramIndex++}`);
         queryParams.push(action);
       }
 
       if (target_type) {
-        whereConditions.push(`target_type = $${paramIndex++}`);
+        whereConditions.push(`al.module_name = $${paramIndex++}`);
         queryParams.push(target_type);
       }
 
@@ -1249,7 +1266,7 @@ router.get('/audit-logs',
 
       // Get total count
       const countResult = await dbQuery(
-        `SELECT COUNT(*) FROM admin_logs ${whereClause}`,
+        `SELECT COUNT(*) FROM audit_logs al ${whereClause}`,
         queryParams
       );
       const total = parseInt(countResult.rows[0].count);
@@ -1257,13 +1274,20 @@ router.get('/audit-logs',
       // Get logs
       const logsResult = await dbQuery(
         `SELECT 
-          l.*,
-          u.email as admin_email,
-          u.first_name || ' ' || u.last_name as admin_name
-         FROM admin_logs l
-         LEFT JOIN users u ON l.admin_id = u.id
+          al.id,
+          al.user_id,
+          al.action_type AS action,
+          al.module_name AS target_type,
+          al.record_id AS target_id,
+          al.new_data AS details,
+          al.created_at,
+          u.email as user_email,
+          u.first_name,
+          u.last_name
+         FROM audit_logs al
+         LEFT JOIN users u ON al.user_id = u.id
          ${whereClause}
-         ORDER BY l.created_at DESC
+         ORDER BY al.created_at DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...queryParams, limit, offset]
       );

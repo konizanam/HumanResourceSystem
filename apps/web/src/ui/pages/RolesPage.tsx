@@ -9,7 +9,10 @@ import {
   updateRole,
   deleteRole,
   getRolePermissions,
+  getUserRoles,
+  listPermissions,
   setRolePermissions,
+  setUserRoles,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
@@ -117,7 +120,7 @@ function ReadField({ label, value }: { label: string; value: unknown }) {
 /*  Main page                                                          */
 /* ------------------------------------------------------------------ */
 
-type PanelMode = "view" | "edit" | "permissions";
+type PanelMode = "view" | "edit" | "permissions" | "users";
 
 export function RolesPage() {
   const { accessToken } = useAuth();
@@ -149,6 +152,8 @@ export function RolesPage() {
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [selectedPermIds, setSelectedPermIds] = useState<Set<string>>(new Set());
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [usersSearch, setUsersSearch] = useState("");
+  const [usersPage, setUsersPage] = useState(1);
 
   // Delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -228,12 +233,24 @@ export function RolesPage() {
       }
     }
 
+    if (mode === "users") {
+      try {
+        const detail = await getRole(accessToken, role.id);
+        setRoleDetail(detail);
+      } catch (e) {
+        setError((e as any)?.message ?? "Failed to load assigned users");
+      }
+    }
+
     if (mode === "permissions") {
       setPermissionsLoading(true);
       try {
-        const data = await getRolePermissions(accessToken, role.id);
-        setAllPermissions(data.all_permissions);
-        setSelectedPermIds(new Set(data.permissions.map((p) => p.id)));
+        const [allPermsData, assignedData] = await Promise.all([
+          listPermissions(accessToken),
+          getRolePermissions(accessToken, role.id),
+        ]);
+        setAllPermissions(allPermsData.permissions);
+        setSelectedPermIds(new Set(assignedData.permissions.map((p) => p.id)));
       } catch (e) {
         setError((e as any)?.message ?? "Failed to load permissions");
       } finally {
@@ -280,6 +297,26 @@ export function RolesPage() {
     }
   }
 
+  async function onRemoveUserAccess(userId: string) {
+    if (!accessToken || !openRoleId || !canManageUsers) return;
+    try {
+      clearMessages();
+      setSaving(true);
+      const userRoles = await getUserRoles(accessToken, userId);
+      const remainingRoleIds = (userRoles.roles ?? [])
+        .map((role) => role.id)
+        .filter((roleId) => roleId !== openRoleId);
+      await setUserRoles(accessToken, userId, remainingRoleIds);
+      setSuccess("User access removed from role.");
+      const refreshed = await getRole(accessToken, openRoleId);
+      setRoleDetail(refreshed);
+    } catch (e) {
+      setError((e as any)?.message ?? "Failed to remove user access");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   /* -- Delete -- */
   async function onConfirmDelete() {
     if (!accessToken || !confirmDeleteId || !canManageUsers) return;
@@ -308,6 +345,21 @@ export function RolesPage() {
     }
     return map;
   }, [allPermissions]);
+
+  const filteredUsers = useMemo(() => {
+    const users = roleDetail?.users ?? [];
+    const query = usersSearch.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((user) => {
+      const fullName = `${user.first_name ?? ""} ${user.last_name ?? ""}`.toLowerCase();
+      return fullName.includes(query) || String(user.email ?? "").toLowerCase().includes(query);
+    });
+  }, [roleDetail?.users, usersSearch]);
+  const usersTotalPages = Math.max(1, Math.ceil(filteredUsers.length / 5));
+  const pagedUsers = useMemo(() => {
+    const start = (usersPage - 1) * 5;
+    return filteredUsers.slice(start, start + 5);
+  }, [filteredUsers, usersPage]);
 
   /* -- Render -- */
   if (loading) {
@@ -414,6 +466,7 @@ export function RolesPage() {
                     onView={() => openPanel(role, "view")}
                     onEdit={() => openPanel(role, "edit")}
                     onPermissions={() => openPanel(role, "permissions")}
+                    onUsers={() => { setUsersSearch(""); setUsersPage(1); void openPanel(role, "users"); }}
                     onDelete={() => { clearMessages(); setConfirmDeleteId(role.id); }}
                     onClose={() => setOpenRoleId(null)}
                   >
@@ -532,6 +585,71 @@ export function RolesPage() {
                         </td>
                       </tr>
                     )}
+                    {isOpen && panelMode === "users" && (
+                      <tr className="tableExpandRow">
+                        <td colSpan={6}>
+                          <div className="dropPanel">
+                            <div className="editForm">
+                              <h2 className="editFormTitle">Assigned Users — {role.name}</h2>
+                              <div style={{ marginBottom: 12, maxWidth: 320 }}>
+                                <input
+                                  className="input"
+                                  value={usersSearch}
+                                  onChange={(e) => { setUsersSearch(e.target.value); setUsersPage(1); }}
+                                  placeholder="Search by name or email..."
+                                />
+                              </div>
+                              <div className="tableWrap">
+                                <table className="table companiesTable">
+                                  <thead>
+                                    <tr>
+                                      <th>Name</th>
+                                      <th>Email</th>
+                                      <th className="thRight">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {pagedUsers.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={3}>
+                                          <div className="emptyState">No assigned users found.</div>
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      pagedUsers.map((user) => (
+                                        <tr key={user.id}>
+                                          <td>{`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "—"}</td>
+                                          <td>{user.email}</td>
+                                          <td className="tdRight">
+                                            <button
+                                              className="btn btnDanger btnSm"
+                                              type="button"
+                                              onClick={() => void onRemoveUserAccess(user.id)}
+                                              disabled={saving}
+                                            >
+                                              Remove Access
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                                <span className="readLabel">
+                                  Page {usersPage} of {usersTotalPages} ({filteredUsers.length} users)
+                                </span>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button className="btn btnGhost btnSm" type="button" disabled={usersPage <= 1} onClick={() => setUsersPage((p) => Math.max(1, p - 1))}>Previous</button>
+                                  <button className="btn btnGhost btnSm" type="button" disabled={usersPage >= usersTotalPages} onClick={() => setUsersPage((p) => Math.min(usersTotalPages, p + 1))}>Next</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </RoleRow>
                 );
               })
@@ -565,6 +683,7 @@ function RoleRow({
   onView,
   onEdit,
   onPermissions,
+  onUsers,
   onDelete,
   onClose,
   children,
@@ -576,6 +695,7 @@ function RoleRow({
   onView: () => void;
   onEdit: () => void;
   onPermissions: () => void;
+  onUsers: () => void;
   onDelete: () => void;
   onClose: () => void;
   children: ReactNode;
@@ -597,6 +717,7 @@ function RoleRow({
               { key: "view", label: open ? "Close" : "View", onClick: open ? onClose : onView },
               ...(canManageUsers ? [{ key: "edit", label: "Edit", onClick: onEdit }] : []),
               ...(canManageUsers ? [{ key: "permissions", label: "Manage Permissions", onClick: onPermissions }] : []),
+              ...(canManageUsers ? [{ key: "users", label: "View Users", onClick: onUsers }] : []),
               ...(canManageUsers ? [{ key: "delete", label: "Delete", onClick: onDelete, danger: true }] : []),
             ]}
           />

@@ -171,36 +171,8 @@ export function JobSeekerProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const tokenRoles = useMemo(() => {
-    if (!accessToken) return [] as string[];
-    try {
-      const [, payload] = accessToken.split(".");
-      if (!payload) return [];
-      const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-      const json = atob(padded);
-      const parsed = JSON.parse(json) as { roles?: unknown; role?: unknown };
-      const roles = Array.isArray(parsed.roles)
-        ? (parsed.roles as unknown[]).map((r) => String(r).trim().toUpperCase()).filter(Boolean)
-        : [];
-      if (typeof parsed.role === "string" && parsed.role.trim()) {
-        roles.push(parsed.role.trim().toUpperCase());
-      }
-      return roles;
-    } catch {
-      return [];
-    }
-  }, [accessToken]);
-  const canOpenJobSeekerProfile = tokenRoles.includes("JOB_SEEKER");
-
   const load = useCallback(async () => {
     if (!accessToken) return;
-    if (!canOpenJobSeekerProfile) {
-      setData(null);
-      setLoading(false);
-      setError("Access denied. This page is available for job seeker accounts.");
-      return;
-    }
     try {
       setLoading(true);
       const profile = await getFullProfile(accessToken);
@@ -233,7 +205,7 @@ export function JobSeekerProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, canOpenJobSeekerProfile, logout, navigate]);
+  }, [accessToken, logout, navigate]);
 
   useEffect(() => {
     load();

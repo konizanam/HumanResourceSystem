@@ -3,6 +3,8 @@ import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
 import { authenticate, authorize } from '../middleware/auth';
 import { Request, Response } from 'express';
+import { logAdminAction } from '../middleware/adminLogger';
+import { logAudit } from '../helpers/auditLogger';
 
 const router = express.Router();
 
@@ -358,6 +360,7 @@ router.get('/admin/roles/:id',
 router.post('/admin/roles',
   authenticate,
   authorize('ADMIN'),
+  logAdminAction('CREATE_ROLE', 'role'),
   validateRole,
   async (req: Request, res: Response) => {
     try {
@@ -392,6 +395,12 @@ router.post('/admin/roles',
          VALUES ($1, 'CREATE_ROLE', 'role', $2, $3, NOW())`,
         [req.user!.userId, result.rows[0].id, JSON.stringify({ name, description })]
       );
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'ROLE_CREATED',
+        targetType: 'role',
+        targetId: result.rows[0].id,
+      });
 
       res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -446,6 +455,7 @@ router.post('/admin/roles',
 router.put('/admin/roles/:id',
   authenticate,
   authorize('ADMIN'),
+  logAdminAction('UPDATE_ROLE', 'role'),
   validateRoleId,
   validateRole,
   async (req: Request, res: Response) => {
@@ -495,6 +505,12 @@ router.put('/admin/roles/:id',
          VALUES ($1, 'UPDATE_ROLE', 'role', $2, $3, NOW())`,
         [req.user!.userId, roleId, JSON.stringify({ name, description })]
       );
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'ROLE_UPDATED',
+        targetType: 'role',
+        targetId: roleId,
+      });
 
       res.json(result.rows[0]);
     } catch (error) {
@@ -534,6 +550,7 @@ router.put('/admin/roles/:id',
 router.delete('/admin/roles/:id',
   authenticate,
   authorize('ADMIN'),
+  logAdminAction('DELETE_ROLE', 'role'),
   validateRoleId,
   async (req: Request, res: Response) => {
     try {
@@ -584,6 +601,12 @@ router.delete('/admin/roles/:id',
          VALUES ($1, 'DELETE_ROLE', 'role', $2, $3, NOW())`,
         [req.user!.userId, roleId, JSON.stringify({ name: roleName })]
       );
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'ROLE_DELETED',
+        targetType: 'role',
+        targetId: roleId,
+      });
 
       res.json({ 
         message: 'Role deleted successfully',
@@ -1024,6 +1047,7 @@ router.get('/admin/roles/:roleId/permissions',
 router.put('/admin/roles/:roleId/permissions',
   authenticate,
   authorize('ADMIN'),
+  logAdminAction('ASSIGN_ROLE_PERMISSIONS', 'role'),
   validateRoleId,
   [
     body('permission_ids').isArray().withMessage('Permission IDs must be an array'),
@@ -1085,6 +1109,16 @@ router.put('/admin/roles/:roleId/permissions',
             role_name: roleCheck.rows[0].name
           })]
         );
+        await logAudit({
+          userId: req.user!.userId,
+          action: 'ROLE_PERMISSIONS_UPDATED',
+          targetType: 'role',
+          targetId: roleId,
+          details: {
+            old_count: oldPermissions.rows.length,
+            new_count: permission_ids.length,
+          },
+        });
 
         res.json({
           message: 'Permissions assigned successfully',
@@ -1311,6 +1345,16 @@ router.put('/admin/users/:userId/roles',
             user_email: userCheck.rows[0].email
           })]
         );
+        await logAudit({
+          userId: req.user!.userId,
+          action: 'USER_ROLES_UPDATED',
+          targetType: 'user',
+          targetId: userId,
+          details: {
+            old_count: oldRoles.rows.length,
+            new_count: role_ids.length,
+          },
+        });
 
         res.json({
           message: 'Roles assigned successfully',

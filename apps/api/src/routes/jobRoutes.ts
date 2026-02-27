@@ -4,6 +4,8 @@ import { query as dbQuery } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
+import { logAdminAction } from '../middleware/adminLogger';
+import { logAudit } from '../helpers/auditLogger';
 
 const router = express.Router();
 
@@ -14,11 +16,13 @@ const validateJob = [
   body('title').notEmpty().withMessage('Title is required'),
   body('description').notEmpty().withMessage('Description is required'),
   body('company').notEmpty().withMessage('Company is required'),
+  body('company_id').optional().isUUID().withMessage('Invalid company ID'),
   body('location').notEmpty().withMessage('Location is required'),
   body('salary_min').isNumeric().withMessage('Minimum salary must be a number'),
   body('salary_max').isNumeric().withMessage('Maximum salary must be a number'),
   body('salary_currency').optional().isString().withMessage('Currency must be a string'),
   body('category').notEmpty().withMessage('Category is required'),
+  body('category_id').optional().isUUID().withMessage('Invalid category ID'),
   body('experience_level').isIn(['Entry', 'Intermediate', 'Senior', 'Lead']).withMessage('Invalid experience level'),
   body('employment_type').isIn(['Full-time', 'Part-time', 'Contract', 'Internship']).withMessage('Invalid employment type'),
   body('remote').optional().isBoolean().toBoolean(),
@@ -492,6 +496,7 @@ router.get('/:id([0-9a-fA-F-]{36})', [
 router.post('/', 
   authenticate, 
   authorizePermission('CREATE_JOB'),
+  logAdminAction('CREATE_JOB', 'job'),
   validateJob, 
   async (req: Request, res: Response) => {
     try {
@@ -503,7 +508,7 @@ router.post('/',
       const {
         title, description, company, location,
         salary_min, salary_max, salary_currency = 'USD',
-        category, experience_level, employment_type,
+        category, category_id, company_id, experience_level, employment_type,
         remote = false, requirements = [], responsibilities = [],
         benefits = [], application_deadline, status = 'active'
       } = req.body;
@@ -528,38 +533,56 @@ router.post('/',
 
       const createdJob = result.rows[0];
       try {
-        // Notify job seekers with matching expertise who opted into job alerts.
-        const seekers = await dbQuery(
-          `SELECT jsp.user_id
-             FROM job_seeker_profiles jsp
-             JOIN notification_preferences np ON np.user_id = jsp.user_id
-            WHERE np.job_alerts = true
-              AND np.in_app_notifications = true
-              AND (
-                COALESCE(jsp.field_of_expertise, '') ILIKE $1
-                OR COALESCE($2, '') ILIKE ('%' || COALESCE(jsp.field_of_expertise, '') || '%')
-              )
-            LIMIT 300`,
-          [`%${category}%`, category]
-        );
+        // Notify only job seekers who explicitly selected this job's category or company.
+        if (category_id || company_id) {
+          const seekers = await dbQuery(
+            `SELECT DISTINCT jsp.user_id
+               FROM job_seeker_profiles jsp
+               JOIN notification_preferences np ON np.user_id = jsp.user_id
+              WHERE np.job_alerts = true
+                AND np.in_app_notifications = true
+                AND (
+                  ($1::uuid IS NOT NULL AND EXISTS (
+                    SELECT 1
+                      FROM jsonb_array_elements_text(COALESCE(np.category_ids, '[]'::jsonb)) pref_category
+                     WHERE pref_category = $1::text
+                  ))
+                  OR
+                  ($2::uuid IS NOT NULL AND EXISTS (
+                    SELECT 1
+                      FROM jsonb_array_elements_text(COALESCE(np.company_ids, '[]'::jsonb)) pref_company
+                     WHERE pref_company = $2::text
+                  ))
+                )
+              LIMIT 300`,
+            [category_id ?? null, company_id ?? null]
+          );
 
-        await Promise.allSettled(
-          seekers.rows.map((row) =>
-            createNotification(
-              row.user_id,
-              'job_posted',
-              'New job matching your profile',
-              `A new "${title}" position was posted in ${category}.`,
-              { job_id: createdJob.id, category, title },
-              '/app/jobs',
-              'normal'
+          await Promise.allSettled(
+            seekers.rows.map((row) =>
+              createNotification(
+                row.user_id,
+                'job_posted',
+                'New job posted in your selected preferences',
+                `A new "${title}" position was posted in ${category}.`,
+                { job_id: createdJob.id, category, category_id, company_id, title },
+                '/app/jobs',
+                'normal'
+              )
             )
-          )
-        );
+          );
+        }
       } catch (notificationError) {
         console.error('Failed to notify job seekers for new job posting:', notificationError);
       }
 
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'JOB_CREATED',
+        targetType: 'job',
+        targetId: createdJob.id,
+        details: { title: createdJob.title },
+      });
       res.status(201).json(createdJob);
     } catch (error) {
       console.error('Error creating job:', error);
@@ -572,6 +595,7 @@ router.post('/',
 router.put('/:id',
   authenticate,
   authorize('EMPLOYER', 'ADMIN'),
+  logAdminAction('UPDATE_JOB', 'job'),
   param('id').isUUID().withMessage('Invalid job ID'),
   validateJob,
   async (req: Request, res: Response) => {
@@ -625,6 +649,12 @@ router.put('/:id',
         ]
       );
 
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'JOB_UPDATED',
+        targetType: 'job',
+        targetId: req.params.id,
+      });
       res.json(result.rows[0]);
     } catch (error) {
       console.error('Error updating job:', error);
@@ -637,6 +667,7 @@ router.put('/:id',
 router.delete('/:id',
   authenticate,
   authorize('EMPLOYER', 'ADMIN'),
+  logAdminAction('DELETE_JOB', 'job'),
   param('id').isUUID().withMessage('Invalid job ID'),
   async (req: Request, res: Response) => {
     try {
@@ -674,6 +705,13 @@ router.delete('/:id',
           'UPDATE jobs SET status = $1, updated_at = NOW() WHERE id = $2',
           ['closed', req.params.id]
         );
+        await logAudit({
+          userId: req.user!.userId,
+          action: 'JOB_DELETED',
+          targetType: 'job',
+          targetId: req.params.id,
+          details: { closed_instead_of_deleted: true },
+        });
         return res.json({ 
           message: 'Job has applications, marked as closed instead of deleted',
           job_title: job.title,
@@ -683,6 +721,12 @@ router.delete('/:id',
 
       // No applications, safe to delete
       await dbQuery('DELETE FROM jobs WHERE id = $1', [req.params.id]);
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'JOB_DELETED',
+        targetType: 'job',
+        targetId: req.params.id,
+      });
       res.json({ 
         message: 'Job deleted successfully',
         job_title: job.title

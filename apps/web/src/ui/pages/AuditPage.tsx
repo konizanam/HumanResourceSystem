@@ -6,7 +6,7 @@ import { usePermissions } from "../auth/usePermissions";
 export function AuditPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
-  const canViewAudit = hasPermission("VIEW_AUDIT_LOGS");
+  const canViewAudit = hasPermission("VIEW_AUDIT_LOGS", "MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,12 +115,12 @@ export function AuditPage() {
             ) : filteredLogs.map((log) => (
               <tr key={log.id}>
                 <td>{log.created_at ? new Date(log.created_at).toLocaleString() : "—"}</td>
-                <td>{log.admin_name ?? log.admin_email ?? log.admin_id ?? "—"}</td>
+                <td>{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.user_email || (log.admin_name ?? log.admin_email ?? log.user_id ?? log.admin_id ?? "—")}</td>
                 <td><span className="chipBadge">{log.action}</span></td>
                 <td>{log.target_type ?? "—"}</td>
                 <td style={{ fontSize: "0.85em", fontFamily: "monospace" }}>{log.target_id ? log.target_id.substring(0, 8) + "…" : "—"}</td>
-                <td style={{ maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {log.details ? JSON.stringify(log.details).substring(0, 100) : "—"}
+                <td style={{ maxWidth: 360, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.8rem" }}>
+                  {log.details ? JSON.stringify(log.details, null, 2) : "—"}
                 </td>
               </tr>
             ))}

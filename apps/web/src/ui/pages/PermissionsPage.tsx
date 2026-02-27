@@ -1,56 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type Permission,
   listPermissions,
   createPermission,
-  deletePermission,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
-
-function ActionMenu({
-  label, items, disabled,
-}: {
-  label: string; disabled: boolean;
-  items: { key: string; label: string; onClick: () => void; danger?: boolean }[];
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onMouseDown(e: MouseEvent) { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); }
-    window.addEventListener("mousedown", onMouseDown);
-    return () => window.removeEventListener("mousedown", onMouseDown);
-  }, [open]);
-  return (
-    <div ref={wrapRef} className={"actionMenu" + (open ? " actionMenuOpen" : "")}>
-      <button type="button" className={"btn btnGhost btnSm actionMenuBtn stepperSaveBtn" + (disabled ? " actionMenuBtnDisabled" : "")} disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen((v) => !v); }}>{label}</button>
-      {open && (
-        <div className="actionMenuList" role="menu">
-          {items.map((it) => (
-            <button key={it.key} type="button" className={"actionMenuItem" + (it.danger ? " actionMenuItemDanger" : "")} onClick={(e) => { e.stopPropagation(); setOpen(false); it.onClick(); }} disabled={disabled} role="menuitem">{it.label}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ConfirmModal({ open, title, message, confirmLabel, busy, onCancel, onConfirm }: { open: boolean; title: string; message: string; confirmLabel: string; busy?: boolean; onCancel: () => void; onConfirm: () => void }) {
-  if (!open) return null;
-  return (
-    <div className="modalOverlay" role="presentation" onMouseDown={onCancel}>
-      <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modalTitle">{title}</div>
-        <div className="modalMessage">{message}</div>
-        <div className="modalActions">
-          <button className="btn btnGhost" type="button" onClick={onCancel} disabled={busy}>Cancel</button>
-          <button className="btn btnDanger" type="button" onClick={onConfirm} disabled={busy}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const MODULE_OPTIONS = ["Jobs", "Applications", "Candidates", "Company", "Users", "System", "Reports"];
 const ACTION_OPTIONS = ["CREATE", "VIEW", "UPDATE", "DELETE", "APPROVE", "MANAGE"];
@@ -76,9 +31,6 @@ export function PermissionsPage() {
   const [addModule, setAddModule] = useState("");
   const [addAction, setAddAction] = useState("");
   const [addFieldErrors, setAddFieldErrors] = useState<Record<string, string>>({});
-
-  // Delete
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const filteredGrouped = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -132,21 +84,6 @@ export function PermissionsPage() {
       setSuccess("Permission created successfully");
       setAddOpen(false); setAddName(""); setAddDesc(""); setAddModule(""); setAddAction(""); setAddFieldErrors({});
     } catch (e) { setError((e as any)?.message ?? "Failed to create permission"); }
-    finally { setSaving(false); }
-  }
-
-  async function onConfirmDelete() {
-    if (!accessToken || !confirmDeleteId || !canManageUsers) return;
-    try {
-      clearMessages(); setSaving(true);
-      await deletePermission(accessToken, confirmDeleteId);
-      // Refresh list
-      const data = await listPermissions(accessToken);
-      setPermissions(data.permissions);
-      setGrouped(data.grouped);
-      setSuccess("Permission deleted successfully");
-      setConfirmDeleteId(null);
-    } catch (e) { setError((e as any)?.message ?? "Failed to delete permission"); }
     finally { setSaving(false); }
   }
 
@@ -225,7 +162,6 @@ export function PermissionsPage() {
                     <th>Name</th>
                     <th>Description</th>
                     <th>Action Type</th>
-                    <th className="thRight">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -234,15 +170,6 @@ export function PermissionsPage() {
                       <td className="tdStrong">{p.name}</td>
                       <td>{p.description ?? "—"}</td>
                       <td><span className="chipBadge">{p.action_type}</span></td>
-                      <td className="tdRight">
-                        {canManageUsers ? (
-                          <ActionMenu disabled={saving} label="Action" items={[
-                            { key: "delete", label: "Delete", onClick: () => { clearMessages(); setConfirmDeleteId(p.id); }, danger: true },
-                          ]} />
-                        ) : (
-                          <span className="readValue">—</span>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -251,8 +178,6 @@ export function PermissionsPage() {
           </div>
         ))
       )}
-
-      <ConfirmModal open={Boolean(confirmDeleteId)} title="Delete Permission" message="Are you sure you want to delete this permission? Roles using it will lose this permission." confirmLabel={saving ? "Deleting…" : "Delete"} busy={saving} onCancel={() => setConfirmDeleteId(null)} onConfirm={onConfirmDelete} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { CompanyController } from '../controllers/company.controller';
 import { authenticate } from '../middleware/auth';
+import { logAdminAction } from '../middleware/adminLogger';
 import { body } from 'express-validator';
 import { validateRequest } from '../utils/validation';
 
@@ -76,12 +77,14 @@ const companyUpdateValidation = [
 // Company CRUD routes
 router.get('/approval-mode', companyController.getApprovalMode);
 router.put('/approval-mode', companyController.updateApprovalMode);
+router.get('/settings', companyController.getSystemSettings);
+router.put('/settings', companyController.updateSystemSettings);
 router.get('/', companyController.getAllCompanies);
 router.get('/:id', companyController.getCompanyById);
-router.post('/', companyCreateValidation, validateRequest, companyController.createCompany);
-router.put('/:id', companyUpdateValidation, validateRequest, companyController.updateCompany);
-router.patch('/:id/approve', companyController.approveCompany);
-router.patch('/:id/deactivate', companyController.deactivateCompany);
+router.post('/', companyCreateValidation, validateRequest, logAdminAction('CREATE_COMPANY', 'company'), companyController.createCompany);
+router.put('/:id', companyUpdateValidation, validateRequest, logAdminAction('UPDATE_COMPANY', 'company'), companyController.updateCompany);
+router.patch('/:id/approve', logAdminAction('APPROVE_COMPANY', 'company'), companyController.approveCompany);
+router.patch('/:id/deactivate', logAdminAction('DEACTIVATE_COMPANY', 'company'), companyController.deactivateCompany);
 router.patch('/:id/reactivate', companyController.reactivateCompany);
 
 // Company user management routes

@@ -22,8 +22,10 @@ import { StatusPage } from "./pages/StatusPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ApplicationsPage } from "./pages/ApplicationsPage";
 import { GlobalSettingsPage } from "./pages/GlobalSettingsPage";
+import { DashboardPage } from "./pages/DashboardPage";
 
 const menu = [
+  { path: "dashboard", title: "Dashboard", icon: "home" },
   { path: "global-settings", title: "Global Settings", icon: "settings" },
   { path: "job-seekers", title: "Job Seeker", icon: "users" },
   { path: "jobs", title: "Jobs", icon: "briefcase" },
@@ -43,9 +45,8 @@ const menu = [
 type HasPermissionFn = (...candidates: string[]) => boolean;
 
 function resolveDashboardPath(hasPermission: HasPermissionFn) {
-  if (hasPermission("MANAGE_USERS")) return "/app/global-settings";
-  if (hasPermission("CREATE_JOB") && !hasPermission("MANAGE_USERS")) return "/app/jobs";
-  return "/app/job-seekers";
+  void hasPermission;
+  return "/app/dashboard";
 }
 
 function DashboardHomeRedirect() {
@@ -94,6 +95,7 @@ export function App() {
         }
       >
         <Route index element={<DashboardHomeRedirect />} />
+        <Route path="dashboard" element={<DashboardPage />} />
 
         <Route
           path="global-settings"

@@ -3,21 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { forgotPassword, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
 
-function hasPermission(permissions: string[], target: string) {
-  const normalized = target.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return permissions.some((permission) =>
-    permission.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") === normalized,
-  );
-}
-
-function resolveDashboardFromPermissions(permissions: string[]) {
-  if (hasPermission(permissions, "MANAGE_USERS")) return "/app/global-settings";
-  if (hasPermission(permissions, "CREATE_JOB") && !hasPermission(permissions, "MANAGE_USERS")) {
-    return "/app/jobs";
-  }
-  return "/app/job-seekers";
-}
-
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +30,8 @@ export function LoginPage() {
           ? (payload as any).user.permissions.map((p: unknown) => String(p))
           : [];
         if (!cancelled) {
-          navigate(resolveDashboardFromPermissions(permissions), { replace: true });
+          void permissions;
+          navigate("/app/dashboard", { replace: true });
         }
       } catch {
         if (!cancelled) {
@@ -106,7 +92,8 @@ export function LoginPage() {
         const permissions = Array.isArray((payload as any)?.user?.permissions)
           ? (payload as any).user.permissions.map((p: unknown) => String(p))
           : [];
-        navigate(resolveDashboardFromPermissions(permissions), { replace: true });
+        void permissions;
+        navigate("/app/dashboard", { replace: true });
         return;
       }
 
@@ -136,7 +123,8 @@ export function LoginPage() {
       const permissions = Array.isArray((payload as any)?.user?.permissions)
         ? (payload as any).user.permissions.map((p: unknown) => String(p))
         : [];
-      navigate(resolveDashboardFromPermissions(permissions), { replace: true });
+      void permissions;
+      navigate("/app/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
