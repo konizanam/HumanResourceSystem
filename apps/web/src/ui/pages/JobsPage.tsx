@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   applyToJob,
@@ -6,7 +6,9 @@ import {
   createJob,
   deleteJob,
   getCompany,
+  getPublicCompany,
   getJobSeekerFullProfile,
+  listJobSeekerResumes,
   listCompanies,
   listJobCategories,
   listJobApplicationsForJob,
@@ -19,7 +21,67 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
-import { ActionMenu } from "../components/ActionMenu";
+
+function ShareIconBase({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "block" }}
+    >
+      {children}
+    </svg>
+  );
+}
+
+function FacebookIcon() {
+  return (
+    <ShareIconBase>
+      <path
+        d="M14 13.5h2.25l.75-3H14V8.75c0-.86.28-1.25 1.22-1.25H17V5h-2.3C12.4 5 11 6.3 11 8.7V10.5H9v3h2v6h3v-6Z"
+        fill="currentColor"
+      />
+    </ShareIconBase>
+  );
+}
+
+function XIcon() {
+  return (
+    <ShareIconBase>
+      <path
+        d="M18.9 3H21l-6.7 7.65L22 21h-6.8l-4.4-5.74L5.7 21H3.6l7.2-8.24L2 3h6.9l4 5.27L18.9 3Zm-1.2 16h1.16L8.28 4.9H7.05L17.7 19Z"
+        fill="currentColor"
+      />
+    </ShareIconBase>
+  );
+}
+
+function WhatsAppIcon() {
+  return (
+    <ShareIconBase>
+      <path
+        d="M12.04 2C6.5 2 2 6.39 2 11.8c0 2.11.7 4.06 1.89 5.64L3 22l4.73-1.53a10.3 10.3 0 0 0 4.31.94c5.54 0 10.04-4.39 10.04-9.8C22.08 6.39 17.58 2 12.04 2Zm0 17.62c-1.36 0-2.62-.34-3.73-.94l-.27-.15-2.8.9.9-2.67-.17-.27a7.57 7.57 0 0 1-1.2-4.07c0-4.22 3.55-7.65 7.94-7.65 4.38 0 7.94 3.43 7.94 7.65 0 4.22-3.56 7.65-7.94 7.65Zm4.64-5.73c-.25-.12-1.47-.72-1.7-.8-.23-.08-.4-.12-.57.12-.17.25-.65.8-.8.97-.15.17-.3.19-.55.06-.25-.12-1.06-.39-2.02-1.23-.75-.65-1.25-1.45-1.4-1.7-.15-.25-.02-.38.1-.5.1-.1.25-.3.37-.44.12-.15.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.12-.57-1.35-.78-1.85-.2-.48-.4-.41-.57-.42h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.02 2.61.12.17 1.78 2.77 4.32 3.88.6.26 1.06.41 1.42.53.6.19 1.14.16 1.57.1.48-.07 1.47-.6 1.67-1.18.2-.58.2-1.07.14-1.18-.06-.1-.23-.17-.48-.29Z"
+        fill="currentColor"
+      />
+    </ShareIconBase>
+  );
+}
+
+function EmailIcon() {
+  return (
+    <ShareIconBase>
+      <path
+        d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 4-8 5L4 8V6l8 5 8-5v2Z"
+        fill="currentColor"
+      />
+    </ShareIconBase>
+  );
+}
 
 function ConfirmModal({
   open,
@@ -148,10 +210,15 @@ export function JobsPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [allowedCompanyIds, setAllowedCompanyIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterEmploymentType, setFilterEmploymentType] = useState("");
+  const [filterExperienceLevel, setFilterExperienceLevel] = useState("");
+  const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite">("all");
+  const [filterLocation, setFilterLocation] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [applicationCounts, setApplicationCounts] = useState<Record<string, number>>({});
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
+  const [pagination, setPagination] = useState(() => ({ page: 1, limit: isJobSeekerView ? 5 : 20, total: 0, pages: 0 }));
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
@@ -174,9 +241,63 @@ export function JobsPage() {
   const [selectedSubcategory, setSelectedSubcategory] = useState("");
   const [descriptionHtml, setDescriptionHtml] = useState("");
   const descriptionRef = useRef<HTMLDivElement | null>(null);
+  const [showSeekerFilters, setShowSeekerFilters] = useState(searchParams.get("browse") !== "0");
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
+
+  useEffect(() => {
+    if (!isJobSeekerView) return;
+    setPagination((p) => (p.limit === 5 ? p : { ...p, limit: 5, page: 1 }));
+  }, [isJobSeekerView]);
+
+  const companyNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const company of companies) {
+      const id = String(company.id ?? "").trim();
+      const name = String(company.name ?? "").trim();
+      if (id && name) map.set(id, name);
+    }
+    return map;
+  }, [companies]);
+
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const category of jobCategories) {
+      const id = String(category.id ?? "").trim();
+      const name = String(category.name ?? "").trim();
+      if (id && name) map.set(id, name);
+    }
+    return map;
+  }, [jobCategories]);
+
+  const resolveJobCompanyName = useCallback((job: JobListItem) => {
+    const direct = String(job.company ?? "").trim();
+    if (direct) return direct;
+    const employerCompany = String((job as any).employer_company ?? "").trim();
+    if (employerCompany) return employerCompany;
+    const id = String(job.company_id ?? "").trim();
+    if (id) {
+      const fromMap = companyNameById.get(id);
+      if (fromMap) return fromMap;
+    }
+    return "—";
+  }, [companyNameById]);
+
+  const resolveJobCategoryName = useCallback((job: JobListItem) => {
+    const direct = String(job.category ?? "").trim();
+    if (direct) return direct;
+    const fromCategoryName = String(job.category_name ?? "").trim();
+    if (fromCategoryName) return fromCategoryName;
+    const categoryId = String(job.category_id ?? "").trim();
+    if (categoryId) {
+      const fromMap = categoryNameById.get(categoryId);
+      if (fromMap) return fromMap;
+    }
+    const fromSubcategory = String(job.subcategory ?? "").trim();
+    if (fromSubcategory) return fromSubcategory;
+    return "—";
+  }, [categoryNameById]);
 
   const currentUserId = useMemo(() => {
     if (!accessToken) return "";
@@ -223,7 +344,7 @@ export function JobsPage() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (!accessToken || !addInlineOpen) return;
+    if (!accessToken) return;
     let cancelled = false;
     void listJobCategories(accessToken)
       .then((data) => {
@@ -237,7 +358,7 @@ export function JobsPage() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, addInlineOpen]);
+  }, [accessToken]);
 
   useEffect(() => {
     if (!accessToken || !addInlineOpen) return;
@@ -349,15 +470,103 @@ export function JobsPage() {
 
   const visibleJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return jobs;
     return jobs.filter((job) => {
-      return (
+      const companyName = resolveJobCompanyName(job);
+      const categoryName = resolveJobCategoryName(job);
+      const matchesQuery = !q || (
         String(job.title ?? "").toLowerCase().includes(q) ||
-        String(job.company ?? "").toLowerCase().includes(q) ||
-        String(job.category ?? "").toLowerCase().includes(q)
+        String(companyName).toLowerCase().includes(q) ||
+        String(categoryName).toLowerCase().includes(q)
       );
+
+      if (!matchesQuery) return false;
+
+      if (filterCategory) {
+        if (String(categoryName).toLowerCase() !== filterCategory.toLowerCase()) return false;
+      }
+
+      if (filterEmploymentType) {
+        if (String(job.employment_type ?? "").toLowerCase() !== filterEmploymentType.toLowerCase()) return false;
+      }
+
+      if (filterExperienceLevel) {
+        if (String(job.experience_level ?? "").toLowerCase() !== filterExperienceLevel.toLowerCase()) return false;
+      }
+
+      if (filterRemote !== "all") {
+        const isRemote = Boolean(job.remote);
+        if (filterRemote === "remote" && !isRemote) return false;
+        if (filterRemote === "onsite" && isRemote) return false;
+      }
+
+      if (filterLocation) {
+        const location = String(job.location ?? "").toLowerCase();
+        if (!location.includes(filterLocation.toLowerCase())) return false;
+      }
+
+      return true;
     });
-  }, [jobs, search]);
+  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, resolveJobCategoryName, resolveJobCompanyName, search]);
+
+  const seekerFilterOptions = useMemo(() => {
+    const categories = new Set<string>();
+    const employmentTypes = new Set<string>();
+    const experienceLevels = new Set<string>();
+    const locations = new Set<string>();
+
+    for (const job of jobs) {
+      const category = resolveJobCategoryName(job);
+      if (category && category !== "—") categories.add(category);
+      const employmentType = String(job.employment_type ?? "").trim();
+      if (employmentType) employmentTypes.add(employmentType);
+      const experience = String(job.experience_level ?? "").trim();
+      if (experience) experienceLevels.add(experience);
+      const location = String(job.location ?? "").trim();
+      if (location) locations.add(location);
+    }
+
+    const sortAlpha = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    return {
+      categories: Array.from(categories).sort(sortAlpha),
+      employmentTypes: Array.from(employmentTypes).sort(sortAlpha),
+      experienceLevels: Array.from(experienceLevels).sort(sortAlpha),
+      locations: Array.from(locations).sort(sortAlpha),
+    };
+  }, [jobs, resolveJobCategoryName]);
+
+  useEffect(() => {
+    const browseParam = searchParams.get("browse");
+    setShowSeekerFilters(browseParam !== "0");
+  }, [searchParams]);
+
+  const renderSeekerPager = useCallback(() => {
+    if (pagination.pages <= 1) return null;
+    return (
+      <div className="publicJobsPager" role="navigation" aria-label="Jobs pagination">
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => void load(pagination.page - 1)}
+          disabled={pagination.page <= 1 || loading}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">
+          Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
+        </span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() => void load(pagination.page + 1)}
+          disabled={pagination.page >= pagination.pages || loading}
+        >
+          Next {"->"}
+        </button>
+      </div>
+    );
+  }, [load, loading, pagination.page, pagination.pages, pagination.total]);
 
   const seekerVisibleJobs = useMemo(() => {
     if (!isJobSeekerView) return visibleJobs;
@@ -444,16 +653,20 @@ export function JobsPage() {
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
+    const company = selectedCompany;
+    const category = selectedCategory;
+    if (!company?.id || !category?.id) return;
+
     try {
       setSaving(true);
       setError(null);
       await createJob(accessToken, {
         title: form.title.trim(),
         description: descriptionHtml || plainDescription,
-        company: selectedCompany.name,
-        company_id: selectedCompany.id,
-        category: selectedCategory.name,
-        category_id: selectedCategory.id,
+        company: company.name,
+        company_id: company.id,
+        category: category.name,
+        category_id: category.id,
         subcategory: selectedSubcategory.trim(),
         employment_type: form.employment_type,
         experience_level: form.experience_level,
@@ -508,7 +721,10 @@ export function JobsPage() {
     }
   }
 
-  function getApplyProfileCompleteness(profile: Awaited<ReturnType<typeof getJobSeekerFullProfile>>) {
+  function getApplyProfileCompleteness(
+    profile: Awaited<ReturnType<typeof getJobSeekerFullProfile>>,
+    hasCv: boolean,
+  ) {
     const profileObj = (profile ?? {}) as Record<string, unknown>;
     const details = (
       profileObj.personalDetails ??
@@ -522,6 +738,9 @@ export function JobsPage() {
     const lastName = String(
       details?.last_name ?? details?.lastName ?? "",
     ).trim();
+    const idDocumentUrl = String(
+      details?.id_document_url ?? details?.idDocumentUrl ?? "",
+    ).trim();
 
     const education = Array.isArray(profileObj.education)
       ? profileObj.education
@@ -533,8 +752,15 @@ export function JobsPage() {
     if (!details) reasons.push("missing personal details object");
     if (!firstName) reasons.push("missing first name (first_name or firstName)");
     if (!lastName) reasons.push("missing last name (last_name or lastName)");
+    if (!idDocumentUrl) reasons.push("missing identification document (id_document_url or idDocumentUrl)");
     if (!Array.isArray(education) || education.length < 1) {
       reasons.push("education array missing or empty");
+    }
+    if (Array.isArray(education) && education.some((item: any) => !String(item?.certificate_url ?? item?.certificateUrl ?? "").trim())) {
+      reasons.push("education evidence missing for one or more entries");
+    }
+    if (!hasCv) {
+      reasons.push("CV missing");
     }
 
     return {
@@ -544,6 +770,8 @@ export function JobsPage() {
         rootKeys: Object.keys(profileObj),
         detailsKeys: details ? Object.keys(details) : [],
         educationCount: Array.isArray(education) ? education.length : 0,
+        idDocumentUrl,
+        hasCv,
         firstName,
         lastName,
       },
@@ -556,9 +784,13 @@ export function JobsPage() {
       setApplyContextJob(job);
       setSaving(true);
       setError(null);
-      const profile = await getJobSeekerFullProfile(accessToken);
+      const [profile, resumes] = await Promise.all([
+        getJobSeekerFullProfile(accessToken),
+        listJobSeekerResumes(accessToken),
+      ]);
       console.log("[JobsPage] /job-seeker/full-profile response:", profile);
-      const completeness = getApplyProfileCompleteness(profile);
+      const hasCv = Boolean(resumes.primary_resume || (Array.isArray(resumes.resumes) && resumes.resumes.length > 0));
+      const completeness = getApplyProfileCompleteness(profile, hasCv);
       if (!completeness.complete) {
         console.log(
           "[JobsPage] Profile marked incomplete for apply:",
@@ -605,16 +837,58 @@ export function JobsPage() {
       setCompanyDetails(null);
       setError(null);
       const id = String(job.company_id ?? "").trim();
+      const byId = id
+        ? companies.find((item) => String(item.id ?? "").trim() === id)
+        : undefined;
+      const byName = companies.find(
+        (item) =>
+          String(item.name ?? "").trim().toLowerCase() ===
+          String(job.company ?? "").trim().toLowerCase(),
+      );
+
+      if (isJobSeekerView) {
+        try {
+          const publicCompany = await getPublicCompany(String(job.id));
+          setCompanyDetails(publicCompany);
+          return;
+        } catch {
+          // Fallback to local/search-based company details.
+        }
+
+        const local = byId ?? byName;
+        if (local) {
+          setCompanyDetails(local);
+          return;
+        }
+
+        const refreshed = await listCompanies(accessToken);
+        const refreshedList = Array.isArray(refreshed) ? refreshed : [];
+        const refreshedMatch =
+          (id
+            ? refreshedList.find((item) => String(item.id ?? "").trim() === id)
+            : undefined) ??
+          refreshedList.find(
+            (item) =>
+              String(item.name ?? "").trim().toLowerCase() ===
+              String(job.company ?? "").trim().toLowerCase(),
+          );
+
+        if (refreshedMatch) {
+          setCompanyDetails(refreshedMatch);
+        } else {
+          setError("Company details are not available for this job.");
+        }
+
+        return;
+      }
+
       if (id) {
         const company = await getCompany(accessToken, id);
         setCompanyDetails(company);
         return;
       }
-      const fallback = companies.find(
-        (item) =>
-          String(item.name ?? "").trim().toLowerCase() ===
-          String(job.company ?? "").trim().toLowerCase(),
-      );
+
+      const fallback = byName;
       if (fallback) {
         setCompanyDetails(fallback);
       } else {
@@ -743,22 +1017,51 @@ export function JobsPage() {
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <label className="fieldLabel">Search</label>
-          <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title/company/category..." />
-        </div>
-        {!isJobSeekerView && (
-          <div style={{ minWidth: 160 }}>
-            <label className="fieldLabel">Status</label>
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All</option>
-              <option value="active">Active</option>
-              <option value="closed">Closed</option>
-              <option value="draft">Draft</option>
-            </select>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 260, flex: "1 1 480px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          {isJobSeekerView ? (
+            <button
+              type="button"
+              className="btn btnGhost btnSm"
+              onClick={() => {
+                const nextOpen = !showSeekerFilters;
+                setShowSeekerFilters(nextOpen);
+                const next = new URLSearchParams(searchParams);
+                if (nextOpen) next.set("browse", "1");
+                else next.delete("browse");
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              Browse Jobs
+            </button>
+          ) : null}
+
+          <div style={{ minWidth: 240, flex: "1 1 280px" }}>
+            <label className="fieldLabel">Search</label>
+            <input
+              className="input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search title/company/category..."
+            />
           </div>
-        )}
+
+          {!isJobSeekerView ? (
+            <div style={{ minWidth: 160 }}>
+              <label className="fieldLabel">Status</label>
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ marginLeft: "auto" }}>
+          {renderSeekerPager()}
+        </div>
       </div>
 
       {companyIdFromUrl && (
@@ -781,7 +1084,81 @@ export function JobsPage() {
       )}
 
         {isJobSeekerView ? (
-          <div className="jobCardsGrid" role="region" aria-label="Jobs cards">
+          <>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            {showSeekerFilters ? (
+              <div className="dashCard" style={{ width: 280, flex: "0 0 280px" }}>
+                <div className="dashCardHeader" style={{ marginBottom: 8 }}>
+                  <h2 className="dashCardTitle" style={{ fontSize: 16 }}>Filters</h2>
+                </div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Search</label>
+                    <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Title, company, category..." />
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Category</label>
+                    <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+                      <option value="">All Categories</option>
+                      {seekerFilterOptions.categories.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Employment Type</label>
+                    <select className="input" value={filterEmploymentType} onChange={(e) => setFilterEmploymentType(e.target.value)}>
+                      <option value="">All Employment Types</option>
+                      {seekerFilterOptions.employmentTypes.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Experience Level</label>
+                    <select className="input" value={filterExperienceLevel} onChange={(e) => setFilterExperienceLevel(e.target.value)}>
+                      <option value="">All Experience Levels</option>
+                      {seekerFilterOptions.experienceLevels.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Remote</label>
+                    <select className="input" value={filterRemote} onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite")}>
+                      <option value="all">All</option>
+                      <option value="remote">Remote</option>
+                      <option value="onsite">On Site</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="fieldLabel">Location</label>
+                    <select className="input" value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}>
+                      <option value="">All Locations</option>
+                      {seekerFilterOptions.locations.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    onClick={() => {
+                      setSearch("");
+                      setFilterCategory("");
+                      setFilterEmploymentType("");
+                      setFilterExperienceLevel("");
+                      setFilterRemote("all");
+                      setFilterLocation("");
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+          <div className="jobCardsGrid" role="region" aria-label="Jobs cards" style={{ flex: 1, minWidth: 0 }}>
             {seekerVisibleJobs.length === 0 ? (
               <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No jobs found.</div></div>
             ) : (
@@ -789,6 +1166,18 @@ export function JobsPage() {
                 const alreadyApplied = appliedJobIds.includes(job.id);
                 const isOpen = openJobId === job.id;
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+                const companyName = resolveJobCompanyName(job);
+                const categoryName = resolveJobCategoryName(job);
+
+                const shareBaseUrl =
+                  typeof window !== "undefined"
+                    ? `${window.location.origin}/jobs/${encodeURIComponent(String(job.id))}`
+                    : `/jobs/${encodeURIComponent(String(job.id))}`;
+                const shareText = `${job.title}${companyName ? ` - ${companyName}` : ""}`;
+                const facebookShareHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareBaseUrl)}&quote=${encodeURIComponent(shareText)}`;
+                const xShareHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareBaseUrl)}`;
+                const whatsappShareHref = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareBaseUrl}`)}`;
+                const emailShareHref = `mailto:?subject=${encodeURIComponent(`Job: ${shareText}`)}&body=${encodeURIComponent(`Check out this job: ${shareBaseUrl}`)}`;
 
                 return (
                   <div key={job.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
@@ -807,21 +1196,68 @@ export function JobsPage() {
                             onClick={() => void onOpenCompanyInfo(job)}
                             disabled={saving}
                           >
-                            {job.company ?? "—"}
+                            {companyName}
                           </button>
                         </span>
                       </div>
-                      <ReadField label="Category" value={job.category ?? "—"} />
+                      <ReadField label="Category" value={categoryName} />
                       <ReadField label="Location" value={job.location ?? "—"} />
                       <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
                       <ReadField
                         label="Due Date"
-                        value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "—"}
+                        value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString("en-GB") : "—"}
                       />
                       <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
                     </div>
 
-                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
+                    <div
+                      style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap", alignItems: "center" }}
+                    >
+                      <span className="muted" style={{ fontSize: 12, marginRight: 2 }}>
+                        Share on
+                      </span>
+                      <a
+                        className="btn btnGhost btnSm"
+                        href={facebookShareHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Share on Facebook"
+                        title="Share on Facebook"
+                        style={{ color: "var(--menu-icon-active)" }}
+                      >
+                        <FacebookIcon />
+                      </a>
+                      <a
+                        className="btn btnGhost btnSm"
+                        href={xShareHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Share on X"
+                        title="Share on X"
+                        style={{ color: "var(--text)" }}
+                      >
+                        <XIcon />
+                      </a>
+                      <a
+                        className="btn btnGhost btnSm"
+                        href={whatsappShareHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Share on WhatsApp"
+                        title="Share on WhatsApp"
+                        style={{ color: "#166534" }}
+                      >
+                        <WhatsAppIcon />
+                      </a>
+                      <a
+                        className="btn btnGhost btnSm"
+                        href={emailShareHref}
+                        aria-label="Share via Email"
+                        title="Share via Email"
+                        style={{ color: "var(--text)" }}
+                      >
+                        <EmailIcon />
+                      </a>
                       {canApplyJob ? (
                         <button
                           type="button"
@@ -844,6 +1280,11 @@ export function JobsPage() {
 
                     {isOpen && (
                       <div className="dropPanel" style={{ marginTop: 10 }}>
+                        <div className="profileReadGrid">
+                          <ReadField label="Employment Type" value={job.employment_type ?? "—"} />
+                          <ReadField label="Experience Level" value={job.experience_level ?? "—"} />
+                          <ReadField label="Status" value={job.status ?? "—"} />
+                        </div>
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
                           <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
@@ -855,108 +1296,114 @@ export function JobsPage() {
               })
             )}
           </div>
+          </div>
+          </>
         ) : (
-          <div className="tableWrap" role="region" aria-label="Jobs table">
-            <table className="table companiesTable">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Company</th>
-                  <th>Category</th>
-                  <th>Status</th>
-                  {canViewApplications ? <th className="thRight">Applications</th> : null}
-                  <th>Deadline</th>
-                  <th className="thRight">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleJobs.length === 0 ? (
-                  <tr><td colSpan={canViewApplications ? 7 : 6}><div className="emptyState">No jobs found.</div></td></tr>
-                ) : (
-                  visibleJobs.map((job) => {
-                    const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
-                    const canManageThisJob = canCreate && (canManageAllJobs || isOwnJob(job));
-                    const alreadyApplied = appliedJobIds.includes(job.id);
-                    const actions = [
-                      {
-                        key: "view",
-                        label: openJobId === job.id ? "Close Details" : "View Details",
-                        onClick: () => setOpenJobId((prev) => (prev === job.id ? null : job.id)),
-                      },
-                      ...(canManageThisJob ? [{
-                        key: "edit",
-                        label: "Edit",
-                        onClick: () => openEditModal(job),
-                      }] : []),
-                      ...(canManageThisJob ? [{
-                        key: "delete",
-                        label: "Delete",
-                        danger: true,
-                        onClick: () => setConfirmDeleteId(job.id),
-                      }] : []),
-                      ...(canViewApplications ? [{
-                        key: "applications",
-                        label: `Applications (${applications})`,
-                        onClick: () => navigate(`/app/jobs/${job.id}/applications`),
-                      }] : []),
-                    ];
+          <div className="jobCardsGrid" role="region" aria-label="Jobs cards">
+            {visibleJobs.length === 0 ? (
+              <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No jobs found.</div></div>
+            ) : (
+              visibleJobs.map((job, idx) => {
+                const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
+                const canManageThisJob = canCreate && (canManageAllJobs || isOwnJob(job));
+                const companyName = resolveJobCompanyName(job);
+                const categoryName = resolveJobCategoryName(job);
+                const isOpen = openJobId === job.id;
+                const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
 
-                    return (
-                      <Fragment key={job.id}>
-                        <tr className={openJobId === job.id ? "tableRowActive" : undefined}>
-                          <td className="tdStrong">{job.title}</td>
-                          <td>{job.company ?? "—"}</td>
-                          <td>{job.category ?? "—"}</td>
-                          <td>{job.status ?? "—"}</td>
-                          {canViewApplications ? <td className="tdRight">{applications}</td> : null}
-                          <td>{job.application_deadline ? new Date(job.application_deadline).toLocaleDateString() : "—"}</td>
-                          <td className="tdRight">
-                            <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                              <ActionMenu label="Action" items={actions} disabled={saving} />
-                            </div>
-                          </td>
-                        </tr>
-                        {openJobId === job.id && (
-                          <tr className="tableExpandRow">
-                            <td colSpan={canViewApplications ? 7 : 6}>
-                              <div className="dropPanel">
-                                <h2 className="editFormTitle">Job Details</h2>
-                                <div className="profileReadGrid">
-                                  <ReadField label="Title" value={job.title} />
-                                  <ReadField label="Company" value={job.company} />
-                                  <ReadField label="Category" value={job.category} />
-                                  <ReadField label="Employment Type" value={job.employment_type} />
-                                  <ReadField label="Experience Level" value={job.experience_level} />
-                                  <ReadField label="Location" value={job.location} />
-                                  <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
-                                  <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
-                                  <ReadField label="Deadline" value={job.application_deadline ? new Date(job.application_deadline).toLocaleString() : "—"} />
-                                  <ReadField label="Status" value={job.status} />
-                                </div>
-                                <div style={{ marginTop: 12 }}>
-                                  <span className="readLabel">Description</span>
-                                  <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                return (
+                  <article key={job.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                    <div className="dashCardHeader" style={{ marginBottom: 6 }}>
+                      <div>
+                        <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{job.title}</h2>
+                      </div>
+                      {null}
+                    </div>
+
+                    <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                      <ReadField label="Company" value={companyName} />
+                      <ReadField label="Category" value={categoryName} />
+                      <ReadField label="Location" value={job.location ?? "—"} />
+                      <ReadField label="Status" value={job.status ?? "—"} />
+                      <ReadField
+                        label="Due Date"
+                        value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString("en-GB") : "—"}
+                      />
+                      {canViewApplications ? <ReadField label="Applications" value={applications} /> : null}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm"
+                        onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                        disabled={saving}
+                      >
+                        {isOpen ? "Hide Details" : "View Details"}
+                      </button>
+                      {canManageThisJob ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => openEditModal(job)}
+                          disabled={saving}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {canManageThisJob ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => setConfirmDeleteId(job.id)}
+                          disabled={saving}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                      {canViewApplications ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm stepperSaveBtn"
+                          onClick={() => navigate(`/app/jobs/${job.id}/applications`)}
+                          disabled={saving}
+                        >
+                          Applications ({applications})
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {isOpen ? (
+                      <div className="dropPanel" style={{ marginTop: 12 }}>
+                        <h2 className="editFormTitle">Job Details</h2>
+                        <div className="profileReadGrid">
+                          <ReadField label="Title" value={job.title} />
+                          <ReadField label="Company" value={companyName} />
+                          <ReadField label="Category" value={categoryName} />
+                          <ReadField label="Employment Type" value={job.employment_type} />
+                          <ReadField label="Experience Level" value={job.experience_level} />
+                          <ReadField label="Location" value={job.location} />
+                          <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
+                          <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
+                          <ReadField label="Deadline" value={job.application_deadline ? new Date(job.application_deadline).toLocaleString("en-GB") : "—"} />
+                          <ReadField label="Status" value={job.status} />
+                        </div>
+                        <div style={{ marginTop: 12 }}>
+                          <span className="readLabel">Description</span>
+                          <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })
+            )}
           </div>
         )}
 
-      {pagination.pages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 16 }}>
-          <button className="btn btnGhost btnSm" type="button" onClick={() => load(pagination.page - 1)} disabled={pagination.page <= 1 || loading}>{"<-"} Previous</button>
-          <span className="readLabel">Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)</span>
-          <button className="btn btnGhost btnSm" type="button" onClick={() => load(pagination.page + 1)} disabled={pagination.page >= pagination.pages || loading}>Next {"->"}</button>
-        </div>
-      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+        {renderSeekerPager()}
+      </div>
 
       {modalMode === "edit" && (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setModalMode(null)}>
@@ -1033,8 +1480,8 @@ export function JobsPage() {
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
             <div className="modalTitle">Profile Incomplete</div>
             <div className="modalMessage">
-              Your profile is incomplete. Please fill in your personal details and at least one education
-              record before applying.
+              Your profile is incomplete. Please fill in your personal details, add at least one education
+              record, and upload your CV before applying.
             </div>
             <div className="modalActions">
               <button
@@ -1155,6 +1602,7 @@ export function JobsPage() {
           </div>
         </div>
       ) : null}
+
     </div>
   );
 }

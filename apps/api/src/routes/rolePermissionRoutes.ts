@@ -280,7 +280,11 @@ router.get('/admin/roles/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const roleId = req.params.id;
+      const roleIdRaw = (req.params as any).id as string | string[] | undefined;
+      const roleId = Array.isArray(roleIdRaw) ? roleIdRaw[0] : roleIdRaw;
+      if (!roleId) {
+        return res.status(400).json({ error: 'Role ID is required' });
+      }
 
       const result = await dbQuery(
         'SELECT * FROM roles WHERE id = $1',
@@ -462,7 +466,11 @@ router.put('/admin/roles/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const roleId = req.params.id;
+      const roleIdRaw = (req.params as any).id as string | string[] | undefined;
+      const roleId = Array.isArray(roleIdRaw) ? roleIdRaw[0] : roleIdRaw;
+      if (!roleId) {
+        return res.status(400).json({ error: 'Role ID is required' });
+      }
       const { name, description } = req.body;
 
       // Check if role exists
@@ -550,7 +558,11 @@ router.delete('/admin/roles/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const roleId = req.params.id;
+      const roleIdRaw = (req.params as any).id as string | string[] | undefined;
+      const roleId = Array.isArray(roleIdRaw) ? roleIdRaw[0] : roleIdRaw;
+      if (!roleId) {
+        return res.status(400).json({ error: 'Role ID is required' });
+      }
 
       // Check if role exists
       const roleCheck = await dbQuery(
@@ -839,7 +851,11 @@ router.delete('/admin/permissions/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const permissionId = req.params.id;
+      const permissionIdRaw = (req.params as any).id as string | string[] | undefined;
+      const permissionId = Array.isArray(permissionIdRaw) ? permissionIdRaw[0] : permissionIdRaw;
+      if (!permissionId) {
+        return res.status(400).json({ error: 'Permission ID is required' });
+      }
 
       // Check if permission exists
       const permCheck = await dbQuery(
@@ -1047,8 +1063,13 @@ router.put('/admin/roles/:roleId/permissions',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const roleId = req.params.roleId;
+      const roleIdRaw = (req.params as any).roleId as string | string[] | undefined;
+      const roleId = Array.isArray(roleIdRaw) ? roleIdRaw[0] : roleIdRaw;
       const { permission_ids } = req.body;
+
+      if (!roleId) {
+        return res.status(400).json({ error: 'Role ID is required' });
+      }
 
       // Check if role exists
       const roleCheck = await dbQuery(
@@ -1165,7 +1186,11 @@ router.get('/admin/users/:userId/roles',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const userId = req.params.userId;
+      const userIdRaw = (req.params as any).userId as string | string[] | undefined;
+      const userId = Array.isArray(userIdRaw) ? userIdRaw[0] : userIdRaw;
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
 
       // Check if user exists
       const userCheck = await dbQuery(
@@ -1272,7 +1297,11 @@ router.put('/admin/users/:userId/roles',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const userId = req.params.userId;
+      const userIdRaw = (req.params as any).userId as string | string[] | undefined;
+      const userId = Array.isArray(userIdRaw) ? userIdRaw[0] : userIdRaw;
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
       const { role_ids } = req.body;
 
       // Check if user exists
@@ -1403,7 +1432,11 @@ router.get('/admin/users/:userId/permissions',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const userId = req.params.userId;
+      const userIdRaw = (req.params as any).userId as string | string[] | undefined;
+      const userId = Array.isArray(userIdRaw) ? userIdRaw[0] : userIdRaw;
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
 
       // Check if user exists
       const userCheck = await dbQuery(

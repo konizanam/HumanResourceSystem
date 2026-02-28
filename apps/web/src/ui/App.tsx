@@ -20,9 +20,12 @@ import { AuditPage } from "./pages/AuditPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { StatusPage } from "./pages/StatusPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { MessagesPage } from "./pages/MessagesPage";
 import { ApplicationsPage } from "./pages/ApplicationsPage";
 import { GlobalSettingsPage } from "./pages/GlobalSettingsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { PublicJobsPage } from "./pages/PublicJobsPage";
+import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 
 const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
@@ -31,7 +34,9 @@ const menu = [
   { path: "jobs", title: "Jobs", icon: "briefcase" },
   { path: "applications", title: "Applications", icon: "list" },
   { path: "companies", title: "Companies", icon: "building" },
-  { path: "notifications", title: "Notifications", icon: "file" },
+  { path: "notifications", title: "Job Alerts", icon: "bell" },
+  { path: "my-permissions", title: "My Permissions", icon: "key" },
+  { path: "messages", title: "Messages", icon: "message" },
   { path: "users", title: "Users", icon: "users" },
   { path: "roles", title: "Roles", icon: "shield" },
   { path: "permission", title: "Permission", icon: "key" },
@@ -61,9 +66,11 @@ function DashboardHomeRedirect() {
 
 function PermissionGate({
   allow,
+  requiredPermissions,
   children,
 }: {
   allow: (hasPermission: HasPermissionFn) => boolean;
+  requiredPermissions?: string[];
   children: ReactNode;
 }) {
   const { loading, hasPermission } = usePermissions();
@@ -73,7 +80,19 @@ function PermissionGate({
   }
 
   if (!allow(hasPermission)) {
-    return <Navigate to={resolveDashboardPath(hasPermission)} replace />;
+    const requiredText =
+      Array.isArray(requiredPermissions) && requiredPermissions.length > 0
+        ? requiredPermissions.join(" or ")
+        : "one of the required permissions";
+
+    return (
+      <div className="page">
+        <h1 className="pageTitle">Insufficient permissions</h1>
+        <div className="errorBox" style={{ marginTop: 10 }}>
+          Required permission: {requiredText}.
+        </div>
+      </div>
+    );
   }
 
   return children;
@@ -85,6 +104,9 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+      <Route path="/jobs" element={<PublicJobsPage />} />
+      <Route path="/jobs/:jobId" element={<PublicJobsPage />} />
 
       <Route
         path="/app"
@@ -126,6 +148,7 @@ export function App() {
               allow={(hasPermission) =>
                 hasPermission("MANAGE_USERS", "VIEW_APPLICATIONS")
               }
+              requiredPermissions={["MANAGE_USERS", "VIEW_APPLICATIONS"]}
             >
               <ApplicationsPage />
             </PermissionGate>
@@ -138,6 +161,7 @@ export function App() {
               allow={(hasPermission) =>
                 hasPermission("MANAGE_USERS", "VIEW_APPLICATIONS")
               }
+              requiredPermissions={["MANAGE_USERS", "VIEW_APPLICATIONS"]}
             >
               <JobApplicationsPage />
             </PermissionGate>
@@ -150,16 +174,19 @@ export function App() {
               allow={(hasPermission) =>
                 hasPermission("MANAGE_USERS") || hasPermission("CREATE_JOB")
               }
+              requiredPermissions={["MANAGE_USERS", "CREATE_JOB"]}
             >
               <CompaniesPage />
             </PermissionGate>
           }
         />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="my-permissions" element={<MyPermissionsPage />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route
           path="users"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <UsersPage />
             </PermissionGate>
           }
@@ -167,7 +194,7 @@ export function App() {
         <Route
           path="roles"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <RolesPage />
             </PermissionGate>
           }
@@ -175,7 +202,7 @@ export function App() {
         <Route
           path="permission"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <PermissionsPage />
             </PermissionGate>
           }
@@ -183,7 +210,7 @@ export function App() {
         <Route
           path="status"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <StatusPage />
             </PermissionGate>
           }
@@ -191,7 +218,7 @@ export function App() {
         <Route
           path="job-categories"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <JobCategoriesPage />
             </PermissionGate>
           }
@@ -199,7 +226,7 @@ export function App() {
         <Route
           path="audit"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <AuditPage />
             </PermissionGate>
           }
@@ -207,7 +234,7 @@ export function App() {
         <Route
           path="email-templates"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <EmailTemplatesPage />
             </PermissionGate>
           }
@@ -215,7 +242,7 @@ export function App() {
         <Route
           path="reports"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <ReportsPage />
             </PermissionGate>
           }

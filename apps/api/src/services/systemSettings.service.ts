@@ -25,7 +25,7 @@ function settingsFilePath() {
 async function readSettings(): Promise<SystemSettings> {
   try {
     const raw = await fs.readFile(settingsFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as Partial<StoredSettings> | null;
+    const parsed = JSON.parse(raw) as Partial<SystemSettings> | null;
     if (!parsed || typeof parsed !== "object") return DEFAULT_SETTINGS;
 
     const mode =

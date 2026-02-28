@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   type AdminUser,
   listAdminUsers,
@@ -379,11 +379,11 @@ export function UsersPage() {
                                   <ReadField label="Login Count" value={userDetail.login_count} />
                                   <ReadField
                                     label="Last Login"
-                                    value={userDetail.last_login ? new Date(userDetail.last_login).toLocaleString() : null}
+                                    value={userDetail.last_login ? new Date(userDetail.last_login).toLocaleString("en-GB") : null}
                                   />
                                   <ReadField
                                     label="Created"
-                                    value={userDetail.created_at ? new Date(userDetail.created_at).toLocaleString() : null}
+                                    value={userDetail.created_at ? new Date(userDetail.created_at).toLocaleString("en-GB") : null}
                                   />
                                   <ReadField label="Jobs Posted" value={userDetail.jobs_posted} />
                                   <ReadField label="Applications Submitted" value={userDetail.applications_submitted} />
@@ -395,7 +395,7 @@ export function UsersPage() {
                                     <strong style={{ color: "#b91c1c" }}>User is Blocked</strong>
                                     {userDetail.blocked_at && (
                                       <div style={{ marginTop: 4, fontSize: "0.9em", color: "#7f1d1d" }}>
-                                        Blocked on: {new Date(userDetail.blocked_at).toLocaleString()}
+                                        Blocked on: {new Date(userDetail.blocked_at).toLocaleString("en-GB")}
                                       </div>
                                     )}
                                     {userDetail.block_reason && (
@@ -596,7 +596,7 @@ function UserRow({
   onAssignRoles: () => void;
   children: ReactNode;
 }) {
-  const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString() : "—";
+  const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-GB") : "—";
   const isBlocked = Boolean(user.is_blocked);
 
   return (

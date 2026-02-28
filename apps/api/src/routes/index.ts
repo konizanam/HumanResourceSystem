@@ -16,10 +16,12 @@ import jobSeekerCertificationsRoutes from './jobSeekerCertificationsRoutes';
 import notificationsRoutes from './notificationsRoutes';
 import adminRoutes from './adminRoutes';
 import rolePermissionRoutes from './rolePermissionRoutes';
+import publicRoutes from './public.routes';
 
 const router = Router();
 
 router.use('/auth', authRouter);
+router.use('/public', publicRoutes);
 router.use('/profile', profileRouter);
 router.use('/companies', companyRoutes);
 router.use('/documents', documentRoutes);

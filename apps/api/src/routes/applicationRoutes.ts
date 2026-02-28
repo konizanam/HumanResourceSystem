@@ -133,20 +133,18 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { job_id, cover_letter, resume_url } = req.body;
+      const { job_id } = req.body;
       const applicant_id = req.user!.userId;
 
       // Check if job exists and is active
-      const jobCheck = await dbQuery(
-        'SELECT id, title, status, employer_id FROM jobs WHERE id = $1',
-        [job_id]
-      );
+      const jobCheck = await dbQuery('SELECT * FROM jobs WHERE id = $1', [job_id]);
 
       if (jobCheck.rows.length === 0) {
         return res.status(404).json({ error: 'Job not found' });
       }
 
-      const job = jobCheck.rows[0];
+      const job = jobCheck.rows[0] as any;
+      const jobPosterId = String(job?.created_by ?? job?.employer_id ?? '').trim();
       const applicantResult = await dbQuery(
         `SELECT
            COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
@@ -157,14 +155,15 @@ router.post('/',
       );
       const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
 
-      // Check if job is active
-      if (job.status !== 'active') {
+      // Public-facing jobs can be stored as either 'active' (legacy) or 'APPROVED' (schema).
+      // The job seeker UI only shows these, so applying must accept both.
+      if (job.status !== 'active' && job.status !== 'APPROVED') {
         return res.status(403).json({ error: 'Cannot apply to a job that is not active' });
       }
 
       // Check if user already applied
       const existingApplication = await dbQuery(
-        'SELECT id FROM applications WHERE job_id = $1 AND applicant_id = $2',
+        'SELECT id FROM applications WHERE job_id = $1 AND user_id = $2',
         [job_id, applicant_id]
       );
 
@@ -173,7 +172,7 @@ router.post('/',
       }
 
       // Check if user is trying to apply to their own job (employers can't apply to their own jobs)
-      if (job.employer_id === applicant_id) {
+      if (jobPosterId && jobPosterId === applicant_id) {
         return res.status(403).json({ error: 'Employers cannot apply to their own jobs' });
       }
 
@@ -184,10 +183,10 @@ router.post('/',
         // Create application
         const result = await dbQuery(
           `INSERT INTO applications (
-            job_id, applicant_id, cover_letter, resume_url, status, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, 'applied', NOW(), NOW())
+            job_id, user_id, status, applied_at
+          ) VALUES ($1, $2, 'APPLIED', NOW())
           RETURNING *`,
-          [job_id, applicant_id, cover_letter, resume_url]
+          [job_id, applicant_id]
         );
 
         // Increment applications count on job if the column exists in this environment.
@@ -218,10 +217,10 @@ router.post('/',
         });
 
         // Notify the employer that a new application was submitted.
-        if (job.employer_id) {
+        if (jobPosterId) {
           try {
             await createNotification(
-              job.employer_id,
+              jobPosterId,
               'application_received',
               'New Application Received',
               `${applicantName} has applied for ${job.title}`,
@@ -248,7 +247,7 @@ router.post('/',
 
           const adminIds = adminsResult.rows
             .map((row: any) => String(row.id))
-            .filter((id: string) => id && id !== applicant_id && id !== String(job.employer_id ?? ''));
+            .filter((id: string) => id && id !== applicant_id && id !== jobPosterId);
 
           await Promise.allSettled(
             adminIds.map((adminId: string) =>
@@ -274,7 +273,7 @@ router.post('/',
             'application_success',
             'Application Submitted',
             `Your application for ${job.title} has been submitted successfully`,
-            { application_id: application.id, job_id, status: 'applied', job_title: job.title },
+            { application_id: application.id, job_id, status: 'APPLIED', job_title: job.title },
             '/app/job-applications',
             'normal'
           );
@@ -416,7 +415,8 @@ router.get('/',
           j.salary_min,
           j.salary_max,
           j.employment_type,
-          j.remote
+          j.remote,
+          j.application_deadline
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
          LEFT JOIN companies c ON j.company_id = c.id
@@ -492,6 +492,7 @@ router.get('/:id',
       // Get application with all related details
       const result = await dbQuery(
         `SELECT a.*,
+          a.user_id as applicant_id,
           j.title as job_title,
           j.description as job_description,
           j.company,
@@ -511,7 +512,7 @@ router.get('/:id',
           emp.email as employer_email
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN users u ON a.applicant_id = u.id
+           LEFT JOIN users u ON a.user_id = u.id
          LEFT JOIN users emp ON j.employer_id = emp.id
          WHERE a.id = $1`,
         [applicationId]
@@ -618,7 +619,7 @@ router.put('/:id/status',
 
       // Check if application exists and get job details
       const appCheck = await dbQuery(
-        `SELECT a.*, j.employer_id, j.title as job_title
+        `SELECT a.*, a.user_id as applicant_id, j.employer_id, j.title as job_title
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
          WHERE a.id = $1`,
@@ -638,20 +639,17 @@ router.put('/:id/status',
       }
 
       // Check if application is already withdrawn
-      if (application.status === 'withdrawn') {
+      if (application.status === 'WITHDRAWN') {
         return res.status(400).json({ error: 'Cannot update a withdrawn application' });
       }
 
       // Update application
       const result = await dbQuery(
         `UPDATE applications 
-         SET status = $1, 
-             notes = COALESCE($2, notes),
-             reviewed_at = CASE WHEN $1 IN ('reviewed', 'accepted', 'rejected') AND status != $1 THEN NOW() ELSE reviewed_at END,
-             updated_at = NOW()
-         WHERE id = $3
+         SET status = $1
+         WHERE id = $2
          RETURNING *`,
-        [status, notes, applicationId]
+        [status, applicationId]
       );
 
       try {
@@ -731,7 +729,7 @@ router.delete('/:id',
 
       // Check if application exists and belongs to user
       const appCheck = await dbQuery(
-        'SELECT * FROM applications WHERE id = $1',
+        'SELECT *, user_id as applicant_id FROM applications WHERE id = $1',
         [applicationId]
       );
 
@@ -742,15 +740,33 @@ router.delete('/:id',
       const application = appCheck.rows[0];
 
       // Check if user owns this application
-      if (application.applicant_id !== userId) {
+      if (application.user_id !== userId) {
         return res.status(403).json({ error: 'You can only withdraw your own applications' });
       }
 
       // Check if application can be withdrawn (only pending or reviewed)
-      if (!['pending', 'reviewed'].includes(application.status)) {
+      if (!['APPLIED', 'SCREENING'].includes(application.status)) {
         return res.status(400).json({ 
           error: `Cannot withdraw application with status '${application.status}'` 
         });
+      }
+
+      // Disallow withdrawal if the job has expired (application deadline passed)
+      try {
+        const jobResult = await dbQuery(
+          'SELECT application_deadline FROM jobs WHERE id = $1',
+          [application.job_id]
+        );
+        const deadlineRaw = jobResult.rows[0]?.application_deadline;
+        if (deadlineRaw) {
+          const deadline = new Date(String(deadlineRaw));
+          if (!Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now()) {
+            return res.status(400).json({ error: 'Cannot withdraw an application for an expired job' });
+          }
+        }
+      } catch (deadlineError) {
+        console.error('Failed to validate job deadline for withdrawal:', deadlineError);
+        // Best-effort: do not block withdrawal on deadline lookup failure.
       }
 
       // Start transaction
@@ -760,7 +776,7 @@ router.delete('/:id',
         // Update application status to withdrawn instead of deleting
         const result = await dbQuery(
           `UPDATE applications 
-           SET status = 'withdrawn', updated_at = NOW()
+           SET status = 'WITHDRAWN'
            WHERE id = $1
            RETURNING *`,
           [applicationId]
@@ -913,9 +929,9 @@ router.get('/employer/jobs',
           u.email as applicant_email
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN users u ON a.applicant_id = u.id
+           LEFT JOIN users u ON a.user_id = u.id
          ${whereClause}
-         ORDER BY a.created_at DESC
+           ORDER BY a.applied_at DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...queryParams, limit, offset]
       );

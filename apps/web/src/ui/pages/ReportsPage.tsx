@@ -45,7 +45,7 @@ export function ReportsPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Reports &amp; Statistics</h1></div>
-        <div className="errorBox">You do not have permission to view reports.</div>
+        <div className="errorBox">Insufficient permissions. Required permission: VIEW_AUDIT_LOGS.</div>
       </div>
     );
   }
@@ -81,9 +81,13 @@ export function ReportsPage() {
             </tr>
           </thead>
           <tbody>
-            <tr><td>Pending</td><td className="tdRight">{stats.applications.pending}</td></tr>
-            <tr><td>Reviewed</td><td className="tdRight">{stats.applications.reviewed}</td></tr>
-            <tr><td>Accepted</td><td className="tdRight">{stats.applications.accepted}</td></tr>
+            <tr><td>Applied</td><td className="tdRight">{stats.applications.applied}</td></tr>
+            <tr><td>Screening</td><td className="tdRight">{stats.applications.screening}</td></tr>
+            <tr><td>Longlisted</td><td className="tdRight">{stats.applications.longlisted}</td></tr>
+            <tr><td>Shortlisted</td><td className="tdRight">{stats.applications.shortlisted}</td></tr>
+            <tr><td>Interview</td><td className="tdRight">{stats.applications.interview}</td></tr>
+            <tr><td>Assessment</td><td className="tdRight">{stats.applications.assessment}</td></tr>
+            <tr><td>Hired</td><td className="tdRight">{stats.applications.hired}</td></tr>
             <tr><td>Rejected</td><td className="tdRight">{stats.applications.rejected}</td></tr>
             <tr><td>Withdrawn</td><td className="tdRight">{stats.applications.withdrawn}</td></tr>
           </tbody>
@@ -116,7 +120,7 @@ export function ReportsPage() {
         <StatCard label="API Requests Today" value={stats.system.api_requests_today} />
         <StatCard label="Active Sessions" value={stats.system.active_sessions} />
         <StatCard label="Storage Used" value={stats.system.storage_used ?? "—"} />
-        <StatCard label="Last Backup" value={stats.system.last_backup ? new Date(stats.system.last_backup).toLocaleString() : "Never"} />
+        <StatCard label="Last Backup" value={stats.system.last_backup ? new Date(stats.system.last_backup).toLocaleString("en-GB") : "Never"} />
         <StatCard label="Version" value={stats.system.version} />
       </div>
     </div>

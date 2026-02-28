@@ -616,20 +616,17 @@ async function tryInsertApplication(
     createdAt: Date;
   }
 ) {
-  // Prefer the schema used by the current API routes/swagger.
+  // Prefer the schema used by apps/api/backend/Hito_database.sql.
   try {
     await client.query(
       `INSERT INTO applications (
-        id, job_id, applicant_id, cover_letter, resume_url, status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        id, job_id, user_id, status, applied_at
+      ) VALUES ($1, $2, $3, $4, $5)`,
       [
         params.id,
         params.jobId,
         params.applicantId,
-        'Seeded application (auto-generated).',
-        'https://example.com/resume.pdf',
         params.status,
-        params.createdAt,
         params.createdAt,
       ]
     );
@@ -639,12 +636,21 @@ async function tryInsertApplication(
     if (err?.code !== '42703' && err?.code !== '42P01') throw err;
   }
 
-  // Legacy schema fallback.
+  // Legacy schema fallback (some older versions used applicant_id + timestamps).
   await client.query(
     `INSERT INTO applications (
-      id, job_id, user_id, status, applied_at
-    ) VALUES ($1, $2, $3, $4, $5)`,
-    [params.id, params.jobId, params.applicantId, params.status, params.createdAt]
+      id, job_id, applicant_id, cover_letter, resume_url, status, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      params.id,
+      params.jobId,
+      params.applicantId,
+      'Seeded application (auto-generated).',
+      'https://example.com/resume.pdf',
+      params.status,
+      params.createdAt,
+      params.createdAt,
+    ]
   );
 }
 

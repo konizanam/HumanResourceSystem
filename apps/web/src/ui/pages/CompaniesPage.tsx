@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type Company,
   type CompanyUpsertPayload,
@@ -19,7 +19,8 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { useNavigate } from "react-router-dom";
-import { ActionMenu } from "../components/ActionMenu";
+
+const COMPANY_PAGE_LIMIT = 5;
 
 type PanelMode = "view" | "edit";
 
@@ -195,6 +196,19 @@ function getCompanyUserNames(company: Company | null): string[] {
     .filter(Boolean);
 }
 
+function resolveCompanyCreatedBy(company: Company): string {
+  const byName = String((company as any).created_by_name ?? (company as any).creator_name ?? "").trim();
+  if (byName) return byName;
+
+  const byEmail = String((company as any).created_by_email ?? (company as any).creator_email ?? "").trim();
+  if (byEmail) return byEmail;
+
+  const byId = String(company.created_by ?? "").trim();
+  if (byId) return byId;
+
+  return "—";
+}
+
 export function CompaniesPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -209,6 +223,8 @@ export function CompaniesPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companiesPage, setCompaniesPage] = useState(1);
+  const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<CompanyUpsertPayload>(EMPTY_COMPANY);
@@ -235,6 +251,37 @@ export function CompaniesPage() {
     () => companies.find((c) => c.id === openCompanyId) ?? null,
     [companies, openCompanyId],
   );
+
+  const filteredCompanies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return companies;
+    return companies.filter((company) => {
+      const name = String(company.name ?? "").toLowerCase();
+      const industry = String(company.industry ?? "").toLowerCase();
+      const city = String(company.city ?? "").toLowerCase();
+      const country = String(company.country ?? "").toLowerCase();
+      const createdBy = resolveCompanyCreatedBy(company).toLowerCase();
+      return name.includes(q) || industry.includes(q) || city.includes(q) || country.includes(q) || createdBy.includes(q);
+    });
+  }, [companies, search]);
+
+  const companiesPagination = useMemo(() => {
+    const total = filteredCompanies.length;
+    const pages = Math.max(1, Math.ceil(total / COMPANY_PAGE_LIMIT));
+    const page = Math.min(companiesPage, pages);
+    return { page, limit: COMPANY_PAGE_LIMIT, total, pages };
+  }, [filteredCompanies.length, companiesPage]);
+
+  const visibleCompanies = useMemo(() => {
+    const start = (companiesPagination.page - 1) * COMPANY_PAGE_LIMIT;
+    return filteredCompanies.slice(start, start + COMPANY_PAGE_LIMIT);
+  }, [filteredCompanies, companiesPagination.page]);
+
+  useEffect(() => {
+    if (companiesPage > companiesPagination.pages) {
+      setCompaniesPage(companiesPagination.pages);
+    }
+  }, [companiesPage, companiesPagination.pages]);
 
   const industryMatches = useMemo(() => {
     const q = (addForm.industry ?? "").trim().toLowerCase();
@@ -931,81 +978,220 @@ export function CompaniesPage() {
         </div>
       )}
 
-      <div className="tableWrap" role="region" aria-label="Companies table">
-        <table className="table companiesTable">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Industry</th>
-              <th>City</th>
-              <th>Country</th>
-              <th className="thRight">Users</th>
-              <th>Created By</th>
-              <th>Status</th>
-              <th className="thRight">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {companies.length === 0 ? (
-              <tr>
-                <td colSpan={8}>
-                  <div className="emptyState">No companies found.</div>
-                </td>
-              </tr>
-            ) : (
-              companies.map((c) => {
-                const isOpen = openCompanyId === c.id;
-                return (
-                  <FragmentCompanyRow
-                    key={c.id}
-                    company={c}
-                    open={isOpen}
-                    panelMode={isOpen ? panelMode : "view"}
-                    saving={saving}
-                    onView={() => startView(c)}
-                    onEdit={() => startEdit(c)}
-                    onShowUsers={() => setUsersModalCompany(c)}
-                    canApproveCompany={canApproveCompany}
-                    canPostJob={canPostJob}
-                    canViewJobs={canViewJobs}
-                    onApprove={() => onApproveCompany(c.id)}
-                    onPostJob={() => openPostJobModal(c)}
-                    onViewJobs={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
-                    onActivate={() => onActivateCompany(c.id)}
-                    onDeactivate={() => {
-                      clearMessages();
-                      setConfirmDeactivateId(c.id);
-                    }}
-                    onClose={() => setOpenCompanyId(null)}
-                  >
-                    {isOpen && (
-                      <tr className="tableExpandRow">
-                        <td colSpan={8}>
-                          <div className="dropPanel">
-                            {panelMode === "view" ? (
-                              <CompanyViewPanel company={openCompany} />
-                            ) : (
-                              <CompanyEditPanel
-                                form={editForm}
-                                onChange={setEditForm}
-                                onCancel={() => {
-                                  setPanelMode("view");
-                                }}
-                                onSave={onSaveEdit}
-                                saving={saving}
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </FragmentCompanyRow>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 260, flex: "1 1 340px" }}>
+          <label className="fieldLabel">Search</label>
+          <input
+            className="input"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCompaniesPage(1);
+            }}
+            placeholder="Search name/industry/city/country/creator..."
+          />
+        </div>
+
+        {companiesPagination.pages > 1 ? (
+          <div className="publicJobsPager" role="navigation" aria-label="Companies pagination top">
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+              type="button"
+              onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
+              disabled={companiesPagination.page <= 1 || saving}
+            >
+              {"<-"} Previous
+            </button>
+            <span className="publicJobsPagerInfo">
+              Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
+            </span>
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+              type="button"
+              onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
+              disabled={companiesPagination.page >= companiesPagination.pages || saving}
+            >
+              Next {"->"}
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      <div className="jobCardsGrid" role="region" aria-label="Companies cards">
+        {visibleCompanies.length === 0 ? (
+          <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No companies found.</div></div>
+        ) : (
+          visibleCompanies.map((c, idx) => {
+            const isOpen = openCompanyId === c.id;
+            const status = String(c.status ?? "").trim();
+            const normalizedStatus = status.toLowerCase();
+            const isPending = normalizedStatus === "pending";
+            const isApproved = normalizedStatus === "active" || normalizedStatus === "approved";
+            const isDeactivated = normalizedStatus === "deactivated";
+            const usersMeta = formatCompanyUsers(c);
+            const userNames = getCompanyUserNames(c);
+            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+
+            return (
+              <article key={c.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                <div className="dashCardHeader" style={{ marginBottom: 6 }}>
+                  <div>
+                    <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{c.name}</h2>
+                  </div>
+                  {status ? (
+                    <span
+                      className="chipBadge"
+                      style={
+                        isPending
+                          ? { background: "#fef3c7", color: "#92400e" }
+                          : isApproved
+                            ? { background: "#dcfce7", color: "#166534" }
+                            : undefined
+                      }
+                    >
+                      {isPending ? "Pending" : isApproved ? "Approved" : status}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                  <ReadField label="Industry" value={c.industry ?? "—"} />
+                  <ReadField label="City" value={c.city ?? "—"} />
+                  <ReadField label="Country" value={c.country ?? "—"} />
+                  <ReadField label="Created By" value={resolveCompanyCreatedBy(c)} />
+                  <ReadField label="Users" value={usersMeta.text || "—"} />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    disabled={saving}
+                    onClick={() => {
+                      if (isOpen && panelMode === "view") setOpenCompanyId(null);
+                      else startView(c);
+                    }}
+                  >
+                    {isOpen && panelMode === "view" ? "Close" : "View"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    disabled={saving}
+                    onClick={() => {
+                      if (isOpen && panelMode === "edit") setOpenCompanyId(null);
+                      else startEdit(c);
+                    }}
+                  >
+                    {isOpen && panelMode === "edit" ? "Close" : "Edit"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    disabled={saving}
+                    onClick={() => {
+                      if (isDeactivated) onActivateCompany(c.id);
+                      else {
+                        clearMessages();
+                        setConfirmDeactivateId(c.id);
+                      }
+                    }}
+                  >
+                    {isDeactivated ? "Activate" : "Deactivate"}
+                  </button>
+                  {userNames.length > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm"
+                      disabled={saving}
+                      onClick={() => setUsersModalCompany(c)}
+                      title={usersMeta.title}
+                    >
+                      View Users ({userNames.length})
+                    </button>
+                  ) : null}
+                  {canPostJob ? (
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm"
+                      disabled={saving}
+                      onClick={() => openPostJobModal(c)}
+                    >
+                      Post Job
+                    </button>
+                  ) : null}
+                  {canApproveCompany && isPending ? (
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm stepperSaveBtn"
+                      disabled={saving}
+                      onClick={() => onApproveCompany(c.id)}
+                    >
+                      Approve
+                    </button>
+                  ) : null}
+                  {canViewJobs ? (
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm"
+                      disabled={saving}
+                      onClick={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
+                    >
+                      View Jobs
+                    </button>
+                  ) : null}
+                </div>
+
+                {isOpen ? (
+                  <div className="dropPanel" style={{ marginTop: 12 }}>
+                    {panelMode === "view" ? (
+                      <CompanyViewPanel company={openCompany} />
+                    ) : (
+                      <CompanyEditPanel
+                        form={editForm}
+                        onChange={setEditForm}
+                        onCancel={() => {
+                          setPanelMode("view");
+                        }}
+                        onSave={onSaveEdit}
+                        saving={saving}
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      {companiesPagination.pages > 1 ? (
+        <div className="publicJobsPager" role="navigation" aria-label="Companies pagination" style={{ marginTop: 16 }}>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+            type="button"
+            onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
+            disabled={companiesPagination.page <= 1 || saving}
+          >
+            {"<-"} Previous
+          </button>
+          <span className="publicJobsPagerInfo">
+            Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
+          </span>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            type="button"
+            onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
+            disabled={companiesPagination.page >= companiesPagination.pages || saving}
+          >
+            Next {"->"}
+          </button>
+        </div>
+      ) : null}
 
       {postJobCompany && (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && closePostJobModal()}>
@@ -1380,148 +1566,6 @@ function ReadFieldFull({ label, value }: { label: string; value: unknown }) {
       <span className="readLabel">{label}</span>
       <span className="readValue">{display}</span>
     </div>
-  );
-}
-
-function FragmentCompanyRow({
-  company,
-  open,
-  panelMode,
-  saving,
-  onView,
-  onEdit,
-  onActivate,
-  onDeactivate,
-  onShowUsers,
-  canApproveCompany,
-  canPostJob,
-  canViewJobs,
-  onApprove,
-  onPostJob,
-  onViewJobs,
-  onClose,
-  children,
-}: {
-  company: Company;
-  open: boolean;
-  panelMode: PanelMode;
-  saving: boolean;
-  onView: () => void;
-  onEdit: () => void;
-  onActivate: () => void;
-  onDeactivate: () => void;
-  onShowUsers: () => void;
-  canApproveCompany: boolean;
-  canPostJob: boolean;
-  canViewJobs: boolean;
-  onApprove: () => void;
-  onPostJob: () => void;
-  onViewJobs: () => void;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const status = (company.status ?? "").toString();
-  const normalizedStatus = status.trim().toLowerCase();
-  const isPending = normalizedStatus === "pending";
-  const isApproved =
-    normalizedStatus === "active" || normalizedStatus === "approved";
-  const isDeactivated = status.toLowerCase() === "deactivated";
-  const userNames = getCompanyUserNames(company);
-  const userCount = userNames.length;
-  const firstUser = userNames[0] ?? (company.user_count ? String(company.user_count) : "—");
-
-  return (
-    <>
-      <tr className={open ? "tableRowActive" : undefined}>
-        <td className="tdStrong">{company.name}</td>
-        <td>{company.industry ?? "—"}</td>
-        <td>{company.city ?? "—"}</td>
-        <td>{company.country ?? "—"}</td>
-        <td className="usersCell">
-          <span className="usersPrimary">{firstUser}</span>
-          {userCount > 1 && (
-            <button type="button" className="linkBtn" onClick={onShowUsers}>
-              View all ({userCount})
-            </button>
-          )}
-        </td>
-        <td>{company.created_by_name ?? "—"}</td>
-        <td>
-          {status ? (
-            <span
-              className="chipBadge"
-              style={
-                isPending
-                  ? { background: "#fef3c7", color: "#92400e" }
-                  : isApproved
-                    ? { background: "#dcfce7", color: "#166534" }
-                    : undefined
-              }
-            >
-              {isPending ? "Pending" : isApproved ? "Approved" : status}
-            </span>
-          ) : "—"}
-        </td>
-        <td className="tdRight">
-          <ActionMenu
-            disabled={saving}
-            label="Action"
-            items={[
-              {
-                key: "view",
-                label: open && panelMode === "view" ? "Close" : "View",
-                onClick: () => {
-                  if (open && panelMode === "view") onClose();
-                  else onView();
-                },
-              },
-              {
-                key: "edit",
-                label: open && panelMode === "edit" ? "Close" : "Edit",
-                onClick: () => {
-                  if (open && panelMode === "edit") onClose();
-                  else onEdit();
-                },
-              },
-              {
-                key: isDeactivated ? "activate" : "deactivate",
-                label: isDeactivated ? "Activate" : "Deactivate",
-                onClick: isDeactivated ? onActivate : onDeactivate,
-                danger: !isDeactivated,
-              },
-              ...(canPostJob
-                ? [
-                    {
-                      key: "post-job",
-                      label: "Post Job",
-                      onClick: onPostJob,
-                    },
-                  ]
-                : []),
-              ...(canApproveCompany && isPending
-                ? [
-                    {
-                      key: "approve",
-                      label: "Approve",
-                      onClick: onApprove,
-                    },
-                  ]
-                : []),
-              ...(canViewJobs
-                ? [
-                    {
-                      key: "view-jobs",
-                      label: "View Jobs",
-                      onClick: onViewJobs,
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        </td>
-      </tr>
-      {children}
-    </>
   );
 }
 

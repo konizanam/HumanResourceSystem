@@ -46,7 +46,7 @@ export function AuditPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div>
-        <div className="errorBox">You do not have permission to view audit logs.</div>
+        <div className="errorBox">Insufficient permissions. Required permission: VIEW_AUDIT_LOGS or MANAGE_USERS.</div>
       </div>
     );
   }
@@ -116,7 +116,7 @@ export function AuditPage() {
               <tr><td colSpan={6}><div className="emptyState">No audit logs found.</div></td></tr>
             ) : filteredLogs.map((log) => (
               <tr key={log.id}>
-                <td>{log.created_at ? new Date(log.created_at).toLocaleString() : "—"}</td>
+                <td>{log.created_at ? new Date(log.created_at).toLocaleString("en-GB") : "—"}</td>
                 <td>{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.user_email || (log.admin_name ?? log.admin_email ?? log.user_id ?? log.admin_id ?? "—")}</td>
                 <td><span className="chipBadge">{log.action}</span></td>
                 <td>{log.target_type ?? "—"}</td>

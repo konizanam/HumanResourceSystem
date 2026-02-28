@@ -65,21 +65,31 @@ export function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="loginPage">
-        <div className="loginCard">
-          <div className="loginHeader">
-            <div className="loginLogo">
-              <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+      <div className="loginPage authScreen">
+        <div className="authWrap authWrapNarrow">
+          <aside className="authVisual" aria-hidden="true">
+            <div className="authVisualBadge">Account Recovery</div>
+            <h2 className="authVisualTitle">Reset links expire for your security</h2>
+            <p className="authVisualText">Request a fresh password reset email and continue securely.</p>
+            <div className="authVisualMeta">Security first</div>
+          </aside>
+
+          <div className="loginCard authPanel">
+            <div className="loginHeader">
+              <div className="loginLogo">
+                <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+              </div>
+              <div className="loginTitle">Invalid Link</div>
             </div>
-            <div className="loginTitle">Invalid Link</div>
-          </div>
-          <div className="errorBox">
-            This reset link is invalid or has expired. Please request a new one.
-          </div>
-          <div className="loginFooter">
-            <Link to="/login" className="linkBtn">
-              Back to sign in
-            </Link>
+
+            <div className="errorBox">
+              This reset link is invalid or has expired. Please request a new one.
+            </div>
+            <div className="loginFooter">
+              <Link to="/login" className="linkBtn">
+                Back to sign in
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -88,21 +98,31 @@ export function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="loginPage">
-        <div className="loginCard">
-          <div className="loginHeader">
-            <div className="loginLogo">
-              <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+      <div className="loginPage authScreen">
+        <div className="authWrap authWrapNarrow">
+          <aside className="authVisual" aria-hidden="true">
+            <div className="authVisualBadge">Account Recovery</div>
+            <h2 className="authVisualTitle">Password updated successfully</h2>
+            <p className="authVisualText">Use your new password to continue to your dashboard.</p>
+            <div className="authVisualMeta">You are all set</div>
+          </aside>
+
+          <div className="loginCard authPanel">
+            <div className="loginHeader">
+              <div className="loginLogo">
+                <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+              </div>
+              <div className="loginTitle">Password Reset</div>
             </div>
-            <div className="loginTitle">Password Reset</div>
-          </div>
-          <div className="hintBox" role="note">
-            Your password has been reset successfully. You can now sign in with your new password.
-          </div>
-          <div className="loginFooter">
-            <Link to="/login" className="btn btnPrimary" style={{ textDecoration: "none", textAlign: "center" }}>
-              Sign in
-            </Link>
+
+            <div className="hintBox" role="note">
+              Your password has been reset successfully. You can now sign in with your new password.
+            </div>
+            <div className="loginFooter">
+              <Link to="/login" className="btn btnPrimary" style={{ textDecoration: "none", textAlign: "center" }}>
+                Sign in
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -110,16 +130,24 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="loginPage">
-      <div className="loginCard">
-        <div className="loginHeader">
-          <div className="loginLogo">
-            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
-          </div>
-          <div className="loginTitle">Reset Password</div>
-        </div>
+    <div className="loginPage authScreen">
+      <div className="authWrap authWrapNarrow">
+        <aside className="authVisual" aria-hidden="true">
+          <div className="authVisualBadge">Account Recovery</div>
+          <h2 className="authVisualTitle">Create a new secure password</h2>
+          <p className="authVisualText">Choose a strong password to protect your account and data.</p>
+          <div className="authVisualMeta">Private and protected</div>
+        </aside>
 
-        <form onSubmit={onSubmit} className="form">
+        <div className="loginCard authPanel">
+          <div className="loginHeader">
+            <div className="loginLogo">
+              <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+            </div>
+            <div className="loginTitle">Reset Password</div>
+          </div>
+
+          <form onSubmit={onSubmit} className="form">
           <label className="field">
             <span className="fieldLabel">New Password</span>
             <div className="inputWithIcon">
@@ -215,15 +243,16 @@ export function ResetPasswordPage() {
 
           {error && <div className="errorBox">{error}</div>}
 
-          <button className="btn btnPrimary" disabled={busy} type="submit">
-            {busy ? "Resetting…" : "Reset Password"}
-          </button>
-        </form>
+            <button className="btn btnPrimary" disabled={busy} type="submit">
+              {busy ? "Resetting…" : "Reset Password"}
+            </button>
+          </form>
 
-        <div className="loginFooter">
-          <Link to="/login" className="linkBtn">
-            Back to sign in
-          </Link>
+          <div className="loginFooter">
+            <Link to="/login" className="linkBtn">
+              Back to sign in
+            </Link>
+          </div>
         </div>
       </div>
     </div>

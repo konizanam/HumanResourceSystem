@@ -377,7 +377,7 @@ export function JobApplicationsPage() {
                     <tr className={openProfileId === app.id ? "tableRowActive" : undefined}>
                       <td className="tdStrong">{app.applicant_name ?? "—"}</td>
                       <td>{app.applicant_email ?? "—"}</td>
-                      <td>{app.created_at ? new Date(app.created_at).toLocaleDateString() : "—"}</td>
+                      <td>{app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}</td>
                       <td>{current}</td>
                       <td className="tdRight">
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -439,7 +439,7 @@ export function JobApplicationsPage() {
                       <tr key={`${stage}-${app.id}`}>
                         <td className="tdStrong">{app.applicant_name ?? "—"}</td>
                         <td>{app.applicant_email ?? "—"}</td>
-                        <td>{app.created_at ? new Date(app.created_at).toLocaleDateString() : "—"}</td>
+                        <td>{app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}</td>
                       </tr>
                     ))
                   )}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
-import { getUnreadNotificationCount } from "../api/client";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { getSystemSettings, getUnreadNotificationCount } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
@@ -15,6 +15,8 @@ type IconName =
   | "tag"
   | "list"
   | "file"
+  | "bell"
+  | "message"
   | "chart"
   | "logout"
   | "collapse"
@@ -113,6 +115,21 @@ function Icon({ name }: { name: IconName }) {
             <path d="M8 17h6" />
           </>
         );
+      case "bell":
+        return (
+          <>
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </>
+        );
+      case "message":
+        return (
+          <>
+            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8z" />
+            <path d="M7.5 9h9" />
+            <path d="M7.5 12h6.5" />
+          </>
+        );
       case "chart":
         return (
           <>
@@ -178,10 +195,14 @@ export function AppLayout({
   menuItems: readonly { path: string; title: string; icon: IconName }[];
 }) {
   const { accessToken, logout, userName, userEmail } = useAuth();
+  const location = useLocation();
   const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [systemName, setSystemName] = useState<string>("Human Resource System");
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
 
   const displayName = useMemo(() => {
     const name = (userName ?? "").trim();
@@ -228,11 +249,11 @@ export function AppLayout({
       if (isAdminView) {
         allowedPaths = new Set(menuItems.map((item) => item.path));
       } else if (isEmployerView) {
-        allowedPaths = new Set(["dashboard", "jobs", "companies", "applications", "notifications"]);
+        allowedPaths = new Set(["dashboard", "jobs", "companies", "applications", "notifications", "my-permissions", "messages"]);
       } else if (isJobSeekerView) {
-        allowedPaths = new Set(["dashboard", "job-seekers", "jobs", "notifications"]);
+        allowedPaths = new Set(["dashboard", "job-seekers", "jobs", "notifications", "my-permissions", "messages"]);
       } else {
-        allowedPaths = new Set(["dashboard", "notifications"]);
+        allowedPaths = new Set(["dashboard", "notifications", "my-permissions", "messages"]);
       }
 
       return menuItems.filter((item) => allowedPaths.has(item.path));
@@ -273,6 +294,88 @@ export function AppLayout({
       window.clearInterval(timer);
     };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let cancelled = false;
+    const loadSettings = async () => {
+      try {
+        const settings = await getSystemSettings(accessToken);
+        if (cancelled) return;
+        setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+        setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+      } catch {
+        if (cancelled) return;
+        setSystemName("Human Resource System");
+        setBrandingLogoUrl("");
+      }
+    };
+
+    void loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  const pageName = useMemo(() => {
+    const rawPath = String(location.pathname ?? "");
+    const parts = rawPath.split("/").filter(Boolean);
+    const appIdx = parts.indexOf("app");
+    const segment = (appIdx >= 0 ? parts[appIdx + 1] : parts[0]) ?? "";
+
+    if (!segment || segment === "app") return "Dashboard";
+
+    if (segment === "jobs" && parts[appIdx + 2] && parts[appIdx + 3] === "applications") {
+      return "Applications";
+    }
+
+    const menuItem = menuItems.find((item) => item.path === segment);
+    const baseTitle = menuItem?.title ?? segment;
+
+    const isAdminView = hasPermission("MANAGE_USERS");
+    const isEmployerView = hasPermission("CREATE_JOB") && !isAdminView;
+    const isJobSeekerView = !isAdminView && !isEmployerView;
+
+    if (isJobSeekerView && segment === "job-seekers") return "My Profile";
+
+    return baseTitle;
+  }, [hasPermission, location.pathname, menuItems]);
+
+  useEffect(() => {
+    const name = String(systemName ?? "Human Resource System").trim() || "Human Resource System";
+    const page = String(pageName ?? "").trim();
+    document.title = page ? `${name} | ${page}` : name;
+  }, [pageName, systemName]);
+
+  useEffect(() => {
+    const href = String(brandingLogoUrl ?? "").trim();
+    if (!href) return;
+
+    const link =
+      (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
+      (document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null);
+
+    if (link) {
+      link.href = href;
+      return;
+    }
+
+    const created = document.createElement("link");
+    created.rel = "icon";
+    created.href = href;
+    document.head.appendChild(created);
+  }, [brandingLogoUrl]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowBackToTop(window.scrollY > 260);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
     <div className={collapsed ? "appShell appShellCollapsed" : "appShell"}>
@@ -327,7 +430,7 @@ export function AppLayout({
                   <Icon name={item.icon} />
                 </span>
                 <span className="navItemLabel">{title}</span>
-                {item.path === "notifications" && unreadNotificationCount > 0 ? (
+                {item.path === "messages" && unreadNotificationCount > 0 ? (
                   <span
                     className="chipBadge"
                     style={{ marginLeft: "auto", minWidth: 24, textAlign: "center" }}
@@ -369,6 +472,17 @@ export function AppLayout({
       <main className="content">
         {permissionsLoading ? <div className="pageText">Loading permissions...</div> : <Outlet />}
       </main>
+
+      {showBackToTop ? (
+        <button
+          type="button"
+          className="btn btnPrimary btnSm backToTopBtn"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="Back to top"
+        >
+          ↑ Back to Top
+        </button>
+      ) : null}
     </div>
   );
 }

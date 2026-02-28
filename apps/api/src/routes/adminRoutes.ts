@@ -464,7 +464,7 @@ router.get('/users/:id',
           u.founded_year, u.headquarters_location, u.phone,
           (SELECT COUNT(*) FROM user_sessions WHERE user_id = u.id) as login_count,
           (SELECT COUNT(*) FROM jobs WHERE employer_id = u.id) as jobs_posted,
-          (SELECT COUNT(*) FROM applications WHERE applicant_id = u.id) as applications_submitted,
+          (SELECT COUNT(*) FROM applications WHERE user_id = u.id) as applications_submitted,
           (SELECT json_agg(json_build_object(
             'id', s.id,
             'name', s.name,
@@ -562,8 +562,13 @@ router.put('/users/:id/block',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const userId = req.params.id;
+      const userIdRaw = (req.params as any).id as string | string[] | undefined;
+      const userId = Array.isArray(userIdRaw) ? userIdRaw[0] : userIdRaw;
       const { block, reason } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
 
       // Check if user exists
       const userCheck = await dbQuery(

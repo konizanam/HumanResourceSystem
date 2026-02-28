@@ -1,11 +1,12 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { forgotPassword, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin@1234");
   const [code, setCode] = useState("");
@@ -19,6 +20,11 @@ export function LoginPage() {
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
 
+  const redirectTo = useMemo(() => {
+    const from = (location.state as any)?.from;
+    return typeof from === "string" && from.trim() ? from : "/app/dashboard";
+  }, [location.state]);
+
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
@@ -31,11 +37,11 @@ export function LoginPage() {
           : [];
         if (!cancelled) {
           void permissions;
-          navigate("/app/dashboard", { replace: true });
+          navigate(redirectTo, { replace: true });
         }
       } catch {
         if (!cancelled) {
-          navigate("/app", { replace: true });
+          navigate(redirectTo, { replace: true });
         }
       }
     };
@@ -45,7 +51,7 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, navigate]);
+  }, [accessToken, navigate, redirectTo]);
 
   useEffect(() => {
     if (!twoFactorExpiresAt || step !== "twoFactor") {
@@ -93,7 +99,7 @@ export function LoginPage() {
           ? (payload as any).user.permissions.map((p: unknown) => String(p))
           : [];
         void permissions;
-        navigate("/app/dashboard", { replace: true });
+        navigate(redirectTo, { replace: true });
         return;
       }
 
@@ -124,7 +130,7 @@ export function LoginPage() {
         ? (payload as any).user.permissions.map((p: unknown) => String(p))
         : [];
       void permissions;
-      navigate("/app/dashboard", { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -133,17 +139,39 @@ export function LoginPage() {
   }
 
   return (
-    <div className="loginPage">
-      <div className="loginCard">
-        <div className="loginHeader">
-          <div className="loginLogo">
-            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
-          </div>
-          <h1 className="loginTitle">Welcome Back</h1>
-          <p className="loginSubtitle">Please enter your details to sign in.</p>
-        </div>
+    <div className="loginPage authScreen">
+      <div className="authWrap">
+        <aside className="authVisual" aria-hidden="true">
+          <div className="authVisualBadge">Human Resource System</div>
+          <h2 className="authVisualTitle">Welcome to your recruitment command center</h2>
+          <p className="authVisualText">
+            Sign in to post jobs, track applications, and manage candidate profiles in one secure place.
+          </p>
+          <div className="authVisualMeta">Fast • Secure • Reliable</div>
+        </aside>
 
-        <form onSubmit={onSubmit} className="form" aria-busy={busy}>
+        <div className="loginCard authPanel">
+          <div className="loginHeader">
+            <div className="loginLogo">
+              <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+            </div>
+            <h1 className="loginTitle">Welcome Back</h1>
+            <p className="loginSubtitle">Please enter your details to sign in.</p>
+          </div>
+
+          <form onSubmit={onSubmit} className="form" aria-busy={busy}>
+            <div className="authModeRow" role="status" aria-live="polite">
+              <span className={`authModePill ${step === "credentials" && !showForgot ? "authModePillActive" : ""}`}>
+                Sign In
+              </span>
+              <span className={`authModePill ${showForgot ? "authModePillActive" : ""}`}>
+                Recovery
+              </span>
+              <span className={`authModePill ${step === "twoFactor" ? "authModePillActive" : ""}`}>
+                Auth Code
+              </span>
+            </div>
+
           {step === "credentials" ? (
             <>
               {!showForgot ? (
@@ -345,14 +373,15 @@ export function LoginPage() {
                   : "Verify"}
             </button>
           ) : null}
-        </form>
+          </form>
 
-        <div className="loginFooter">
-          Don't have an account?{" "}
-          <Link to="/register" className="linkBtn">
-            Sign up
-          </Link>
-          <div className="loginCopyright">© 2026 Human Resource System. All rights reserved.</div>
+          <div className="loginFooter">
+            Don't have an account?{" "}
+            <Link to="/register" className="linkBtn">
+              Sign up
+            </Link>
+            <div className="loginCopyright">© 2026 Human Resource System. All rights reserved.</div>
+          </div>
         </div>
       </div>
     </div>

@@ -18,14 +18,31 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     ? (body.errors[0]?.msg ?? body.errors[0]?.message)
     : undefined;
 
+  const errorField = body?.error;
+  const errorMessageFromErrorField =
+    typeof errorField === "string"
+      ? errorField
+      : typeof errorField?.message === "string"
+        ? errorField.message
+        : typeof errorField?.error === "string"
+          ? errorField.error
+          : undefined;
+
   const message =
-    body?.error?.message ??
+    errorMessageFromErrorField ??
     body?.message ??
     validationMessage ??
     fallbackMessage;
 
   if (res.status === 401 && typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("hrs:unauthorized"));
+    window.dispatchEvent(
+      new CustomEvent("hrs:unauthorized", {
+        detail: {
+          status: res.status,
+          message,
+        },
+      }),
+    );
   }
 
   return Object.assign(new Error(message), { status: res.status });
@@ -35,6 +52,12 @@ function authHeaders(token: string): HeadersInit {
   return {
     "content-type": "application/json",
     authorization: `Bearer ${token}`,
+  };
+}
+
+function publicHeaders(): HeadersInit {
+  return {
+    "content-type": "application/json",
   };
 }
 
@@ -249,6 +272,16 @@ export async function getCompany(token: string, id: string): Promise<Company> {
   return envelope.data;
 }
 
+export async function getPublicCompany(jobId: string): Promise<Company> {
+  const res = await fetch(`${API_BASE}/public/jobs/${encodeURIComponent(jobId)}/company`, {
+    headers: publicHeaders(),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load company");
+  const envelope = body as ApiEnvelope<Company>;
+  return envelope.data;
+}
+
 export async function deactivateCompany(token: string, id: string): Promise<Company> {
   const res = await fetch(
     `${API_BASE}/companies/${encodeURIComponent(id)}/deactivate`,
@@ -313,6 +346,21 @@ export async function updateCompanyApprovalMode(
 export async function getSystemSettings(token: string): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/companies/settings`, {
     headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load system settings");
+  const data = (body as any)?.data ?? {};
+  return {
+    company_approval_mode:
+      data.company_approval_mode === "pending" ? "pending" : "auto_approved",
+    system_name: String(data.system_name ?? "Human Resource System"),
+    branding_logo_url: String(data.branding_logo_url ?? ""),
+  };
+}
+
+export async function getPublicSystemSettings(): Promise<SystemSettings> {
+  const res = await fetch(`${API_BASE}/public/system-settings`, {
+    headers: publicHeaders(),
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load system settings");
@@ -538,6 +586,15 @@ export async function markNotificationAsRead(token: string, id: string): Promise
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to mark notification as read");
+}
+
+export async function markNotificationAsUnread(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/unread`, {
+    method: "PUT",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to mark notification as unread");
 }
 
 export async function markAllNotificationsAsRead(token: string): Promise<number> {
@@ -787,6 +844,7 @@ export async function updatePersonalDetails(
     nationality: d.nationality,
     id_type: d.id_type ?? d.idType,
     id_number: d.id_number ?? d.idNumber,
+    id_document_url: d.id_document_url ?? d.idDocumentUrl,
     marital_status: d.marital_status ?? d.maritalStatus,
     disability_status: d.disability_status ?? d.disabilityStatus,
   };
@@ -863,6 +921,7 @@ export async function saveEducation(
         : (d.end_date ?? d.endDate ?? "").toString() || undefined,
     is_current: Boolean(d.is_current ?? d.isCurrent),
     grade: (d.grade ?? "").toString() || undefined,
+    certificate_url: (d.certificate_url ?? d.certificateUrl ?? "").toString() || undefined,
   };
 
   const url = id
@@ -940,6 +999,106 @@ export async function deleteExperience(token: string, id: string) {
     const body = await safeJson(res);
     throw apiError(res, body, "Failed to delete experience");
   }
+}
+
+export type UserDocument = {
+  id: string;
+  file_url?: string | null;
+  document_type?: string | null;
+  original_name?: string | null;
+  description?: string | null;
+  created_at?: string | null;
+};
+
+export async function uploadJobSeekerDocument(
+  token: string,
+  file: File,
+  documentType: string,
+  description?: string,
+  isPrimary?: boolean,
+): Promise<{ url: string; document: UserDocument | null }> {
+  const form = new FormData();
+  form.append("document", file);
+  form.append("document_type", documentType);
+  if (description) form.append("description", description);
+  if (typeof isPrimary === "boolean") form.append("is_primary", String(isPrimary));
+
+  const res = await fetch(`${API_BASE}/documents/upload`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to upload document");
+
+  const data = (body as any)?.data ?? {};
+  return {
+    url: String(data.url ?? ""),
+    document: (data.document ?? null) as UserDocument | null,
+  };
+}
+
+export async function listMyDocuments(
+  token: string,
+  type?: string,
+): Promise<UserDocument[]> {
+  const url = new URL(`${API_BASE}/documents/my-documents`);
+  if (type) url.searchParams.set("type", type);
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load documents");
+
+  const data = (body as any)?.data;
+  return Array.isArray(data) ? (data as UserDocument[]) : [];
+}
+
+export type JobSeekerResume = {
+  id: string;
+  file_name?: string;
+  is_primary?: boolean;
+  uploaded_at?: string;
+  download_url?: string;
+  file_path?: string;
+};
+
+export async function listJobSeekerResumes(
+  token: string,
+): Promise<{ resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null; total_count: number }> {
+  const res = await fetch(`${API_BASE}/job-seeker/resume`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load resumes");
+
+  return {
+    resumes: Array.isArray((body as any)?.resumes) ? ((body as any).resumes as JobSeekerResume[]) : [],
+    primary_resume: ((body as any)?.primary_resume ?? null) as JobSeekerResume | null,
+    total_count: Number((body as any)?.total_count ?? 0),
+  };
+}
+
+export async function uploadJobSeekerResume(
+  token: string,
+  file: File,
+  isPrimary = true,
+): Promise<JobSeekerResume> {
+  const form = new FormData();
+  form.append("resume", file);
+  form.append("is_primary", String(isPrimary));
+
+  const res = await fetch(`${API_BASE}/job-seeker/resume`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to upload CV");
+  return ((body as any)?.resume ?? body) as JobSeekerResume;
 }
 
 export async function saveReference(
@@ -1136,6 +1295,18 @@ export async function listJobCategories(
 ): Promise<{ categories: JobCategory[]; total_categories: number }> {
   const res = await fetch(`${API_BASE}/jobs/categories`, {
     headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job categories");
+  return body;
+}
+
+export async function listPublicJobCategories(): Promise<{
+  categories: JobCategory[];
+  total_categories: number;
+}> {
+  const res = await fetch(`${API_BASE}/jobs/categories`, {
+    headers: publicHeaders(),
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load job categories");
@@ -1352,6 +1523,12 @@ export type JobApplication = {
   job_title?: string | null;
   company?: string | null;
   company_name?: string | null;
+  location?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  employment_type?: string | null;
+  remote?: boolean | null;
+  application_deadline?: string | null;
 };
 
 export type MyApplicationsResponse = {
@@ -1362,14 +1539,18 @@ export type MyApplicationsResponse = {
 export type JobListItem = {
   id: string;
   company_id?: string | null;
+  category_id?: string | null;
   title: string;
   description?: string | null;
   company?: string | null;
+  employer_company?: string | null;
   location?: string | null;
   salary_min?: number | null;
   salary_max?: number | null;
   salary_currency?: string | null;
   category?: string | null;
+  category_name?: string | null;
+  subcategory?: string | null;
   experience_level?: string | null;
   employment_type?: string | null;
   status?: string | null;
@@ -1525,6 +1706,61 @@ export async function applyToJob(
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to apply for this job");
   return body as JobApplication;
+}
+
+export async function withdrawMyApplication(token: string, applicationId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/applications/${encodeURIComponent(applicationId)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to recall application");
+}
+
+export async function getJob(token: string, id: string): Promise<JobListItem> {
+  const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job details");
+  return body as JobListItem;
+}
+
+export async function getPublicJob(id: string): Promise<JobListItem> {
+  const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+    headers: publicHeaders(),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job details");
+  return body as JobListItem;
+}
+
+export async function listPublicJobs(
+  params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    company_id?: string;
+  },
+): Promise<{
+  jobs: JobListItem[];
+  pagination: Pagination;
+  showing?: string;
+}> {
+  const url = new URL(`${API_BASE}/jobs`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.company_id) url.searchParams.set("company_id", params.company_id);
+
+  const res = await fetch(url, { headers: publicHeaders() });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load jobs");
+  return body as {
+    jobs: JobListItem[];
+    pagination: Pagination;
+    showing?: string;
+  };
 }
 
 export async function listJobs(

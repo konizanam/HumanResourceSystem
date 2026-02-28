@@ -13,6 +13,8 @@ export class CompanyService {
   async getAllCompanies(userId: string) {
     const userPermissions = await this.db.getUserPermissions(userId);
     const isSystemManager = userPermissions.includes('MANAGE_USERS');
+    const userRoles = await this.db.getUserRoles(userId);
+    const isJobSeeker = userRoles.includes('JOB_SEEKER');
 
     // Get companies based on role / association
     let companies;
@@ -29,6 +31,21 @@ export class CompanyService {
            COALESCE(c.status, 'active') as status
          FROM companies c
          LEFT JOIN users u ON c.created_by = u.id
+         ORDER BY c.created_at DESC`
+      );
+    } else if (isJobSeeker) {
+      // Job seekers can filter alerts by company, so return active companies.
+      // Keep the payload lean (avoid exposing internal user linkage details).
+      companies = await query(
+        `SELECT
+           c.id,
+           c.name,
+           c.industry,
+           c.logo_url,
+           COALESCE(c.status, 'active') as status,
+           c.created_at
+         FROM companies c
+         WHERE COALESCE(c.status, 'active') = 'active'
          ORDER BY c.created_at DESC`
       );
     } else {

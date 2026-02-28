@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   type Role,
   type Permission,
@@ -666,7 +666,7 @@ function RoleRow({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const created = role.created_at ? new Date(role.created_at).toLocaleDateString() : "—";
+  const created = role.created_at ? new Date(role.created_at).toLocaleDateString("en-GB") : "—";
   return (
     <>
       <tr className={open ? "tableRowActive" : undefined}>

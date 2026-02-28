@@ -75,7 +75,7 @@ router.get('/', authenticateOptional, [
     const page = req.query.page ? parseInt(req.query.page as string) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
     const offset = (page - 1) * limit;
-    const showMyJobs = req.query.my_jobs === true || req.query.my_jobs === 'true';
+    const showMyJobs = String(req.query.my_jobs) === 'true';
 
     let whereConditions: string[] = [];
     const queryParams: any[] = [];
@@ -197,9 +197,9 @@ router.get('/employer/dashboard',
           u.email as applicant_email
          FROM applications a
          JOIN jobs j ON a.job_id = j.id
-         JOIN users u ON a.applicant_id = u.id
+           JOIN users u ON a.user_id = u.id
          WHERE j.employer_id = $1
-         ORDER BY a.created_at DESC
+           ORDER BY a.applied_at DESC
          LIMIT 10`,
         [employerId]
       );
@@ -473,18 +473,20 @@ router.get('/:id([0-9a-fA-F-]{36})', [
 
     const job = jobResult.rows[0];
 
-    // Check if user can view this job (public can only view active jobs)
-    if (job.status !== 'active' && !req.user?.roles?.includes('EMPLOYER') && !req.user?.roles?.includes('ADMIN')) {
+    const isPubliclyActive = job.status === 'active' || job.status === 'APPROVED';
+
+    // Check if user can view this job (public can only view active/approved jobs)
+    if (!isPubliclyActive && !req.user?.roles?.includes('EMPLOYER') && !req.user?.roles?.includes('ADMIN')) {
       return res.status(403).json({ error: 'This job is not publicly available' });
     }
 
     // Check if employer can view their own non-active jobs
-    if (job.status !== 'active' && req.user?.roles?.includes('EMPLOYER') && job.employer_id !== req.user.userId) {
+    if (!isPubliclyActive && req.user?.roles?.includes('EMPLOYER') && job.employer_id !== req.user.userId) {
       return res.status(403).json({ error: 'You do not have permission to view this job' });
     }
 
     // Increment view count only for active jobs and public views
-    if (job.status === 'active' && !req.user?.roles?.includes('EMPLOYER')) {
+    if (isPubliclyActive && !req.user?.roles?.includes('EMPLOYER')) {
       await dbQuery(
         'UPDATE jobs SET views = views + 1 WHERE id = $1',
         [req.params.id]
@@ -676,7 +678,7 @@ router.put('/:id',
         userId: req.user!.userId,
         action: 'JOB_UPDATED',
         targetType: 'job',
-        targetId: req.params.id,
+        targetId: String(req.params.id),
       });
       res.json(result.rows[0]);
     } catch (error) {
@@ -732,7 +734,7 @@ router.delete('/:id',
           userId: req.user!.userId,
           action: 'JOB_DELETED',
           targetType: 'job',
-          targetId: req.params.id,
+          targetId: String(req.params.id),
           details: { closed_instead_of_deleted: true },
         });
         return res.json({ 
@@ -748,7 +750,7 @@ router.delete('/:id',
         userId: req.user!.userId,
         action: 'JOB_DELETED',
         targetType: 'job',
-        targetId: req.params.id,
+        targetId: String(req.params.id),
       });
       res.json({ 
         message: 'Job deleted successfully',

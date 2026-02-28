@@ -706,6 +706,125 @@ CROSS JOIN (
 WHERE u.id IN (SELECT id FROM users LIMIT 5)
 LIMIT 15;
 
+-- Insert explicit Job Alerts + Messages for job seekers (mix of unread/read)
+WITH job_seekers AS (
+    SELECT u.id
+    FROM users u
+    JOIN user_roles ur ON ur.user_id = u.id
+    JOIN roles r ON r.id = ur.role_id
+    WHERE r.name = 'JOB_SEEKER'
+),
+latest_jobs AS (
+    SELECT id, title,
+           ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
+    FROM jobs
+    WHERE status = 'APPROVED'
+    ORDER BY created_at DESC
+    LIMIT 2
+)
+INSERT INTO notifications (
+    user_id, type, title, message, data,
+    is_read, read_at, action_url,
+    priority, created_at, updated_at
+)
+SELECT
+    js.id,
+    'job_posted',
+    CASE WHEN j.rn = 1 THEN 'New Job Alert' ELSE 'Job Alert' END,
+    'A new job has been posted: ' || j.title,
+    jsonb_build_object('job_id', j.id, 'job_title', j.title),
+    CASE WHEN j.rn = 2 THEN TRUE ELSE FALSE END,
+    CASE WHEN j.rn = 2 THEN NOW() - INTERVAL '2 days' ELSE NULL END,
+    '/app/jobs',
+    CASE WHEN j.rn = 1 THEN 'high' ELSE 'normal' END,
+    NOW() - (j.rn * INTERVAL '6 hours'),
+    NOW() - (j.rn * INTERVAL '6 hours')
+FROM job_seekers js
+CROSS JOIN latest_jobs j;
+
+WITH job_seekers AS (
+    SELECT u.id
+    FROM users u
+    JOIN user_roles ur ON ur.user_id = u.id
+    JOIN roles r ON r.id = ur.role_id
+    WHERE r.name = 'JOB_SEEKER'
+)
+INSERT INTO notifications (
+    user_id, type, title, message, data,
+    is_read, read_at, action_url,
+    priority, created_at, updated_at
+)
+SELECT
+    js.id,
+    'message_received',
+    'New Message',
+    'HR Team: Your application profile looks good. Please keep your phone available for next steps.',
+    jsonb_build_object('from_name', 'HR Team', 'channel', 'in_app'),
+    FALSE,
+    NULL,
+    '/app/messages',
+    'high',
+    NOW() - INTERVAL '1 hour',
+    NOW() - INTERVAL '1 hour'
+FROM job_seekers js;
+
+WITH job_seekers AS (
+    SELECT u.id
+    FROM users u
+    JOIN user_roles ur ON ur.user_id = u.id
+    JOIN roles r ON r.id = ur.role_id
+    WHERE r.name = 'JOB_SEEKER'
+)
+INSERT INTO notifications (
+    user_id, type, title, message, data,
+    is_read, read_at, action_url,
+    priority, created_at, updated_at
+)
+SELECT
+    js.id,
+    'message_received',
+    'Message',
+    'System: Welcome to HRS! Make sure your profile is complete to receive better job alerts.',
+    jsonb_build_object('from_name', 'System', 'channel', 'in_app'),
+    TRUE,
+    NOW() - INTERVAL '5 days',
+    '/app/messages',
+    'normal',
+    NOW() - INTERVAL '6 days',
+    NOW() - INTERVAL '6 days'
+FROM job_seekers js;
+
+-- Insert sample job alert configurations (saved alerts)
+WITH job_seekers AS (
+    SELECT u.id
+    FROM users u
+    JOIN user_roles ur ON ur.user_id = u.id
+    JOIN roles r ON r.id = ur.role_id
+    WHERE r.name = 'JOB_SEEKER'
+),
+tech_cat AS (
+    SELECT id FROM job_categories WHERE name = 'Technology' LIMIT 1
+)
+INSERT INTO job_alerts (
+    user_id, name, keywords, category_id, location, salary_min,
+    frequency, is_active, last_sent_at, created_at, updated_at
+)
+SELECT
+    js.id,
+    'Technology Jobs',
+    'software, cloud, react, node',
+    tech_cat.id,
+    'Remote',
+    60000,
+    'daily',
+    TRUE,
+    NULL,
+    NOW(),
+    NOW()
+FROM job_seekers js
+CROSS JOIN tech_cat
+ON CONFLICT DO NOTHING;
+
 -- =====================================================
 -- 8. DOCUMENTS
 -- =====================================================

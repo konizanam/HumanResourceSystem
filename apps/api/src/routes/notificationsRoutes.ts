@@ -543,6 +543,47 @@ router.put('/:id([0-9a-fA-F-]{36})/read',
 );
 
 // ============================================================================
+// PUT /api/notifications/:id/unread - Mark notification as unread
+// ============================================================================
+router.put('/:id([0-9a-fA-F-]{36})/unread',
+  authenticate,
+  validateNotificationId,
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const notificationId = req.params.id;
+      const userId = req.user!.userId;
+
+      const checkResult = await dbQuery(
+        'SELECT id FROM notifications WHERE id = $1 AND user_id = $2',
+        [notificationId, userId]
+      );
+
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+
+      const result = await dbQuery(
+        `UPDATE notifications
+         SET is_read = FALSE, read_at = NULL, updated_at = NOW()
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [notificationId, userId]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error marking notification as unread:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
 // PUT /api/notifications/read-all - Mark all notifications as read
 // ============================================================================
 /**

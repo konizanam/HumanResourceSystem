@@ -868,9 +868,9 @@ router.get('/applications',
           u.phone as applicant_phone
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN users u ON a.applicant_id = u.id
+           LEFT JOIN users u ON a.user_id = u.id
          ${whereClause}
-         ORDER BY a.created_at ${sortOrder}
+           ORDER BY a.applied_at ${sortOrder}
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...queryParams, limit, offset]
       );
@@ -1007,21 +1007,21 @@ router.get('/dashboard',
         `SELECT a.*, j.title as job_title, u.first_name, u.last_name
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
-         LEFT JOIN users u ON a.applicant_id = u.id
+         LEFT JOIN users u ON a.user_id = u.id
          WHERE j.employer_id = $1
-         ORDER BY a.created_at DESC
+         ORDER BY a.applied_at DESC
          LIMIT 10`,
         [employerId]
       );
 
       // Get applications over time (last 30 days)
       const appsOverTimeResult = await dbQuery(
-        `SELECT DATE(a.created_at) as date, COUNT(*) as count
+        `SELECT DATE(a.applied_at) as date, COUNT(*) as count
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
          WHERE j.employer_id = $1
-           AND a.created_at >= NOW() - INTERVAL '30 days'
-         GROUP BY DATE(a.created_at)
+           AND a.applied_at >= NOW() - INTERVAL '30 days'
+         GROUP BY DATE(a.applied_at)
          ORDER BY date`,
         [employerId]
       );

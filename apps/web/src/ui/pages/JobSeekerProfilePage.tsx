@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
   applyToJob,
+  listJobSeekerResumes,
+  listMyDocuments,
   getFullProfile,
   getIpLocation,
   me,
+  uploadJobSeekerDocument,
+  uploadJobSeekerResume,
   updateProfile,
   updatePersonalDetails,
   saveAddress,
@@ -77,6 +81,109 @@ const EDUCATION_FIELD_OF_STUDY_OPTIONS = [
   "Sales",
   "Software Development",
 ] as const;
+
+function resolveFileUrl(raw: unknown): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  if (/^(https?:\/\/|data:)/i.test(value)) return value;
+  const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  if (!base) return value;
+  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+function extractFileName(raw: unknown): string {
+  const full = String(raw ?? "").trim();
+  if (!full) return "";
+  const clean = full.split("?")[0] ?? full;
+  const parts = clean.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : clean;
+}
+
+function UploadedDocumentCard({
+  title,
+  url,
+  fallbackText,
+  hint,
+}: {
+  title: string;
+  url: string;
+  fallbackText: string;
+  hint?: string;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const resolvedUrl = resolveFileUrl(url);
+  const hasFile = Boolean(resolvedUrl);
+  const fileName = extractFileName(url);
+  const lowerName = fileName.toLowerCase();
+  const isImage = /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(lowerName);
+  const isPdf = /\.pdf$/i.test(lowerName);
+  const canInlinePreview = Boolean(
+    resolvedUrl && (isImage || isPdf || /^data:image\//i.test(resolvedUrl) || /^data:application\/pdf/i.test(resolvedUrl)),
+  );
+
+  function onDownload(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!resolvedUrl) return;
+    const anchor = document.createElement("a");
+    anchor.href = resolvedUrl;
+    anchor.download = fileName || "document";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  }
+
+  return (
+    <div className="uploadedDocCard">
+      <div className="uploadedDocCardTitle">{title}</div>
+      {hasFile ? (
+        <span className="uploadedDocCardLink" title={fileName}>
+          {fileName || `View ${title.toLowerCase()}`}
+        </span>
+      ) : (
+        <span className="readValue">{fallbackText}</span>
+      )}
+      {hasFile ? (
+        <div className="uploadedDocCardActions">
+          <button
+            type="button"
+            className="btn btnPrimary btnSm uploadedDocViewBtn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setPreviewOpen((v) => !v);
+            }}
+          >
+            {previewOpen ? "Hide" : "View"}
+          </button>
+          <button
+            type="button"
+            className="btn btnGhost btnSm uploadedDocDownloadBtn"
+            onClick={onDownload}
+          >
+            Download
+          </button>
+        </div>
+      ) : null}
+
+      {hasFile && previewOpen ? (
+        <div className="uploadedDocPreview">
+          {canInlinePreview ? (
+            isImage ? (
+              <img className="uploadedDocPreviewImage" src={resolvedUrl} alt={fileName || title} />
+            ) : (
+              <iframe className="uploadedDocPreviewFrame" src={resolvedUrl} title={`${title} preview`} />
+            )
+          ) : (
+            <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>
+          )}
+        </div>
+      ) : null}
+
+      {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
+    </div>
+  );
+}
 
 function StepIcon({ step }: { step: number }) {
   const common = {
@@ -163,7 +270,7 @@ function StepIcon({ step }: { step: number }) {
 /* ================================================================== */
 
 export function JobSeekerProfilePage() {
-  const { accessToken, logout } = useAuth();
+  const { accessToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState<FullProfile | null>(null);
@@ -196,11 +303,6 @@ export function JobSeekerProfilePage() {
       setData(profile);
     } catch (err) {
       const status = (err as any)?.status;
-      if (status === 401) {
-        logout();
-        navigate("/login", { replace: true });
-        return;
-      }
       if (status === 403) {
         setError("Access denied. This page is available for job seeker accounts.");
         setData(null);
@@ -210,7 +312,7 @@ export function JobSeekerProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, logout, navigate]);
+  }, [accessToken, navigate]);
 
   useEffect(() => {
     load();
@@ -433,7 +535,7 @@ export function JobSeekerProfilePage() {
             <ReadField label="Location" value={pendingJob.location ?? "—"} />
             <ReadField
               label="Due Date"
-              value={pendingJob.application_deadline ? new Date(pendingJob.application_deadline).toLocaleDateString() : "—"}
+              value={pendingJob.application_deadline ? new Date(pendingJob.application_deadline).toLocaleDateString("en-GB") : "—"}
             />
           </div>
 
@@ -491,11 +593,16 @@ function PersonalDetailsSection({
     nationality: (d.nationality as string) ?? "",
     idType: (d.id_type as string) ?? "",
     idNumber: (d.id_number as string) ?? "",
+    idDocumentUrl: (d.id_document_url as string) ?? "",
     maritalStatus: (d.marital_status as string) ?? "",
     disabilityStatus: (d.disability_status as boolean) ?? false,
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [licenseDocumentUrl, setLicenseDocumentUrl] = useState("");
+  const [conductCertificateUrl, setConductCertificateUrl] = useState("");
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -526,10 +633,72 @@ function PersonalDetailsSection({
       nationality: (nd.nationality as string) ?? "",
       idType: (nd.id_type as string) ?? "",
       idNumber: (nd.id_number as string) ?? "",
+      idDocumentUrl: (nd.id_document_url as string) ?? "",
       maritalStatus: (nd.marital_status as string) ?? "",
       disabilityStatus: (nd.disability_status as boolean) ?? false,
     });
   }, [data]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setDocumentsLoading(true);
+        const docs = await listMyDocuments(token);
+        if (cancelled) return;
+        const findByType = (type: string) => {
+          const match = (docs ?? []).find(
+            (doc) => String(doc.document_type ?? "").trim().toLowerCase() === type,
+          );
+          return String(match?.file_url ?? "").trim();
+        };
+        setLicenseDocumentUrl(findByType("license_document"));
+        setConductCertificateUrl(findByType("conduct_certificate"));
+      } catch {
+        if (cancelled) return;
+        setLicenseDocumentUrl("");
+        setConductCertificateUrl("");
+      } finally {
+        if (!cancelled) setDocumentsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  async function onUploadDocument(file: File | null, type: "id" | "license" | "conduct") {
+    if (!file) return;
+    try {
+      setUploadingDocType(type);
+      setError(null);
+      const mapping =
+        type === "id"
+          ? { key: "id_document", label: "Identification document" }
+          : type === "license"
+            ? { key: "license_document", label: "License" }
+            : { key: "conduct_certificate", label: "Conduct certificate" };
+
+      const uploaded = await uploadJobSeekerDocument(token, file, mapping.key, mapping.label, true);
+      const uploadedUrl = String(uploaded.url ?? "").trim();
+      if (type === "id") {
+        setForm((prev) => ({ ...prev, idDocumentUrl: uploadedUrl }));
+        setFieldErrors((prev) => {
+          const next = { ...prev };
+          delete next.idDocumentUrl;
+          return next;
+        });
+      }
+      if (type === "license") setLicenseDocumentUrl(uploadedUrl);
+      if (type === "conduct") setConductCertificateUrl(uploadedUrl);
+      setSuccess(`${mapping.label} uploaded`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Document upload failed");
+    } finally {
+      setUploadingDocType(null);
+    }
+  }
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
@@ -541,6 +710,7 @@ function PersonalDetailsSection({
     if (!form.nationality.trim()) errs.nationality = "Nationality is required";
     if (!form.idType) errs.idType = "ID Type is required";
     if (!form.idNumber.trim()) errs.idNumber = "ID Number is required";
+    if (!form.idDocumentUrl.trim()) errs.idDocumentUrl = "Identification document is required";
     if (!form.maritalStatus) errs.maritalStatus = "Marital status is required";
 
     setFieldErrors(errs);
@@ -563,19 +733,52 @@ function PersonalDetailsSection({
     }
   }
 
+  const currentIdDocumentUrl = String(form.idDocumentUrl ?? d.id_document_url ?? "").trim();
+
   if (!editing) {
     return (
-      <div className="profileReadGrid">
-        <ReadField label="First Name" value={d.first_name} />
-        <ReadField label="Last Name" value={d.last_name} />
-        <ReadField label="Middle Name" value={d.middle_name} />
-        <ReadField label="Gender" value={d.gender} />
-        <ReadField label="Date of Birth" value={d.date_of_birth ? String(d.date_of_birth).split("T")[0] : ""} />
-        <ReadField label="Nationality" value={d.nationality} />
-        <ReadField label="ID Type" value={d.id_type} />
-        <ReadField label="ID Number" value={d.id_number} />
-        <ReadField label="Marital Status" value={d.marital_status} />
-        <ReadField label="Disability" value={d.disability_status ? "Yes" : "No"} />
+      <div className="editForm" style={{ marginTop: 0 }}>
+        <div className="editGrid">
+          <EditField label="First Name" value={String(d.first_name ?? "")} onChange={() => {}} disabled />
+          <EditField label="Last Name" value={String(d.last_name ?? "")} onChange={() => {}} disabled />
+          <EditField label="Middle Name (optional)" value={String(d.middle_name ?? "")} onChange={() => {}} disabled />
+          <EditField label="Gender" value={String(d.gender ?? "")} onChange={() => {}} disabled />
+          <EditField
+            label="Date of Birth"
+            value={d.date_of_birth ? String(d.date_of_birth).split("T")[0] : ""}
+            onChange={() => {}}
+            disabled
+          />
+          <EditField label="Nationality" value={String(d.nationality ?? "")} onChange={() => {}} disabled />
+          <EditField label="ID Type" value={String(d.id_type ?? "")} onChange={() => {}} disabled />
+          <EditField label="ID Number" value={String(d.id_number ?? "")} onChange={() => {}} disabled />
+          <div className="field fieldFull">
+            <UploadedDocumentCard
+              title="Identification Document"
+              url={currentIdDocumentUrl}
+              fallbackText="No file uploaded yet."
+            />
+          </div>
+          <div className="field fieldFull">
+            <UploadedDocumentCard
+              title="License (Optional)"
+              url={licenseDocumentUrl}
+              fallbackText="No file uploaded."
+            />
+          </div>
+          <div className="field fieldFull">
+            <UploadedDocumentCard
+              title="Conduct Certificate (Optional)"
+              url={conductCertificateUrl}
+              fallbackText="No file uploaded."
+            />
+          </div>
+          <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
+          <label className="field fieldCheckbox">
+            <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
+            <span className="fieldLabel">Disability status</span>
+          </label>
+        </div>
       </div>
     );
   }
@@ -687,6 +890,68 @@ function PersonalDetailsSection({
           required
           error={fieldErrors.idNumber}
         />
+        <label className="field fieldFull">
+          <span className="fieldLabel">Identification Document</span>
+          <input
+            className="input"
+            type="file"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              void onUploadDocument(file, "id");
+              e.currentTarget.value = "";
+            }}
+            disabled={uploadingDocType === "id" || saving}
+            required={!form.idDocumentUrl.trim()}
+          />
+          <UploadedDocumentCard
+            title="Identification Document"
+            url={form.idDocumentUrl}
+            fallbackText="No file uploaded yet."
+            hint={form.idDocumentUrl ? "Upload another file to replace the current one." : undefined}
+          />
+          {fieldErrors.idDocumentUrl && <span className="fieldError">{fieldErrors.idDocumentUrl}</span>}
+        </label>
+        <label className="field fieldFull">
+          <span className="fieldLabel">License (Optional)</span>
+          <input
+            className="input"
+            type="file"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              void onUploadDocument(file, "license");
+              e.currentTarget.value = "";
+            }}
+            disabled={uploadingDocType === "license" || saving || documentsLoading}
+          />
+          <UploadedDocumentCard
+            title="License (Optional)"
+            url={licenseDocumentUrl}
+            fallbackText="No file uploaded."
+            hint={licenseDocumentUrl ? "Upload another file to replace the current one." : undefined}
+          />
+        </label>
+        <label className="field fieldFull">
+          <span className="fieldLabel">Conduct Certificate (Optional)</span>
+          <input
+            className="input"
+            type="file"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              void onUploadDocument(file, "conduct");
+              e.currentTarget.value = "";
+            }}
+            disabled={uploadingDocType === "conduct" || saving || documentsLoading}
+          />
+          <UploadedDocumentCard
+            title="Conduct Certificate (Optional)"
+            url={conductCertificateUrl}
+            fallbackText="No file uploaded."
+            hint={conductCertificateUrl ? "Upload another file to replace the current one." : undefined}
+          />
+        </label>
         <label className="field">
           <span className="fieldLabel">Marital Status</span>
           <select
@@ -864,6 +1129,44 @@ function AddressSection({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!editing) {
+    if (!items || items.length === 0) return <EmptyState label="No addresses added yet." />;
+
+    return (
+      <div className="recordList">
+        {items.map((a, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          const addressLine1 = String(a.address_line1 ?? a.addressLine1 ?? "");
+          const addressLine2 = String(a.address_line2 ?? a.addressLine2 ?? "");
+          const city = String(a.city ?? "");
+          const state = String(a.state ?? "");
+          const country = String(a.country ?? "");
+          const postal = String(a.postal_code ?? a.postalCode ?? "");
+          const isPrimary = Boolean(a.is_primary ?? a.isPrimary);
+
+          return (
+            <div key={String(a.id ?? idx)} className={`dashCard ${toneClass}`}>
+              <div className="editForm" style={{ marginTop: 0 }}>
+                <div className="editGrid">
+                  <EditField label="Address Line 1" value={addressLine1} onChange={() => {}} disabled />
+                  <EditField label="Address Line 2" value={addressLine2} onChange={() => {}} disabled />
+                  <EditField label="City" value={city} onChange={() => {}} disabled />
+                  <EditField label="State/Region" value={state} onChange={() => {}} disabled />
+                  <EditField label="Country" value={country} onChange={() => {}} disabled />
+                  <EditField label="Postal Code" value={postal} onChange={() => {}} disabled />
+                  <label className="field fieldCheckbox fieldCheckboxIcon">
+                    <input type="checkbox" checked={isPrimary} disabled />
+                    <span className="fieldLabel">Primary address</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -1090,6 +1393,7 @@ function EducationSection({
     endDate: "",
     isCurrent: false,
     grade: "",
+    certificateUrl: "",
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
@@ -1097,6 +1401,7 @@ function EducationSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [qualificationOpen, setQualificationOpen] = useState(false);
   const [studyOpen, setStudyOpen] = useState(false);
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
 
   const qualificationSuggestions = useMemo(() => {
     const q = form.qualification.trim().toLowerCase();
@@ -1123,7 +1428,34 @@ function EducationSection({
       endDate: (item.end_date as string)?.split("T")[0] ?? "",
       isCurrent: (item.is_current as boolean) ?? false,
       grade: (item.grade as string) ?? "",
+      certificateUrl: (item.certificate_url as string) ?? "",
     });
+  }
+
+  async function onUploadQualificationEvidence(file: File | null) {
+    if (!file) return;
+    try {
+      setUploadingCertificate(true);
+      setError(null);
+      const uploaded = await uploadJobSeekerDocument(
+        token,
+        file,
+        "qualification_evidence",
+        "Qualification evidence",
+      );
+      const uploadedUrl = String(uploaded.url ?? "").trim();
+      setForm((prev) => ({ ...prev, certificateUrl: uploadedUrl }));
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.certificateUrl;
+        return next;
+      });
+      setSuccess("Qualification evidence uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingCertificate(false);
+    }
   }
 
   async function onSave() {
@@ -1134,6 +1466,7 @@ function EducationSection({
     if (!form.startDate) errs.startDate = "Start date is required";
     if (!form.isCurrent && !form.endDate) errs.endDate = "End date is required";
     if (!form.grade.trim()) errs.grade = "Grade is required";
+    if (!form.certificateUrl.trim()) errs.certificateUrl = "Qualification evidence is required";
 
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -1141,7 +1474,10 @@ function EducationSection({
     setSaving(true);
     setError(null);
     try {
-      await saveEducation(token, form, editId ?? undefined);
+      await saveEducation(token, {
+        ...form,
+        certificateUrl: form.certificateUrl,
+      }, editId ?? undefined);
       setSuccess(editId ? "Education updated" : "Education added");
       setForm(empty);
       setEditId(null);
@@ -1165,6 +1501,53 @@ function EducationSection({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!editing) {
+    if (!items || items.length === 0) return <EmptyState label="No education records added yet." />;
+
+    return (
+      <div className="recordList">
+        {items.map((e, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          const institution = String(e.institution_name ?? "");
+          const qualification = String(e.qualification ?? "");
+          const fieldOfStudy = String(e.field_of_study ?? "");
+          const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
+          const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
+          const isCurrent = Boolean(e.is_current);
+          const grade = String(e.grade ?? "");
+          const certificateUrl = String(e.certificate_url ?? "").trim();
+
+          return (
+            <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
+              <div className="editForm" style={{ marginTop: 0 }}>
+                <div className="editGrid">
+                  <EditField label="Institution" value={institution} onChange={() => {}} disabled />
+                  <EditField label="Qualification" value={qualification} onChange={() => {}} disabled />
+                  <EditField label="Field of Study" value={fieldOfStudy} onChange={() => {}} disabled />
+                  <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
+                  <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
+                  <EditField label="Grade" value={grade} onChange={() => {}} disabled />
+                  <label className="field fieldFull">
+                    <span className="fieldLabel">Qualification Evidence</span>
+                    <UploadedDocumentCard
+                      title="Qualification Evidence"
+                      url={certificateUrl}
+                      fallbackText="No file uploaded yet."
+                    />
+                  </label>
+                  <label className="field fieldCheckbox fieldCheckboxIcon">
+                    <input type="checkbox" checked={isCurrent} disabled />
+                    <span className="fieldLabel">Currently studying here</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -1339,6 +1722,28 @@ function EducationSection({
               <input type="checkbox" checked={form.isCurrent} onChange={(e) => setForm({ ...form, isCurrent: e.target.checked })} />
               <span className="fieldLabel">Currently studying here</span>
             </label>
+            <label className="field fieldFull">
+              <span className="fieldLabel">Qualification Evidence</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onUploadQualificationEvidence(file);
+                  e.currentTarget.value = "";
+                }}
+                disabled={saving || uploadingCertificate}
+                required={!form.certificateUrl.trim()}
+              />
+              <UploadedDocumentCard
+                title="Qualification Evidence"
+                url={form.certificateUrl}
+                fallbackText="No file uploaded yet."
+                hint={form.certificateUrl ? "Upload another file to replace the current one." : undefined}
+              />
+              {fieldErrors.certificateUrl && <span className="fieldError">{fieldErrors.certificateUrl}</span>}
+            </label>
           </div>
           <div className="stepperActions">
             {editId && (
@@ -1382,6 +1787,47 @@ function ExperienceSection({
   const [editId, setEditId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvLoading, setCvLoading] = useState(false);
+  const [primaryResume, setPrimaryResume] = useState<{ id: string; file_name?: string; download_url?: string; file_path?: string } | null>(null);
+
+  const hasCv = Boolean(primaryResume?.id);
+
+  const loadResumes = useCallback(async () => {
+    try {
+      setCvLoading(true);
+      const result = await listJobSeekerResumes(token);
+      setPrimaryResume(result.primary_resume ?? null);
+    } catch {
+      setPrimaryResume(null);
+    } finally {
+      setCvLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadResumes();
+  }, [loadResumes]);
+
+  async function onUploadCv(file: File | null) {
+    if (!file) return;
+    try {
+      setCvUploading(true);
+      setError(null);
+      await uploadJobSeekerResume(token, file, true);
+      await loadResumes();
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.cv;
+        return next;
+      });
+      setSuccess("CV uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to upload CV");
+    } finally {
+      setCvUploading(false);
+    }
+  }
 
   function startEdit(item: Record<string, unknown>) {
     setEditId(item.id as string);
@@ -1399,6 +1845,7 @@ function ExperienceSection({
 
   async function onSave() {
     const errs: Record<string, string> = {};
+    if (!hasCv) errs.cv = "CV is required";
     if (!form.companyName.trim()) errs.companyName = "Company name is required";
     if (!form.jobTitle.trim()) errs.jobTitle = "Job title is required";
     if (!form.employmentType.trim()) errs.employmentType = "Employment type is required";
@@ -1435,6 +1882,81 @@ function ExperienceSection({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!editing) {
+    if (!items || items.length === 0) {
+      return (
+        <div className="recordList">
+          <div className="dashCard jobCardToneA">
+            <div className="editForm" style={{ marginTop: 0 }}>
+              <div className="editGrid">
+                <label className="field fieldFull">
+                  <span className="fieldLabel">CV</span>
+                  <UploadedDocumentCard
+                    title="CV"
+                    url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
+                    fallbackText="No CV uploaded yet."
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+          <EmptyState label="No experience records added yet." />
+        </div>
+      );
+    }
+
+    return (
+      <div className="recordList">
+        <div className="dashCard jobCardToneA">
+          <div className="editForm" style={{ marginTop: 0 }}>
+            <div className="editGrid">
+              <label className="field fieldFull">
+                <span className="fieldLabel">CV</span>
+                <UploadedDocumentCard
+                  title="CV"
+                  url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
+                  fallbackText="No CV uploaded yet."
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+        {items.map((e, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          const companyName = String(e.company_name ?? "");
+          const jobTitle = String(e.job_title ?? "");
+          const employmentType = String(e.employment_type ?? "");
+          const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
+          const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
+          const isCurrent = Boolean(e.is_current);
+          const responsibilities = String(e.responsibilities ?? "");
+
+          return (
+            <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
+              <div className="editForm" style={{ marginTop: 0 }}>
+                <div className="editGrid">
+                  <EditField label="Company Name" value={companyName} onChange={() => {}} disabled />
+                  <EditField label="Job Title" value={jobTitle} onChange={() => {}} disabled />
+                  <EditField label="Employment Type" value={employmentType} onChange={() => {}} disabled />
+                  <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
+                  <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
+                  <label className="field fieldCheckbox fieldCheckboxIcon">
+                    <input type="checkbox" checked={isCurrent} disabled />
+                    <span className="fieldLabel">Currently working here</span>
+                  </label>
+                  <label className="field fieldFull">
+                    <span className="fieldLabel">Responsibilities</span>
+                    <textarea className="input textarea" value={responsibilities} readOnly disabled rows={3} />
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -1481,6 +2003,30 @@ function ExperienceSection({
       {editing && (
         <div className="editForm">
           <h4 className="editFormTitle">{editId ? "Edit Experience" : "Add Experience"}</h4>
+          <div className="editGrid" style={{ marginBottom: 10 }}>
+            <label className="field fieldFull">
+              <span className="fieldLabel">CV</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onUploadCv(file);
+                  e.currentTarget.value = "";
+                }}
+                disabled={saving || cvUploading || cvLoading}
+                required={!hasCv}
+              />
+              <UploadedDocumentCard
+                title="CV"
+                url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
+                fallbackText="Upload your CV. It is mandatory."
+                hint={hasCv ? "Upload another file to replace the current one." : undefined}
+              />
+              {fieldErrors.cv && <span className="fieldError">{fieldErrors.cv}</span>}
+            </label>
+          </div>
           <div className="editGrid">
             <EditField
               label="Company Name"
@@ -1585,7 +2131,6 @@ function ExperienceSection({
           </div>
         </div>
       )}
-      {!editing && items.length === 0 && <EmptyState label="No experience records added yet." />}
     </>
   );
 }
@@ -1665,6 +2210,37 @@ function ReferencesSection({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!editing) {
+    if (!items || items.length === 0) return <EmptyState label="No references added yet." />;
+
+    return (
+      <div className="recordList">
+        {items.map((r, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          const fullName = String(r.full_name ?? "");
+          const relationship = String(r.relationship ?? "");
+          const company = String(r.company ?? "");
+          const email = String(r.email ?? "");
+          const phone = String(r.phone ?? "");
+
+          return (
+            <div key={String(r.id ?? idx)} className={`dashCard ${toneClass}`}>
+              <div className="editForm" style={{ marginTop: 0 }}>
+                <div className="editGrid">
+                  <EditField label="Full Name" value={fullName} onChange={() => {}} disabled />
+                  <EditField label="Relationship" value={relationship} onChange={() => {}} disabled />
+                  <EditField label="Company" value={company} onChange={() => {}} disabled />
+                  <EditField label="Email" value={email} onChange={() => {}} disabled />
+                  <EditField label="Phone" value={phone} onChange={() => {}} disabled />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (
@@ -1758,7 +2334,6 @@ function ReferencesSection({
           </div>
         </div>
       )}
-      {!editing && items.length === 0 && <EmptyState label="No references added yet." />}
     </>
   );
 }
@@ -1837,13 +2412,36 @@ function ProfessionalSummarySection({
 
   if (!editing) {
     return (
-      <div className="profileReadGrid">
-        <ReadField label="Field of Expertise" value={d.field_of_expertise ?? d.fieldOfExpertise} />
-        <ReadField label="Qualification Level" value={d.qualification_level ?? d.qualificationLevel} />
-        <ReadField label="Years of Experience" value={d.years_experience ?? d.yearsExperience} />
-        <div className="readFieldFull">
-          <span className="readLabel">Professional Summary</span>
-          <span className="readValue">{(d.professional_summary as string) || (d.professionalSummary as string) || "—"}</span>
+      <div className="editForm" style={{ marginTop: 0 }}>
+        <div className="editGrid">
+          <EditField
+            label="Field of Expertise"
+            value={String(d.field_of_expertise ?? d.fieldOfExpertise ?? "")}
+            onChange={() => {}}
+            disabled
+          />
+          <EditField
+            label="Qualification Level"
+            value={String(d.qualification_level ?? d.qualificationLevel ?? "")}
+            onChange={() => {}}
+            disabled
+          />
+          <EditField
+            label="Years of Experience"
+            value={String(d.years_experience ?? d.yearsExperience ?? "")}
+            onChange={() => {}}
+            disabled
+          />
+          <label className="field fieldFull">
+            <span className="fieldLabel">Professional Summary</span>
+            <textarea
+              className="input textarea"
+              value={String((d.professional_summary as string) ?? (d.professionalSummary as string) ?? "")}
+              readOnly
+              disabled
+              rows={5}
+            />
+          </label>
         </div>
       </div>
     );
@@ -1982,6 +2580,7 @@ function EditField({
   type = "text",
   required,
   error,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -1989,6 +2588,7 @@ function EditField({
   type?: string;
   required?: boolean;
   error?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="field">
@@ -1999,6 +2599,8 @@ function EditField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
+        disabled={disabled}
+        readOnly={disabled}
       />
       {error && <span className="fieldError">{error}</span>}
     </label>
