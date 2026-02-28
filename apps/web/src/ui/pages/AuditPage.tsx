@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { type AuditLog, listAuditLogs } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
@@ -6,6 +7,7 @@ import { usePermissions } from "../auth/usePermissions";
 export function AuditPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
+  const [searchParams] = useSearchParams();
   const canViewAudit = hasPermission("VIEW_AUDIT_LOGS", "MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
@@ -14,7 +16,8 @@ export function AuditPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
   const [actionFilter, setActionFilter] = useState("");
-  const [targetFilter, setTargetFilter] = useState("");
+  const [targetFilter, setTargetFilter] = useState(searchParams.get("target_type") ?? "");
+  const [targetIdFilter, setTargetIdFilter] = useState(searchParams.get("target_id") ?? "");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -27,12 +30,13 @@ export function AuditPage() {
         limit: pagination.limit,
         action: actionFilter || undefined,
         target_type: targetFilter || undefined,
+        target_id: targetIdFilter || undefined,
       });
       setLogs(data.logs);
       setPagination(data.pagination);
     } catch (e) { setError((e as any)?.message ?? "Failed to load audit logs"); }
     finally { setLoading(false); }
-  }, [accessToken, pagination.limit, actionFilter, targetFilter]);
+  }, [accessToken, pagination.limit, actionFilter, targetFilter, targetIdFilter]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -88,13 +92,19 @@ export function AuditPage() {
           <label className="fieldLabel">Target Type</label>
           <select className="input" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
             <option value="">All</option>
+            <option value="auth">Auth</option>
             <option value="user">User</option>
+            <option value="applicant">Applicant</option>
             <option value="job">Job</option>
             <option value="application">Application</option>
             <option value="company">Company</option>
             <option value="role">Role</option>
             <option value="permission">Permission</option>
           </select>
+        </div>
+        <div style={{ minWidth: 260 }}>
+          <label className="fieldLabel">Target ID</label>
+          <input className="input" placeholder="Filter by target id…" value={targetIdFilter} onChange={(e) => setTargetIdFilter(e.target.value)} />
         </div>
       </div>
 

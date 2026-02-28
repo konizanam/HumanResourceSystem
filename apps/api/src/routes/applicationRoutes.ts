@@ -215,6 +215,13 @@ router.post('/',
           targetId: application.id,
           details: { job_id, applicant_id },
         });
+        await logAudit({
+          userId: applicant_id,
+          action: 'APPLICANT_APPLIED',
+          targetType: 'applicant',
+          targetId: applicant_id,
+          details: { job_id, application_id: application.id },
+        });
 
         // Notify the employer that a new application was submitted.
         if (jobPosterId) {
@@ -485,7 +492,7 @@ router.get('/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const applicationId = req.params.id;
+      const applicationId = String(req.params.id);
       const userId = req.user!.userId;
       const userRoles = req.user!.roles;
 
@@ -613,7 +620,7 @@ router.put('/:id/status',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const applicationId = req.params.id;
+      const applicationId = String(req.params.id);
       const { status, notes } = req.body;
       const userId = req.user!.userId;
 
@@ -724,7 +731,7 @@ router.delete('/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const applicationId = req.params.id;
+      const applicationId = String(req.params.id);
       const userId = req.user!.userId;
 
       // Check if application exists and belongs to user
@@ -789,6 +796,21 @@ router.delete('/:id',
         );
 
         await dbQuery('COMMIT');
+
+        await logAudit({
+          userId,
+          action: 'APPLICATION_WITHDRAWN',
+          targetType: 'application',
+          targetId: applicationId,
+          details: { job_id: application.job_id, applicant_id: application.user_id },
+        });
+        await logAudit({
+          userId,
+          action: 'APPLICANT_WITHDREW_APPLICATION',
+          targetType: 'applicant',
+          targetId: application.user_id,
+          details: { job_id: application.job_id, application_id: applicationId },
+        });
 
         res.json({
           message: 'Application withdrawn successfully',

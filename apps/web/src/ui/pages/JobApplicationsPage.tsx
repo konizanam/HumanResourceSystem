@@ -517,6 +517,20 @@ export function JobApplicationsPage() {
                   <button type="button" className="btn btnPrimary btnSm" onClick={() => onToggleProfile(app)}>
                     {openProfileId === app.id ? "Hide Profile" : "View Profile"}
                   </button>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    onClick={() => navigate(`/app/audit?target_type=application&target_id=${encodeURIComponent(app.id)}`)}
+                  >
+                    Application Audit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    onClick={() => navigate(`/app/audit?target_type=applicant&target_id=${encodeURIComponent(app.applicant_id)}`)}
+                  >
+                    Applicant Audit
+                  </button>
                 </div>
 
                 {openProfileId === app.id ? <div style={{ marginTop: 12 }}>{renderProfilePanel(app)}</div> : null}
@@ -600,6 +614,20 @@ export function JobApplicationsPage() {
                           ))}
                         <button type="button" className="btn btnPrimary btnSm" onClick={() => onToggleProfile(app)}>
                           {openProfileId === app.id ? "Hide Profile" : "View Profile"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => navigate(`/app/audit?target_type=application&target_id=${encodeURIComponent(app.id)}`)}
+                        >
+                          Application Audit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => navigate(`/app/audit?target_type=applicant&target_id=${encodeURIComponent(app.applicant_id)}`)}
+                        >
+                          Applicant Audit
                         </button>
                       </div>
 

@@ -1231,7 +1231,8 @@ router.get('/audit-logs',
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('admin_id').optional().isUUID(),
     query('action').optional().isString(),
-    query('target_type').optional().isIn(['user', 'job', 'application', 'company', 'role', 'permission'])
+    query('target_id').optional().isString(),
+    query('target_type').optional().isIn(['user', 'job', 'application', 'company', 'role', 'permission', 'applicant', 'auth'])
   ],
   async (req: Request, res: Response) => {
     try {
@@ -1243,7 +1244,7 @@ router.get('/audit-logs',
       const page = req.query.page ? parseInt(req.query.page as string) : 1;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
       const offset = (page - 1) * limit;
-      const { admin_id, action, target_type } = req.query;
+      const { admin_id, action, target_type, target_id } = req.query;
 
       // Build WHERE clause
       let whereConditions: string[] = [];
@@ -1263,6 +1264,11 @@ router.get('/audit-logs',
       if (target_type) {
         whereConditions.push(`al.module_name = $${paramIndex++}`);
         queryParams.push(target_type);
+      }
+
+      if (target_id) {
+        whereConditions.push(`al.record_id = $${paramIndex++}`);
+        queryParams.push(target_id);
       }
 
       const whereClause = whereConditions.length > 0 

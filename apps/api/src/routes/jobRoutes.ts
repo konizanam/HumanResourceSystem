@@ -946,7 +946,35 @@ router.patch('/:id/applications/:applicationId/status',
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      res.json(result.rows[0]);
+      const updatedApplication = result.rows[0] as { id: string; user_id?: string; status?: string; job_id?: string };
+
+      await logAudit({
+        userId: req.user!.userId,
+        action: 'APPLICATION_STATUS_UPDATED',
+        targetType: 'application',
+        targetId: updatedApplication.id,
+        details: {
+          application_id: updatedApplication.id,
+          job_id: req.params.id,
+          status: updatedApplication.status,
+        },
+      });
+
+      if (updatedApplication.user_id) {
+        await logAudit({
+          userId: req.user!.userId,
+          action: 'APPLICANT_STATUS_UPDATED',
+          targetType: 'applicant',
+          targetId: updatedApplication.user_id,
+          details: {
+            application_id: updatedApplication.id,
+            job_id: req.params.id,
+            status: updatedApplication.status,
+          },
+        });
+      }
+
+      res.json(updatedApplication);
     } catch (error) {
       console.error('Error updating application status:', error);
       res.status(500).json({ error: 'Server error' });

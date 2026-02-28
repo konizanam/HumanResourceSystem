@@ -1969,6 +1969,7 @@ export async function listAuditLogs(
     limit?: number;
     action?: string;
     target_type?: string;
+    target_id?: string;
   },
 ): Promise<{ logs: AuditLog[]; pagination: Pagination }> {
   const url = new URL(`${API_BASE}/admin/audit-logs`);
@@ -1976,6 +1977,7 @@ export async function listAuditLogs(
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.action) url.searchParams.set("action", params.action);
   if (params?.target_type) url.searchParams.set("target_type", params.target_type);
+  if (params?.target_id) url.searchParams.set("target_id", params.target_id);
 
   const res = await fetch(url, { headers: authHeaders(token) });
   const body = await safeJson(res);

@@ -1140,6 +1140,14 @@ export function CompaniesPage() {
                       View Jobs
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    disabled={saving}
+                    onClick={() => navigate(`/app/audit?target_type=company&target_id=${encodeURIComponent(c.id)}`)}
+                  >
+                    Audit
+                  </button>
                 </div>
 
                 {isOpen ? (

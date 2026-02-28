@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import { createOpenApiSpec } from './swagger';
+import { crudAuditMiddleware } from './middleware/crudAudit';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -47,6 +48,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`[${timestamp}] ${req.method} ${req.path}`);
   next();
 });
+
+// Centralized audit logging for successful CRUD operations
+app.use(crudAuditMiddleware);
 
 // =====================
 // Health Check Endpoints
