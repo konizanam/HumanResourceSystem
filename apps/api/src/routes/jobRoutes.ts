@@ -58,6 +58,74 @@ const mapStatusFilter = (status: string) => {
   return [status];
 };
 
+async function resolveCompanyId(input: { company_id?: string; company?: string }): Promise<string | null> {
+  if (input.company_id) return String(input.company_id);
+  const companyName = String(input.company ?? '').trim();
+  if (!companyName) return null;
+
+  const byName = await dbQuery(
+    `SELECT id FROM companies WHERE LOWER(name) = LOWER($1) ORDER BY created_at DESC LIMIT 1`,
+    [companyName]
+  );
+  return byName.rows[0]?.id ? String(byName.rows[0].id) : null;
+}
+
+async function resolveCategoryId(input: { category_id?: string; category?: string }): Promise<string | null> {
+  if (input.category_id) return String(input.category_id);
+  const categoryName = String(input.category ?? '').trim();
+  if (!categoryName) return null;
+
+  const byName = await dbQuery(
+    `SELECT id FROM job_categories WHERE LOWER(name) = LOWER($1) ORDER BY name ASC LIMIT 1`,
+    [categoryName]
+  );
+  return byName.rows[0]?.id ? String(byName.rows[0].id) : null;
+}
+
+async function resolveSubcategoryId(input: { subcategory?: string; categoryId?: string | null }): Promise<string | null> {
+  const subcategoryName = String(input.subcategory ?? '').trim();
+  if (!subcategoryName) return null;
+
+  if (input.categoryId) {
+    const byNameAndCategory = await dbQuery(
+      `SELECT id
+       FROM job_subcategories
+       WHERE category_id = $1 AND LOWER(name) = LOWER($2)
+       ORDER BY name ASC
+       LIMIT 1`,
+      [input.categoryId, subcategoryName]
+    );
+    if (byNameAndCategory.rows[0]?.id) return String(byNameAndCategory.rows[0].id);
+  }
+
+  const byName = await dbQuery(
+    `SELECT id FROM job_subcategories WHERE LOWER(name) = LOWER($1) ORDER BY name ASC LIMIT 1`,
+    [subcategoryName]
+  );
+  return byName.rows[0]?.id ? String(byName.rows[0].id) : null;
+}
+
+let cachedJobsColumns: Set<string> | null = null;
+
+async function getJobsColumns(): Promise<Set<string>> {
+  if (cachedJobsColumns) return cachedJobsColumns;
+  const result = await dbQuery(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'jobs'`
+  );
+  cachedJobsColumns = new Set(result.rows.map((row: any) => String(row.column_name)));
+  return cachedJobsColumns;
+}
+
+function normalizeJobStatus(statusRaw: unknown): string {
+  const normalized = String(statusRaw ?? 'draft').trim().toLowerCase();
+  if (normalized === 'active') return 'APPROVED';
+  if (normalized === 'closed') return 'CLOSED';
+  if (normalized === 'pending') return 'PENDING';
+  return 'DRAFT';
+}
+
 // GET /api/jobs - List all jobs (with employer access)
 router.get('/', authenticateOptional, [
   query('page').optional().isInt({ min: 1 }).toInt(),
@@ -533,33 +601,74 @@ router.post('/',
       const {
         title, description, company, location,
         salary_min, salary_max, salary_currency = 'USD',
-        category, category_id, company_id, experience_level, employment_type,
+        category, category_id, company_id, subcategory, experience_level, employment_type,
         remote = false, requirements = [], responsibilities = [],
         benefits = [], application_deadline, status = 'active'
       } = req.body;
 
+      const jobsColumns = await getJobsColumns();
+      const ownerColumn = jobsColumns.has('employer_id') ? 'employer_id' : jobsColumns.has('created_by') ? 'created_by' : null;
+      const statusValue = normalizeJobStatus(status);
+
+      const resolvedCompanyId = await resolveCompanyId({ company_id, company });
+      const resolvedCategoryId = await resolveCategoryId({ category_id, category });
+      const resolvedSubcategoryId = await resolveSubcategoryId({ subcategory, categoryId: resolvedCategoryId });
+
+      if (!resolvedCompanyId) {
+        return res.status(400).json({ error: 'Company is required and must exist' });
+      }
+      if (!resolvedCategoryId) {
+        return res.status(400).json({ error: 'Category is required and must exist' });
+      }
+
+      const insertColumns: string[] = [];
+      const insertValues: any[] = [];
+      const insertParams: string[] = [];
+      const pushParam = (column: string, value: any) => {
+        insertColumns.push(column);
+        insertValues.push(value);
+        insertParams.push(`$${insertValues.length}`);
+      };
+
+      pushParam('title', title);
+      if (jobsColumns.has('description')) pushParam('description', description);
+      if (jobsColumns.has('company_id')) pushParam('company_id', resolvedCompanyId);
+      if (jobsColumns.has('location')) pushParam('location', location);
+      if (jobsColumns.has('salary_min')) pushParam('salary_min', salary_min);
+      if (jobsColumns.has('salary_max')) pushParam('salary_max', salary_max);
+      if (jobsColumns.has('salary_currency')) pushParam('salary_currency', salary_currency);
+      if (jobsColumns.has('category_id')) pushParam('category_id', resolvedCategoryId);
+      if (jobsColumns.has('subcategory_id')) pushParam('subcategory_id', resolvedSubcategoryId);
+      if (jobsColumns.has('experience_level')) pushParam('experience_level', experience_level);
+      if (jobsColumns.has('employment_type')) pushParam('employment_type', employment_type);
+      if (jobsColumns.has('remote')) pushParam('remote', remote);
+      if (jobsColumns.has('requirements')) pushParam('requirements', JSON.stringify(requirements));
+      if (jobsColumns.has('responsibilities')) pushParam('responsibilities', JSON.stringify(responsibilities));
+      if (jobsColumns.has('benefits')) pushParam('benefits', JSON.stringify(benefits));
+      if (jobsColumns.has('application_deadline')) pushParam('application_deadline', application_deadline);
+      if (jobsColumns.has('status')) pushParam('status', statusValue);
+      if (ownerColumn) pushParam(ownerColumn, req.user!.userId);
+      if (jobsColumns.has('created_at')) {
+        insertColumns.push('created_at');
+        insertParams.push('NOW()');
+      }
+      if (jobsColumns.has('updated_at')) {
+        insertColumns.push('updated_at');
+        insertParams.push('NOW()');
+      }
+
       const result = await dbQuery(
         `INSERT INTO jobs (
-          title, description, company, location,
-          salary_min, salary_max, salary_currency,
-          category, experience_level, employment_type,
-          remote, requirements, responsibilities, benefits,
-          application_deadline, status, employer_id, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+          ${insertColumns.join(', ')}
+        ) VALUES (${insertParams.join(', ')})
         RETURNING *`,
-        [
-          title, description, company, location,
-          salary_min, salary_max, salary_currency,
-          category, experience_level, employment_type,
-          remote, JSON.stringify(requirements), JSON.stringify(responsibilities), JSON.stringify(benefits),
-          application_deadline, status, req.user!.userId
-        ]
+        insertValues
       );
 
       const createdJob = result.rows[0];
       try {
         // Notify only job seekers who explicitly selected this job's category or company.
-        if (category_id || company_id) {
+        if (resolvedCategoryId || resolvedCompanyId) {
           const seekers = await dbQuery(
             `SELECT DISTINCT jsp.user_id
                FROM job_seeker_profiles jsp
@@ -580,7 +689,7 @@ router.post('/',
                   ))
                 )
               LIMIT 300`,
-            [category_id ?? null, company_id ?? null]
+            [resolvedCategoryId ?? null, resolvedCompanyId ?? null]
           );
 
           await Promise.allSettled(
@@ -590,7 +699,7 @@ router.post('/',
                 'job_posted',
                 'New job posted in your selected preferences',
                 `A new "${title}" position was posted in ${category}.`,
-                { job_id: createdJob.id, category, category_id, company_id, title },
+                { job_id: createdJob.id, category, category_id: resolvedCategoryId, company_id: resolvedCompanyId, title },
                 '/app/jobs',
                 'normal'
               )
@@ -650,28 +759,63 @@ router.put('/:id',
       const {
         title, description, company, location,
         salary_min, salary_max, salary_currency,
-        category, experience_level, employment_type,
+        category, category_id, company_id, subcategory, experience_level, employment_type,
         remote, requirements, responsibilities, benefits,
         application_deadline, status
       } = req.body;
 
+      const jobsColumns = await getJobsColumns();
+      const statusValue = normalizeJobStatus(status);
+
+      const resolvedCompanyId = await resolveCompanyId({ company_id, company });
+      const resolvedCategoryId = await resolveCategoryId({ category_id, category });
+      const resolvedSubcategoryId = await resolveSubcategoryId({ subcategory, categoryId: resolvedCategoryId });
+
+      if (!resolvedCompanyId) {
+        return res.status(400).json({ error: 'Company is required and must exist' });
+      }
+      if (!resolvedCategoryId) {
+        return res.status(400).json({ error: 'Category is required and must exist' });
+      }
+
+      const updateValues: any[] = [];
+      const updateSets: string[] = [];
+      const pushSet = (column: string, value: any) => {
+        updateValues.push(value);
+        updateSets.push(`${column} = $${updateValues.length}`);
+      };
+
+      pushSet('title', title);
+      if (jobsColumns.has('description')) pushSet('description', description);
+      if (jobsColumns.has('company_id')) pushSet('company_id', resolvedCompanyId);
+      if (jobsColumns.has('location')) pushSet('location', location);
+      if (jobsColumns.has('salary_min')) pushSet('salary_min', salary_min);
+      if (jobsColumns.has('salary_max')) pushSet('salary_max', salary_max);
+      if (jobsColumns.has('salary_currency')) pushSet('salary_currency', salary_currency);
+      if (jobsColumns.has('category_id')) pushSet('category_id', resolvedCategoryId);
+      if (jobsColumns.has('subcategory_id')) {
+        updateValues.push(resolvedSubcategoryId);
+        updateSets.push(`subcategory_id = COALESCE($${updateValues.length}, subcategory_id)`);
+      }
+      if (jobsColumns.has('experience_level')) pushSet('experience_level', experience_level);
+      if (jobsColumns.has('employment_type')) pushSet('employment_type', employment_type);
+      if (jobsColumns.has('remote')) pushSet('remote', remote);
+      if (jobsColumns.has('requirements')) pushSet('requirements', JSON.stringify(requirements));
+      if (jobsColumns.has('responsibilities')) pushSet('responsibilities', JSON.stringify(responsibilities));
+      if (jobsColumns.has('benefits')) pushSet('benefits', JSON.stringify(benefits));
+      if (jobsColumns.has('application_deadline')) pushSet('application_deadline', application_deadline);
+      if (jobsColumns.has('status')) pushSet('status', statusValue);
+      if (jobsColumns.has('updated_at')) updateSets.push('updated_at = NOW()');
+
+      updateValues.push(req.params.id);
+      const jobIdPlaceholder = `$${updateValues.length}`;
+
       const result = await dbQuery(
         `UPDATE jobs SET
-          title = $1, description = $2, company = $3, location = $4,
-          salary_min = $5, salary_max = $6, salary_currency = $7,
-          category = $8, experience_level = $9, employment_type = $10,
-          remote = $11, requirements = $12, responsibilities = $13,
-          benefits = $14, application_deadline = $15, status = $16,
-          updated_at = NOW()
-        WHERE id = $17
+          ${updateSets.join(',\n          ')}
+        WHERE id = ${jobIdPlaceholder}
         RETURNING *`,
-        [
-          title, description, company, location,
-          salary_min, salary_max, salary_currency,
-          category, experience_level, employment_type,
-          remote, JSON.stringify(requirements), JSON.stringify(responsibilities),
-          JSON.stringify(benefits), application_deadline, status, req.params.id
-        ]
+        updateValues
       );
 
       await logAudit({

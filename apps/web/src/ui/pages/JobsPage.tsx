@@ -361,16 +361,18 @@ export function JobsPage() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (!accessToken || !addInlineOpen) return;
+    if (!accessToken || (!addInlineOpen && modalMode !== "edit")) return;
     let cancelled = false;
     const handle = window.setTimeout(async () => {
       try {
+        const q = companyQuery.trim().toLowerCase();
+        if (!q) {
+          setCompanyResults([]);
+          return;
+        }
         const allCompanies = await listCompanies(accessToken);
         if (cancelled) return;
-        const q = companyQuery.trim().toLowerCase();
-        const matches = q
-          ? allCompanies.filter((company) => String(company.name ?? "").toLowerCase().includes(q))
-          : allCompanies;
+        const matches = allCompanies.filter((company) => String(company.name ?? "").toLowerCase().includes(q));
         setCompanyResults(matches.slice(0, 10));
       } catch {
         if (!cancelled) setCompanyResults([]);
@@ -380,16 +382,18 @@ export function JobsPage() {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [accessToken, addInlineOpen, companyQuery]);
+  }, [accessToken, addInlineOpen, modalMode, companyQuery]);
 
   useEffect(() => {
-    if (!addInlineOpen) return;
+    if (!addInlineOpen && modalMode !== "edit") return;
     const q = categoryQuery.trim().toLowerCase();
-    const matches = q
-      ? jobCategories.filter((category) => String(category.name ?? "").toLowerCase().includes(q))
-      : jobCategories;
+    if (!q) {
+      setCategoryResults([]);
+      return;
+    }
+    const matches = jobCategories.filter((category) => String(category.name ?? "").toLowerCase().includes(q));
     setCategoryResults(matches.slice(0, 10));
-  }, [addInlineOpen, categoryQuery, jobCategories]);
+  }, [addInlineOpen, modalMode, categoryQuery, jobCategories]);
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -585,8 +589,9 @@ export function JobsPage() {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "Title is required";
     if (!form.description.trim()) next.description = "Description is required";
-    if (!form.company.trim()) next.company = "Company is required";
-    if (!form.category.trim()) next.category = "Category is required";
+    if (!selectedCompany?.id) next.company = "Company is required";
+    if (!selectedCategory?.id) next.category = "Category is required";
+    if (!selectedSubcategory.trim()) next.subcategory = "Subcategory is required";
     if (!form.location.trim()) next.location = "Location is required";
     if (!form.salary_min.trim()) next.salary_min = "Minimum salary is required";
     if (!form.salary_max.trim()) next.salary_max = "Maximum salary is required";
@@ -606,12 +611,26 @@ export function JobsPage() {
     setCompanyQuery("");
     setCategoryQuery("");
     setDescriptionHtml("");
+    setModalMode(null);
   }
 
   function openEditModal(job: JobListItem) {
+    const company = companies.find((item) => String(item.id ?? "") === String(job.company_id ?? ""))
+      ?? companies.find((item) => String(item.name ?? "").trim().toLowerCase() === String(job.company ?? "").trim().toLowerCase())
+      ?? null;
+    const category = jobCategories.find((item) => String(item.id ?? "") === String(job.category_id ?? ""))
+      ?? jobCategories.find((item) => String(item.name ?? "").trim().toLowerCase() === String(job.category ?? "").trim().toLowerCase())
+      ?? null;
+
     setEditJobId(job.id);
     setForm(mapJobToForm(job));
     setFormErrors({});
+    setAddInlineOpen(false);
+    setSelectedCompany(company);
+    setSelectedCategory(category);
+    setSelectedSubcategory(String(job.subcategory ?? "").trim());
+    setCompanyQuery(company?.name ?? String(job.company ?? ""));
+    setCategoryQuery(category?.name ?? String(job.category ?? ""));
     setModalMode("edit");
   }
 
@@ -622,13 +641,25 @@ export function JobsPage() {
     try {
       setSaving(true);
       setError(null);
-      const payload = mapFormToPayload(form);
+      const payload = {
+        ...mapFormToPayload(form),
+        company: selectedCompany?.name ?? form.company,
+        company_id: selectedCompany?.id,
+        category: selectedCategory?.name ?? form.category,
+        category_id: selectedCategory?.id,
+        subcategory: selectedSubcategory.trim(),
+      };
       if (editJobId) {
         await updateJob(accessToken, editJobId, payload);
         setSuccess("Job updated successfully");
       }
       setModalMode(null);
       setEditJobId(null);
+      setSelectedCompany(null);
+      setSelectedCategory(null);
+      setSelectedSubcategory("");
+      setCompanyQuery("");
+      setCategoryQuery("");
       await load(pagination.page);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to save job");
@@ -928,7 +959,7 @@ export function JobsPage() {
               <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
               <div className="field">
                 <label className="fieldLabel">Company</label>
-                <input className="input" value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Search company..." />
+                <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
                 {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
                 {companyResults.length > 0 && (
                   <div className="typeaheadList">
@@ -942,7 +973,7 @@ export function JobsPage() {
               </div>
               <div className="field">
                 <label className="fieldLabel">Category</label>
-                <input className="input" value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Search category..." />
+                <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." />
                 {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
                 {categoryResults.length > 0 && (
                   <div className="typeaheadList">
@@ -956,7 +987,7 @@ export function JobsPage() {
               </div>
               <div className="field">
                 <label className="fieldLabel">Subcategory</label>
-                <select className="input" value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
+                <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
                   <option value="">Select subcategory</option>
                   {(selectedCategory?.subcategories ?? []).map((sub) => (
                     <option key={sub.id} value={sub.name}>{sub.name}</option>
@@ -1414,13 +1445,49 @@ export function JobsPage() {
       </div>
 
       {modalMode === "edit" && (
-        <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setModalMode(null)}>
-          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
-            <div className="modalTitle">Edit Job</div>
+        <div className="dropPanel" style={{ marginTop: 12, marginBottom: 16 }}>
+          <div className="editForm">
+            <h2 className="editFormTitle">Edit Job</h2>
             <div className="editGrid">
               <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
-              <Field label="Company" value={form.company} onChange={(v) => setForm((p) => ({ ...p, company: v }))} error={formErrors.company} />
-              <Field label="Category" value={form.category} onChange={(v) => setForm((p) => ({ ...p, category: v }))} error={formErrors.category} />
+              <div className="field">
+                <label className="fieldLabel">Company</label>
+                <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
+                {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
+                {companyResults.length > 0 && (
+                  <div className="typeaheadList">
+                    {companyResults.map((company) => (
+                      <button key={company.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCompany(company); setCompanyQuery(company.name); setCompanyResults([]); }}>
+                        {company.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Category</label>
+                <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." />
+                {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
+                {categoryResults.length > 0 && (
+                  <div className="typeaheadList">
+                    {categoryResults.map((category) => (
+                      <button key={category.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCategory(category); setCategoryQuery(category.name); setCategoryResults([]); }}>
+                        {category.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Subcategory</label>
+                <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
+                  <option value="">Select subcategory</option>
+                  {(selectedCategory?.subcategories ?? []).map((sub) => (
+                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                  ))}
+                </select>
+                {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
+              </div>
               <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
               <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
               <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
@@ -1457,12 +1524,20 @@ export function JobsPage() {
               </label>
               <div className="field fieldFull">
                 <label className="fieldLabel">Description</label>
-                <textarea className="input textarea" rows={4} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+                <textarea className={`input textarea${formErrors.description ? " inputError" : ""}`} rows={4} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
                 {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
               </div>
             </div>
-            <div className="modalActions">
-              <button className="btn btnGhost" type="button" onClick={() => setModalMode(null)} disabled={saving}>Cancel</button>
+            <div className="stepperActions">
+              <button className="btn btnGhost" type="button" onClick={() => {
+                setModalMode(null);
+                setEditJobId(null);
+                setSelectedCompany(null);
+                setSelectedCategory(null);
+                setSelectedSubcategory("");
+                setCompanyQuery("");
+                setCategoryQuery("");
+              }} disabled={saving}>Cancel</button>
               <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onSaveModal} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
             </div>
           </div>
@@ -1631,7 +1706,7 @@ function Field({
   return (
     <div className="field">
       <label className="fieldLabel">{label}</label>
-      <input className="input" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input className={`input${error ? " inputError" : ""}`} type={type} value={value} onChange={(e) => onChange(e.target.value)} />
       {error && <span className="fieldError">{error}</span>}
     </div>
   );
