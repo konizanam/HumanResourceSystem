@@ -138,7 +138,9 @@ export function DashboardPage() {
   });
 
   const canViewAdminDashboard = hasPermission("MANAGE_USERS");
-  const canViewEmployerDashboard = hasPermission("CREATE_JOB") || hasPermission("VIEW_APPLICATIONS");
+  const canViewEmployerDashboard =
+    !canViewAdminDashboard &&
+    (hasPermission("CREATE_JOB") || hasPermission("VIEW_APPLICATIONS"));
   const isJobSeekerUser =
     !canViewAdminDashboard &&
     !hasPermission("CREATE_JOB") &&
@@ -212,7 +214,9 @@ export function DashboardPage() {
         try {
           await loadAdminDashboard();
         } catch (e) {
-          if (!isPermissionDeniedError(e)) throw e;
+          if (!isPermissionDeniedError(e)) {
+            setError("Some dashboard sections are temporarily unavailable.");
+          }
         }
       }
 
@@ -220,7 +224,9 @@ export function DashboardPage() {
         try {
           await loadEmployerDashboardData();
         } catch (e) {
-          if (!isPermissionDeniedError(e)) throw e;
+          if (!isPermissionDeniedError(e)) {
+            setError("Some dashboard sections are temporarily unavailable.");
+          }
         }
       }
 
@@ -228,7 +234,9 @@ export function DashboardPage() {
         try {
           await loadJobSeekerDashboard();
         } catch (e) {
-          if (!isPermissionDeniedError(e)) throw e;
+          if (!isPermissionDeniedError(e)) {
+            setError("Some dashboard sections are temporarily unavailable.");
+          }
         }
       }
     } catch (e) {

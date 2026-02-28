@@ -183,7 +183,15 @@ export function MyPermissionsPage() {
             <p className="pageText">No permissions assigned.</p>
           </div>
         ) : (
-          <div className="dashboardGrid" style={{ marginTop: 12 }}>
+          <div
+            className="dashboardGrid"
+            style={{
+              marginTop: 12,
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+            }}
+          >
             {permissionsByModule.map(([moduleName, modulePermissions]) => {
               const total = moduleTotals.get(moduleName) ?? modulePermissions.length;
               return (
