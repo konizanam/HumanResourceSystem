@@ -605,25 +605,29 @@ export function DashboardPage() {
 
   const adminApplicationsChart = useMemo(() => {
     if (!adminStats) return [];
+    const appStats = (adminStats as any).applications ?? (adminStats as any).application_stats ?? {};
     const data = {
-      applied: adminStats.applications.applied,
-      screening: adminStats.applications.screening,
-      shortlisted: adminStats.applications.shortlisted,
-      interview: adminStats.applications.interview,
-      hired: adminStats.applications.hired,
-      rejected: adminStats.applications.rejected,
-      withdrawn: adminStats.applications.withdrawn,
+      applied: Number(appStats.applied ?? appStats.pending ?? 0),
+      screening: Number(appStats.screening ?? appStats.reviewed ?? 0),
+      longlisted: Number(appStats.longlisted ?? appStats.long_listed ?? 0),
+      shortlisted: Number(appStats.shortlisted ?? appStats.short_listed ?? 0),
+      interview: Number(appStats.interview ?? 0),
+      assessment: Number(appStats.assessment ?? 0),
+      hired: Number(appStats.hired ?? appStats.accepted ?? 0),
+      rejected: Number(appStats.rejected ?? 0),
+      withdrawn: Number(appStats.withdrawn ?? 0),
     };
-    return toChartData(data, 6);
+    return toChartData(data, 9);
   }, [adminStats]);
 
   const adminUsersRoleChart = useMemo(() => {
     if (!adminStats) return [];
+    const userStats = (adminStats as any).users ?? (adminStats as any).user_stats ?? {};
     const data = {
-      job_seekers: adminStats.users.job_seekers,
-      employers: adminStats.users.employers,
-      admins: adminStats.users.admins,
-      hr: adminStats.users.hr,
+      job_seekers: Number(userStats.job_seekers ?? userStats.jobSeekers ?? 0),
+      employers: Number(userStats.employers ?? 0),
+      admins: Number(userStats.admins ?? 0),
+      hr: Number(userStats.hr ?? userStats.human_resources ?? 0),
     };
     return toChartData(data, 8);
   }, [adminStats]);
