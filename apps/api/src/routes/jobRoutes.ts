@@ -866,12 +866,54 @@ router.patch('/:id/applications/:applicationId/status',
   authorize('EMPLOYER', 'ADMIN'),
   param('id').isUUID().withMessage('Invalid job ID'),
   param('applicationId').isUUID().withMessage('Invalid application ID'),
-  body('status').isIn(['pending', 'reviewed', 'accepted', 'rejected']).withMessage('Invalid status'),
+  body('status').isString().withMessage('Invalid status'),
   async (req: Request, res: Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
+      }
+
+      const statusMap: Record<string, string> = {
+        applied: 'APPLIED',
+        pending: 'APPLIED',
+        screening: 'SCREENING',
+        reviewed: 'SCREENING',
+        longlisted: 'LONG_LISTED',
+        long_listed: 'LONG_LISTED',
+        shortlist: 'SHORTLISTED',
+        shortlisted: 'SHORTLISTED',
+        interview: 'ORAL_INTERVIEW',
+        oral_interview: 'ORAL_INTERVIEW',
+        practical_interview: 'PRACTICAL_INTERVIEW',
+        final_interview: 'FINAL_INTERVIEW',
+        assessment: 'PRACTICAL_INTERVIEW',
+        offer_made: 'OFFER_MADE',
+        accepted: 'HIRED',
+        hired: 'HIRED',
+        rejected: 'REJECTED',
+        withdrawn: 'WITHDRAWN',
+      };
+
+      const rawStatus = String(req.body.status ?? '').trim();
+      const normalizedStatus = statusMap[rawStatus.toLowerCase()] ?? rawStatus.toUpperCase();
+
+      const allowedStatuses = new Set([
+        'APPLIED',
+        'SCREENING',
+        'LONG_LISTED',
+        'SHORTLISTED',
+        'ORAL_INTERVIEW',
+        'PRACTICAL_INTERVIEW',
+        'FINAL_INTERVIEW',
+        'OFFER_MADE',
+        'HIRED',
+        'REJECTED',
+        'WITHDRAWN',
+      ]);
+
+      if (!allowedStatuses.has(normalizedStatus)) {
+        return res.status(400).json({ error: 'Invalid status' });
       }
 
       // Check if job exists and user owns it
@@ -894,10 +936,10 @@ router.patch('/:id/applications/:applicationId/status',
       // Update application status
       const result = await dbQuery(
         `UPDATE applications 
-         SET status = $1, updated_at = NOW()
+         SET status = $1
          WHERE id = $2 AND job_id = $3
          RETURNING *`,
-        [req.body.status, req.params.applicationId, req.params.id]
+        [normalizedStatus, req.params.applicationId, req.params.id]
       );
 
       if (result.rows.length === 0) {

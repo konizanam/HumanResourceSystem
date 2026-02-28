@@ -41,15 +41,17 @@ function detectStage(app: JobApplication, overrides: Record<string, StageKey>): 
 
   const workflowStatus = String(app.workflow_status ?? "").toLowerCase();
   const status = String(app.status ?? "").toLowerCase();
-  const merged = `${workflowStatus} ${status}`;
+  const merged = `${workflowStatus} ${status}`.replace(/[_-]+/g, " ");
 
-  if (merged.includes("shortlist")) return "shortlisted";
+  if (merged.includes("shortlist") || merged.includes("short listed")) return "shortlisted";
   if (merged.includes("interview")) return "interview";
   if (merged.includes("assessment")) return "assessment";
+  if (merged.includes("screening")) return "longlisted";
+  if (merged.includes("offer made")) return "hired";
   if (merged.includes("hire") || merged.includes("accepted")) return "hired";
   if (merged.includes("reject")) return "rejected";
-  if (merged.includes("longlist")) return "longlisted";
-  if (merged.includes("reviewed")) return "shortlisted";
+  if (merged.includes("longlist") || merged.includes("long listed")) return "longlisted";
+  if (merged.includes("reviewed")) return "longlisted";
 
   return "longlisted";
 }
@@ -59,13 +61,17 @@ function isAssignedToStatus(app: JobApplication, overrides: Record<string, Stage
 
   const workflowStatus = String(app.workflow_status ?? "").toLowerCase();
   const status = String(app.status ?? "").toLowerCase();
-  const merged = `${workflowStatus} ${status}`;
+  const merged = `${workflowStatus} ${status}`.replace(/[_-]+/g, " ");
 
   return (
     merged.includes("longlist") ||
+    merged.includes("long listed") ||
     merged.includes("shortlist") ||
+    merged.includes("short listed") ||
     merged.includes("interview") ||
     merged.includes("assessment") ||
+    merged.includes("screening") ||
+    merged.includes("offer made") ||
     merged.includes("hire") ||
     merged.includes("accepted") ||
     merged.includes("reject") ||
@@ -138,7 +144,11 @@ export function JobApplicationsPage() {
           if (Array.isArray(chunk.applications)) allApps = allApps.concat(chunk.applications);
         }
       }
-      setApplications(allApps);
+      const uniqueById = new Map<string, JobApplication>();
+      for (const app of allApps) {
+        uniqueById.set(String(app.id), app);
+      }
+      setApplications(Array.from(uniqueById.values()));
       setJobTitle(String(first.job_title ?? ""));
       setPage(1);
     } catch (e) {
