@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { type AuditLog, listAuditLogs } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
@@ -7,8 +7,10 @@ import { usePermissions } from "../auth/usePermissions";
 export function AuditPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const canViewAudit = hasPermission("VIEW_AUDIT_LOGS", "MANAGE_USERS");
+  const isSpecificAuditView = Boolean(searchParams.get("target_type") && searchParams.get("target_id"));
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,18 @@ export function AuditPage() {
 
   return (
     <div className="page">
-      <div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div>
+      <div className="companiesHeader" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 className="pageTitle">Audit Logs</h1>
+        {isSpecificAuditView ? (
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            onClick={() => navigate(-1)}
+          >
+            ← Back
+          </button>
+        ) : null}
+      </div>
 
       {error && <div className="errorBox">{error}</div>}
 
@@ -88,24 +101,28 @@ export function AuditPage() {
           <label className="fieldLabel">Action</label>
           <input className="input" placeholder="Filter by action…" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} />
         </div>
-        <div style={{ minWidth: 160 }}>
-          <label className="fieldLabel">Target Type</label>
-          <select className="input" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
-            <option value="">All</option>
-            <option value="auth">Auth</option>
-            <option value="user">User</option>
-            <option value="applicant">Applicant</option>
-            <option value="job">Job</option>
-            <option value="application">Application</option>
-            <option value="company">Company</option>
-            <option value="role">Role</option>
-            <option value="permission">Permission</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 260 }}>
-          <label className="fieldLabel">Target ID</label>
-          <input className="input" placeholder="Filter by target id…" value={targetIdFilter} onChange={(e) => setTargetIdFilter(e.target.value)} />
-        </div>
+        {!isSpecificAuditView ? (
+          <div style={{ minWidth: 160 }}>
+            <label className="fieldLabel">Target Type</label>
+            <select className="input" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)}>
+              <option value="">All</option>
+              <option value="auth">Auth</option>
+              <option value="user">User</option>
+              <option value="applicant">Applicant</option>
+              <option value="job">Job</option>
+              <option value="application">Application</option>
+              <option value="company">Company</option>
+              <option value="role">Role</option>
+              <option value="permission">Permission</option>
+            </select>
+          </div>
+        ) : null}
+        {!isSpecificAuditView ? (
+          <div style={{ minWidth: 260 }}>
+            <label className="fieldLabel">Target ID</label>
+            <input className="input" placeholder="Filter by target id…" value={targetIdFilter} onChange={(e) => setTargetIdFilter(e.target.value)} />
+          </div>
+        ) : null}
       </div>
 
       {/* Table */}
@@ -116,21 +133,21 @@ export function AuditPage() {
               <th>Date</th>
               <th>Admin</th>
               <th>Action</th>
-              <th>Target Type</th>
-              <th>Target ID</th>
+              {!isSpecificAuditView ? <th>Target Type</th> : null}
+              {!isSpecificAuditView ? <th>Target ID</th> : null}
               <th>Details</th>
             </tr>
           </thead>
           <tbody>
             {filteredLogs.length === 0 ? (
-              <tr><td colSpan={6}><div className="emptyState">No audit logs found.</div></td></tr>
+              <tr><td colSpan={isSpecificAuditView ? 4 : 6}><div className="emptyState">No audit logs found.</div></td></tr>
             ) : filteredLogs.map((log) => (
               <tr key={log.id}>
                 <td>{log.created_at ? new Date(log.created_at).toLocaleString("en-GB") : "—"}</td>
                 <td>{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.user_email || (log.admin_name ?? log.admin_email ?? log.user_id ?? log.admin_id ?? "—")}</td>
                 <td><span className="chipBadge">{log.action}</span></td>
-                <td>{log.target_type ?? "—"}</td>
-                <td style={{ fontSize: "0.85em", fontFamily: "monospace" }}>{log.target_id ? log.target_id.substring(0, 8) + "…" : "—"}</td>
+                {!isSpecificAuditView ? <td>{log.target_type ?? "—"}</td> : null}
+                {!isSpecificAuditView ? <td style={{ fontSize: "0.85em", fontFamily: "monospace" }}>{log.target_id ? log.target_id.substring(0, 8) + "…" : "—"}</td> : null}
                 <td style={{ maxWidth: 360, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.8rem" }}>
                   {log.details ? JSON.stringify(log.details, null, 2) : "—"}
                 </td>
