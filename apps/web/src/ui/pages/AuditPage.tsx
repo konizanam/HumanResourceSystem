@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
 export function AuditPage() {
+  const DETAILS_PREVIEW_LIMIT = 180;
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export function AuditPage() {
   const [targetIdFilter, setTargetIdFilter] = useState(searchParams.get("target_id") ?? "");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -69,6 +71,10 @@ export function AuditPage() {
     }
     return true;
   });
+
+  function getDetailsText(log: AuditLog) {
+    return log.details ? JSON.stringify(log.details, null, 2) : "—";
+  }
 
   return (
     <div className="page">
@@ -142,7 +148,13 @@ export function AuditPage() {
           <tbody>
             {filteredLogs.length === 0 ? (
               <tr><td colSpan={isSpecificAuditView ? 4 : 6}><div className="emptyState">No audit logs found.</div></td></tr>
-            ) : filteredLogs.map((log) => (
+            ) : filteredLogs.map((log) => {
+              const detailsText = getDetailsText(log);
+              const isExpanded = Boolean(expandedDetails[log.id]);
+              const isLong = detailsText.length > DETAILS_PREVIEW_LIMIT;
+              const previewText = isLong ? `${detailsText.slice(0, DETAILS_PREVIEW_LIMIT)}…` : detailsText;
+
+              return (
               <tr key={log.id}>
                 <td>{log.created_at ? new Date(log.created_at).toLocaleString("en-GB") : "—"}</td>
                 <td>{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.user_email || (log.admin_name ?? log.admin_email ?? log.user_id ?? log.admin_id ?? "—")}</td>
@@ -150,10 +162,21 @@ export function AuditPage() {
                 {!isSpecificAuditView ? <td>{log.target_type ?? "—"}</td> : null}
                 {!isSpecificAuditView ? <td style={{ fontSize: "0.85em", fontFamily: "monospace" }}>{log.target_id ? log.target_id.substring(0, 8) + "…" : "—"}</td> : null}
                 <td style={{ maxWidth: 360, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.8rem" }}>
-                  {log.details ? JSON.stringify(log.details, null, 2) : "—"}
+                  {isExpanded ? detailsText : previewText}
+                  {isLong ? (
+                    <div style={{ marginTop: 6 }}>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm"
+                        onClick={() => setExpandedDetails((prev) => ({ ...prev, [log.id]: !prev[log.id] }))}
+                      >
+                        {isExpanded ? "View less" : "View more"}
+                      </button>
+                    </div>
+                  ) : null}
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
