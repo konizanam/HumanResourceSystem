@@ -634,11 +634,37 @@ export function JobsPage() {
 
   function openEditModal(job: JobListItem) {
     const company = companies.find((item) => String(item.id ?? "") === String(job.company_id ?? ""))
-      ?? companies.find((item) => String(item.name ?? "").trim().toLowerCase() === String(job.company ?? "").trim().toLowerCase())
+      ?? companies.find((item) => String(item.name ?? "").trim().toLowerCase() === String((job as any).company ?? (job as any).company_name ?? "").trim().toLowerCase())
       ?? null;
-    const category = jobCategories.find((item) => String(item.id ?? "") === String(job.category_id ?? ""))
-      ?? jobCategories.find((item) => String(item.name ?? "").trim().toLowerCase() === String(job.category ?? "").trim().toLowerCase())
+    const subcategoryId = String((job as any).subcategory_id ?? "").trim();
+
+    let category = jobCategories.find((item) => String(item.id ?? "") === String(job.category_id ?? ""))
+      ?? jobCategories.find((item) => String(item.name ?? "").trim().toLowerCase() === String((job as any).category ?? (job as any).category_name ?? "").trim().toLowerCase())
       ?? null;
+
+    if (!category && subcategoryId) {
+      category =
+        jobCategories.find((item) =>
+          (item.subcategories ?? []).some((sub) => String(sub.id ?? "") === subcategoryId),
+        ) ?? null;
+    }
+
+    const resolvedSubcategoryName = (() => {
+      const direct = String((job as any).subcategory ?? (job as any).subcategory_name ?? "").trim();
+      if (direct) return direct;
+
+      if (!subcategoryId) return "";
+
+      const fromCategory = (category?.subcategories ?? []).find(
+        (sub) => String(sub.id ?? "") === subcategoryId,
+      );
+      if (fromCategory?.name) return String(fromCategory.name);
+
+      const fromAll = jobCategories
+        .flatMap((item) => item.subcategories ?? [])
+        .find((sub) => String(sub.id ?? "") === subcategoryId);
+      return fromAll?.name ? String(fromAll.name) : "";
+    })();
 
     setEditJobId(job.id);
     setForm(mapJobToForm(job));
@@ -646,9 +672,9 @@ export function JobsPage() {
     setAddInlineOpen(false);
     setSelectedCompany(company);
     setSelectedCategory(category);
-    setSelectedSubcategory(String(job.subcategory ?? "").trim());
-    setCompanyQuery(company?.name ?? String(job.company ?? ""));
-    setCategoryQuery(category?.name ?? String(job.category ?? ""));
+    setSelectedSubcategory(resolvedSubcategoryName);
+    setCompanyQuery(company?.name ?? String((job as any).company ?? (job as any).company_name ?? ""));
+    setCategoryQuery(category?.name ?? String((job as any).category ?? (job as any).category_name ?? ""));
     setModalMode("edit");
   }
 

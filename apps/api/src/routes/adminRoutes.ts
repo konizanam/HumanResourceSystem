@@ -572,7 +572,7 @@ router.put('/users/:id/block',
 
       // Check if user exists
       const userCheck = await dbQuery(
-        'SELECT id, role FROM users WHERE id = $1',
+        'SELECT id, email, first_name, last_name, role, is_blocked, blocked_at, block_reason FROM users WHERE id = $1',
         [userId]
       );
 
@@ -616,6 +616,10 @@ router.put('/users/:id/block',
         action: block ? 'USER_BLOCKED' : 'USER_UNBLOCKED',
         targetType: 'user',
         targetId: userId,
+        details: {
+          before: userCheck.rows[0] ?? null,
+          after: result.rows[0] ?? null,
+        },
       });
 
       res.json({

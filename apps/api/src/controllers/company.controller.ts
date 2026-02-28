@@ -110,12 +110,17 @@ export class CompanyController {
         throw new ForbiddenError('You do not have permission to edit companies');
       }
 
+      const beforeCompany = await this.companyService.getCompanyById(id, userId);
       const company = await this.companyService.updateCompany(id, userId, req.body);
       await logAudit({
         userId,
         action: 'COMPANY_UPDATED',
         targetType: 'company',
         targetId: id,
+        details: {
+          before: beforeCompany,
+          after: company,
+        },
       });
       
       res.json({

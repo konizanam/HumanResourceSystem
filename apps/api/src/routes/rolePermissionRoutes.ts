@@ -475,7 +475,7 @@ router.put('/admin/roles/:id',
 
       // Check if role exists
       const checkResult = await dbQuery(
-        'SELECT id FROM roles WHERE id = $1',
+        'SELECT * FROM roles WHERE id = $1',
         [roleId]
       );
 
@@ -508,7 +508,10 @@ router.put('/admin/roles/:id',
         action: 'ROLE_UPDATED',
         targetType: 'role',
         targetId: roleId,
-        details: { name, description },
+        details: {
+          before: checkResult.rows[0] ?? null,
+          after: result.rows[0] ?? null,
+        },
       });
 
       res.json(result.rows[0]);
@@ -1112,8 +1115,14 @@ router.put('/admin/roles/:roleId/permissions',
           targetType: 'role',
           targetId: roleId,
           details: {
-            old_count: oldPermissions.rows.length,
-            new_count: permission_ids.length,
+            before: {
+              permission_ids: oldPermissions.rows.map((row: any) => String(row.permission_id)),
+              count: oldPermissions.rows.length,
+            },
+            after: {
+              permission_ids,
+              count: permission_ids.length,
+            },
           },
         });
 
@@ -1356,8 +1365,14 @@ router.put('/admin/users/:userId/roles',
           targetType: 'user',
           targetId: userId,
           details: {
-            old_count: oldRoles.rows.length,
-            new_count: role_ids.length,
+            before: {
+              role_ids: oldRoles.rows.map((row: any) => String(row.role_id)),
+              count: oldRoles.rows.length,
+            },
+            after: {
+              role_ids,
+              count: role_ids.length,
+            },
           },
         });
 

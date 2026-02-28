@@ -766,7 +766,7 @@ router.put('/:id',
 
       // Check if job exists and user owns it
       const jobCheck = await dbQuery(
-        'SELECT employer_id FROM jobs WHERE id = $1',
+        'SELECT * FROM jobs WHERE id = $1',
         [req.params.id]
       );
 
@@ -775,6 +775,7 @@ router.put('/:id',
       }
 
       const job = jobCheck.rows[0];
+      const beforeJobSnapshot = { ...job };
 
       // Check if user is the employer who created the job or an admin
       if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
@@ -848,6 +849,10 @@ router.put('/:id',
         action: 'JOB_UPDATED',
         targetType: 'job',
         targetId: String(req.params.id),
+        details: {
+          before: beforeJobSnapshot,
+          after: result.rows[0] ?? null,
+        },
       });
       res.json(result.rows[0]);
     } catch (error) {
@@ -1103,6 +1108,11 @@ router.patch('/:id/applications/:applicationId/status',
       }
 
       // Update application status
+      const beforeApplicationResult = await dbQuery(
+        `SELECT * FROM applications WHERE id = $1 AND job_id = $2 LIMIT 1`,
+        [req.params.applicationId, req.params.id]
+      );
+
       const result = await dbQuery(
         `UPDATE applications 
          SET status = $1
@@ -1123,6 +1133,8 @@ router.patch('/:id/applications/:applicationId/status',
         targetType: 'application',
         targetId: updatedApplication.id,
         details: {
+          before: beforeApplicationResult.rows[0] ?? null,
+          after: updatedApplication,
           application_id: updatedApplication.id,
           job_id: req.params.id,
           status: updatedApplication.status,
