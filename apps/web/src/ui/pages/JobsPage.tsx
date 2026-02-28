@@ -146,19 +146,37 @@ const EMPTY_FORM: JobFormState = {
 };
 
 function mapJobToForm(job: JobListItem): JobFormState {
+  const rawExperienceLevel = String(job.experience_level ?? "").trim().toLowerCase();
+  const normalizedExperienceLevel: JobUpsertPayload["experience_level"] =
+    rawExperienceLevel === "intermediate"
+      ? "Intermediate"
+      : rawExperienceLevel === "senior"
+        ? "Senior"
+        : rawExperienceLevel === "lead"
+          ? "Lead"
+          : "Entry";
+
+  const rawStatus = String(job.status ?? "").trim().toLowerCase();
+  const normalizedStatus: JobFormState["status"] =
+    rawStatus === "closed"
+      ? "closed"
+      : rawStatus === "draft" || rawStatus === "pending"
+        ? "draft"
+        : "active";
+
   return {
     title: String(job.title ?? ""),
     description: String(job.description ?? ""),
     company: String(job.company ?? ""),
     category: String(job.category ?? ""),
     employment_type: (job.employment_type as JobUpsertPayload["employment_type"]) || "Full-time",
-    experience_level: (job.experience_level as JobUpsertPayload["experience_level"]) || "Entry",
+    experience_level: normalizedExperienceLevel,
     location: String(job.location ?? ""),
     remote: Boolean(job.remote),
     salary_min: job.salary_min != null ? String(job.salary_min) : "",
     salary_max: job.salary_max != null ? String(job.salary_max) : "",
     application_deadline: job.application_deadline ? String(job.application_deadline).slice(0, 10) : "",
-    status: (job.status as "active" | "closed" | "draft") || "active",
+    status: normalizedStatus,
   };
 }
 
@@ -405,7 +423,7 @@ export function JobsPage() {
         page,
         limit: pagination.limit,
         status: effectiveStatus || undefined,
-        my_jobs: false,
+        my_jobs: !isJobSeekerView,
         company_id: companyIdFromUrl || undefined,
       });
       const fetched = Array.isArray(data.jobs) ? data.jobs : [];
@@ -750,6 +768,108 @@ export function JobsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function renderEditDropForm() {
+    return (
+      <div className="dropPanel" style={{ marginTop: 12, marginBottom: 4 }}>
+        <div className="editForm">
+          <h2 className="editFormTitle">Edit Job</h2>
+          <div className="editGrid">
+            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
+            <div className="field">
+              <label className="fieldLabel">Company</label>
+              <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
+              {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
+              {companyResults.length > 0 && (
+                <div className="typeaheadList">
+                  {companyResults.map((company) => (
+                    <button key={company.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCompany(company); setCompanyQuery(company.name); setCompanyResults([]); }}>
+                      {company.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <label className="fieldLabel">Category</label>
+              <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." />
+              {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
+              {categoryResults.length > 0 && (
+                <div className="typeaheadList">
+                  {categoryResults.map((category) => (
+                    <button key={category.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCategory(category); setCategoryQuery(category.name); setCategoryResults([]); }}>
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <label className="fieldLabel">Subcategory</label>
+              <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
+                <option value="">Select subcategory</option>
+                {(selectedCategory?.subcategories ?? []).map((sub) => (
+                  <option key={sub.id} value={sub.name}>{sub.name}</option>
+                ))}
+              </select>
+              {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
+            </div>
+            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
+            <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
+            <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
+            <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} />
+            <div className="field">
+              <label className="fieldLabel">Employment Type</label>
+              <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))}>
+                <option value="Full-time">Full-time</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Contract">Contract</option>
+                <option value="Internship">Internship</option>
+              </select>
+            </div>
+            <div className="field">
+              <label className="fieldLabel">Experience Level</label>
+              <select className="input" value={form.experience_level} onChange={(e) => setForm((p) => ({ ...p, experience_level: e.target.value as JobUpsertPayload["experience_level"] }))}>
+                <option value="Entry">Entry</option>
+                <option value="Intermediate">Intermediate</option>
+                <option value="Senior">Senior</option>
+                <option value="Lead">Lead</option>
+              </select>
+            </div>
+            <div className="field">
+              <label className="fieldLabel">Status</label>
+              <select className="input" value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as JobFormState["status"] }))}>
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            <label className="field fieldCheckbox">
+              <input type="checkbox" checked={form.remote} onChange={(e) => setForm((p) => ({ ...p, remote: e.target.checked }))} />
+              <span className="fieldLabel">Remote</span>
+            </label>
+            <div className="field fieldFull">
+              <label className="fieldLabel">Description</label>
+              <textarea className={`input textarea${formErrors.description ? " inputError" : ""}`} rows={4} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+              {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
+            </div>
+          </div>
+          <div className="stepperActions">
+            <button className="btn btnGhost" type="button" onClick={() => {
+              setModalMode(null);
+              setEditJobId(null);
+              setSelectedCompany(null);
+              setSelectedCategory(null);
+              setSelectedSubcategory("");
+              setCompanyQuery("");
+              setCategoryQuery("");
+            }} disabled={saving}>Cancel</button>
+            <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onSaveModal} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   function getApplyProfileCompleteness(
@@ -1433,6 +1553,7 @@ export function JobsPage() {
                         </div>
                       </div>
                     ) : null}
+                    {modalMode === "edit" && editJobId === job.id ? renderEditDropForm() : null}
                   </article>
                 );
               })
@@ -1443,106 +1564,6 @@ export function JobsPage() {
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
         {renderSeekerPager()}
       </div>
-
-      {modalMode === "edit" && (
-        <div className="dropPanel" style={{ marginTop: 12, marginBottom: 16 }}>
-          <div className="editForm">
-            <h2 className="editFormTitle">Edit Job</h2>
-            <div className="editGrid">
-              <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
-              <div className="field">
-                <label className="fieldLabel">Company</label>
-                <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
-                {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
-                {companyResults.length > 0 && (
-                  <div className="typeaheadList">
-                    {companyResults.map((company) => (
-                      <button key={company.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCompany(company); setCompanyQuery(company.name); setCompanyResults([]); }}>
-                        {company.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="field">
-                <label className="fieldLabel">Category</label>
-                <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." />
-                {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
-                {categoryResults.length > 0 && (
-                  <div className="typeaheadList">
-                    {categoryResults.map((category) => (
-                      <button key={category.id} type="button" className="actionMenuItem" onClick={() => { setSelectedCategory(category); setCategoryQuery(category.name); setCategoryResults([]); }}>
-                        {category.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="field">
-                <label className="fieldLabel">Subcategory</label>
-                <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
-                  <option value="">Select subcategory</option>
-                  {(selectedCategory?.subcategories ?? []).map((sub) => (
-                    <option key={sub.id} value={sub.name}>{sub.name}</option>
-                  ))}
-                </select>
-                {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
-              </div>
-              <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
-              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
-              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
-              <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} />
-              <div className="field">
-                <label className="fieldLabel">Employment Type</label>
-                <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))}>
-                  <option value="Full-time">Full-time</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Internship">Internship</option>
-                </select>
-              </div>
-              <div className="field">
-                <label className="fieldLabel">Experience Level</label>
-                <select className="input" value={form.experience_level} onChange={(e) => setForm((p) => ({ ...p, experience_level: e.target.value as JobUpsertPayload["experience_level"] }))}>
-                  <option value="Entry">Entry</option>
-                  <option value="Intermediate">Intermediate</option>
-                  <option value="Senior">Senior</option>
-                  <option value="Lead">Lead</option>
-                </select>
-              </div>
-              <div className="field">
-                <label className="fieldLabel">Status</label>
-                <select className="input" value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as JobFormState["status"] }))}>
-                  <option value="active">Active</option>
-                  <option value="closed">Closed</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </div>
-              <label className="field fieldCheckbox">
-                <input type="checkbox" checked={form.remote} onChange={(e) => setForm((p) => ({ ...p, remote: e.target.checked }))} />
-                <span className="fieldLabel">Remote</span>
-              </label>
-              <div className="field fieldFull">
-                <label className="fieldLabel">Description</label>
-                <textarea className={`input textarea${formErrors.description ? " inputError" : ""}`} rows={4} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
-                {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
-              </div>
-            </div>
-            <div className="stepperActions">
-              <button className="btn btnGhost" type="button" onClick={() => {
-                setModalMode(null);
-                setEditJobId(null);
-                setSelectedCompany(null);
-                setSelectedCategory(null);
-                setSelectedSubcategory("");
-                setCompanyQuery("");
-                setCategoryQuery("");
-              }} disabled={saving}>Cancel</button>
-              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onSaveModal} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <ConfirmModal
         open={Boolean(confirmDeleteId)}

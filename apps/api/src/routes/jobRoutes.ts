@@ -23,8 +23,28 @@ const validateJob = [
   body('salary_currency').optional().isString().withMessage('Currency must be a string'),
   body('category').notEmpty().withMessage('Category is required'),
   body('category_id').optional().isUUID().withMessage('Invalid category ID'),
-  body('experience_level').isIn(['Entry', 'Intermediate', 'Senior', 'Lead']).withMessage('Invalid experience level'),
-  body('employment_type').isIn(['Full-time', 'Part-time', 'Contract', 'Internship']).withMessage('Invalid employment type'),
+  body('experience_level')
+    .customSanitizer((value) => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      if (normalized === 'entry') return 'Entry';
+      if (normalized === 'intermediate') return 'Intermediate';
+      if (normalized === 'senior') return 'Senior';
+      if (normalized === 'lead') return 'Lead';
+      return value;
+    })
+    .isIn(['Entry', 'Intermediate', 'Senior', 'Lead'])
+    .withMessage('Invalid experience level'),
+  body('employment_type')
+    .customSanitizer((value) => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      if (normalized === 'full-time' || normalized === 'full time') return 'Full-time';
+      if (normalized === 'part-time' || normalized === 'part time') return 'Part-time';
+      if (normalized === 'contract') return 'Contract';
+      if (normalized === 'internship') return 'Internship';
+      return value;
+    })
+    .isIn(['Full-time', 'Part-time', 'Contract', 'Internship'])
+    .withMessage('Invalid employment type'),
   body('remote').optional().isBoolean().toBoolean(),
   body('requirements').optional().isArray(),
   body('responsibilities').optional().isArray(),
@@ -119,11 +139,16 @@ async function getJobsColumns(): Promise<Set<string>> {
 }
 
 function normalizeJobStatus(statusRaw: unknown): string {
-  const normalized = String(statusRaw ?? 'draft').trim().toLowerCase();
-  if (normalized === 'active') return 'APPROVED';
+  const raw = String(statusRaw ?? '').trim();
+  const normalized = raw.toLowerCase();
+
+  if (!normalized) return 'DRAFT';
+  if (normalized === 'active' || normalized === 'approved') return 'APPROVED';
   if (normalized === 'closed') return 'CLOSED';
   if (normalized === 'pending') return 'PENDING';
-  return 'DRAFT';
+  if (normalized === 'draft') return 'DRAFT';
+
+  return raw;
 }
 
 // GET /api/jobs - List all jobs (with employer access)

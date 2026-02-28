@@ -77,10 +77,11 @@ export function AuditPage() {
         {isSpecificAuditView ? (
           <button
             type="button"
-            className="btn btnGhost btnSm"
+            className="btn btnPrimary btnSm stepperSaveBtn"
             onClick={() => navigate(-1)}
+            aria-label="Go back to previous page"
           >
-            ← Back
+            ← Back to Previous Page
           </button>
         ) : null}
       </div>
