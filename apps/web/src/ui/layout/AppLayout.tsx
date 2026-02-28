@@ -428,9 +428,14 @@ export function AppLayout({
               >
                 <span className="navItemIcon" aria-hidden="true">
                   <Icon name={item.icon} />
+                  {collapsed && item.path === "messages" && unreadNotificationCount > 0 ? (
+                    <span className="navItemBadge" aria-label="Unread messages">
+                      {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="navItemLabel">{title}</span>
-                {item.path === "messages" && unreadNotificationCount > 0 ? (
+                {!collapsed && item.path === "messages" && unreadNotificationCount > 0 ? (
                   <span
                     className="chipBadge"
                     style={{ marginLeft: "auto", minWidth: 24, textAlign: "center" }}

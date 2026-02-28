@@ -303,7 +303,8 @@ a {
   padding: 10px;
   display: grid;
   gap: 4px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .navItem {
@@ -330,6 +331,25 @@ a {
 .navItemIcon {
   color: var(--menu-icon);
   flex: 0 0 auto;
+  position: relative;
+}
+
+.navItemBadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--card);
+  pointer-events: none;
 }
 
 .navItemIcon .icon {
