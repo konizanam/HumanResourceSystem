@@ -992,31 +992,29 @@ export function CompaniesPage() {
           />
         </div>
 
-        {companiesPagination.pages > 1 ? (
-          <div className="publicJobsPager" role="navigation" aria-label="Companies pagination top">
-            <button
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-              type="button"
-              onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
-              disabled={companiesPagination.page <= 1 || saving}
-            >
-              {"<-"} Previous
-            </button>
-            <span className="publicJobsPagerInfo">
-              Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
-            </span>
-            <button
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-              type="button"
-              onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
-              disabled={companiesPagination.page >= companiesPagination.pages || saving}
-            >
-              Next {"->"}
-            </button>
-          </div>
-        ) : null}
+        <div className="publicJobsPager" role="navigation" aria-label="Companies pagination top">
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+            type="button"
+            onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
+            disabled={companiesPagination.page <= 1 || saving}
+          >
+            {"<-"} Previous
+          </button>
+          <span className="publicJobsPagerInfo">
+            Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
+          </span>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            type="button"
+            onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
+            disabled={companiesPagination.page >= companiesPagination.pages || saving}
+          >
+            Next {"->"}
+          </button>
+        </div>
       </div>
 
       <div className="jobCardsGrid" role="region" aria-label="Companies cards">
@@ -1167,31 +1165,29 @@ export function CompaniesPage() {
         )}
       </div>
 
-      {companiesPagination.pages > 1 ? (
-        <div className="publicJobsPager" role="navigation" aria-label="Companies pagination" style={{ marginTop: 16 }}>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-            type="button"
-            onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
-            disabled={companiesPagination.page <= 1 || saving}
-          >
-            {"<-"} Previous
-          </button>
-          <span className="publicJobsPagerInfo">
-            Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
-          </span>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-            type="button"
-            onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
-            disabled={companiesPagination.page >= companiesPagination.pages || saving}
-          >
-            Next {"->"}
-          </button>
-        </div>
-      ) : null}
+      <div className="publicJobsPager" role="navigation" aria-label="Companies pagination" style={{ marginTop: 16 }}>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => setCompaniesPage((p) => Math.max(1, p - 1))}
+          disabled={companiesPagination.page <= 1 || saving}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">
+          Page {companiesPagination.page} of {companiesPagination.pages} ({companiesPagination.total} companies)
+        </span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() => setCompaniesPage((p) => Math.min(companiesPagination.pages, p + 1))}
+          disabled={companiesPagination.page >= companiesPagination.pages || saving}
+        >
+          Next {"->"}
+        </button>
+      </div>
 
       {postJobCompany && (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && closePostJobModal()}>

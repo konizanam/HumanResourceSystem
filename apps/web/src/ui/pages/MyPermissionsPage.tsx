@@ -50,6 +50,13 @@ function inferModuleFromPermissionName(permissionName: string): string {
   return known[modulePart] ?? "General";
 }
 
+function inferActionFromPermissionName(permissionName: string): string {
+  const raw = String(permissionName ?? "").trim().toUpperCase();
+  if (!raw) return "VIEW";
+  const action = raw.split("_")[0] ?? "VIEW";
+  return action || "VIEW";
+}
+
 export function MyPermissionsPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -144,15 +151,20 @@ export function MyPermissionsPage() {
     return entries;
   }, [permissionCatalogByName, permissions]);
 
+  const moduleTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const permission of permissionCatalogByName.values()) {
+      const moduleName = String(permission.module_name ?? "").trim() || "General";
+      totals.set(moduleName, (totals.get(moduleName) ?? 0) + 1);
+    }
+    return totals;
+  }, [permissionCatalogByName]);
+
   return (
     <div className="page">
       <div className="companiesHeader">
-        <h1 className="pageTitle">My Permissions</h1>
+        <h1 className="pageTitle">Manage Roles — {roles.length > 0 ? roles.join(", ") : "No Role"}</h1>
       </div>
-
-      <p className="pageText">
-        View the roles and permissions currently assigned to your account.
-      </p>
 
       {!canManagePermissions ? (
         <div className="warningBox" style={{ marginTop: 10 }}>
@@ -165,38 +177,41 @@ export function MyPermissionsPage() {
       {loading ? (
         <p className="pageText">Loading...</p>
       ) : (
-        <div className="dashboardGrid" style={{ marginTop: 12 }}>
-          <section className="dashCard" aria-label="Assigned roles">
-            <h2 className="editFormTitle">Assigned Roles</h2>
-            {roles.length === 0 ? (
-              <p className="pageText">No roles assigned.</p>
-            ) : (
-              <div className="statusChips" style={{ marginTop: 8 }}>
-                {roles.map((role) => (
-                  <span key={role} className="chip">{role}</span>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {permissionsByModule.length === 0 ? (
-            <section className="dashCard" aria-label="Assigned permissions">
-              <h2 className="editFormTitle">Assigned Permissions</h2>
-              <p className="pageText">No permissions assigned.</p>
-            </section>
-          ) : (
-            permissionsByModule.map(([moduleName, modulePermissions]) => (
-              <section key={moduleName} className="dashCard" aria-label={`${moduleName} permissions`}>
-                <h2 className="editFormTitle" style={{ marginBottom: 8 }}>{moduleName}</h2>
-                <div className="statusChips">
-                  {modulePermissions.map((permission) => (
-                    <span key={permission} className="chip">{permission}</span>
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-        </div>
+        permissionsByModule.length === 0 ? (
+          <div className="dashCard" style={{ marginTop: 12 }}>
+            <h2 className="editFormTitle">Assigned Permissions</h2>
+            <p className="pageText">No permissions assigned.</p>
+          </div>
+        ) : (
+          <div className="dashboardGrid" style={{ marginTop: 12 }}>
+            {permissionsByModule.map(([moduleName, modulePermissions]) => {
+              const total = moduleTotals.get(moduleName) ?? modulePermissions.length;
+              return (
+                <section key={moduleName} className="dashCard" aria-label={`${moduleName} permissions`}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <h2 className="editFormTitle" style={{ marginBottom: 0 }}>{moduleName}</h2>
+                    <span className="readLabel">{modulePermissions.length}/{total}</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {modulePermissions.map((permissionName) => {
+                      const key = permissionName.toUpperCase();
+                      const actionType = String(permissionCatalogByName.get(key)?.action_type ?? "").trim().toUpperCase() || inferActionFromPermissionName(permissionName);
+                      return (
+                        <label key={permissionName} className="fieldCheckbox" style={{ alignItems: "center" }}>
+                          <input type="checkbox" checked readOnly />
+                          <span className="fieldLabel" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span>{permissionName}</span>
+                            <span className="readLabel">({actionType})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )
       )}
     </div>
   );
