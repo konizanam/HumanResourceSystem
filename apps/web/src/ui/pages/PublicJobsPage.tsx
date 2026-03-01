@@ -138,8 +138,6 @@ export function PublicJobsPage() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_LIMIT, total: 0, pages: 1 });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterEmploymentType, setFilterEmploymentType] = useState<string>("");
   const [filterExperienceLevel, setFilterExperienceLevel] = useState<string>("");
@@ -419,26 +417,12 @@ export function PublicJobsPage() {
 
   const visibleJobs = useMemo(() => {
     const list = Array.isArray(jobs) ? jobs : [];
-    const q = search.trim().toLowerCase();
     const categoryFilter = filterCategory.trim().toLowerCase();
     const employmentTypeFilter = filterEmploymentType.trim().toLowerCase();
     const experienceFilter = filterExperienceLevel.trim().toLowerCase();
     const locationFilter = filterLocation.trim().toLowerCase();
 
     const filtered = list.filter((job) => {
-      if (q) {
-        const title = String(job.title ?? "").toLowerCase();
-        const company = resolvePublicJobCompanyName(job).toLowerCase();
-        const category = resolvePublicJobCategoryName(job).toLowerCase();
-        const location = String(job.location ?? "").toLowerCase();
-        const matchesQuery =
-          title.includes(q) ||
-          company.includes(q) ||
-          category.includes(q) ||
-          location.includes(q);
-        if (!matchesQuery) return false;
-      }
-
       if (categoryFilter) {
         const category = resolvePublicJobCategoryName(job).toLowerCase();
         if (category !== categoryFilter) return false;
@@ -476,7 +460,7 @@ export function PublicJobsPage() {
     const next = [...filtered];
     const [picked] = next.splice(idx, 1);
     return picked ? [picked, ...next] : filtered;
-  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, openJobId, resolvePublicJobCategoryName, resolvePublicJobCompanyName, search]);
+  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, openJobId, resolvePublicJobCategoryName]);
 
   const filterOptions = useMemo(() => {
     const list = Array.isArray(jobs) ? jobs : [];
@@ -561,7 +545,6 @@ export function PublicJobsPage() {
                 type="button"
                 className="btn btnGhost btnSm"
                 onClick={() => {
-                  setSearch("");
                   setFilterCategory("");
                   setFilterEmploymentType("");
                   setFilterExperienceLevel("");
@@ -575,17 +558,6 @@ export function PublicJobsPage() {
             </div>
 
             <div style={{ display: "grid", gap: 10 }}>
-              <div>
-                <label className="fieldLabel">Search</label>
-                <input
-                  className="input"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Title, company, category, location..."
-                  disabled={loading}
-                />
-              </div>
-
               <div>
                 <label className="fieldLabel">Category</label>
                 <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} disabled={loading}>
@@ -671,19 +643,9 @@ export function PublicJobsPage() {
                       Browse available jobs.
                     </p>
                   </div>
-                  <div style={{ minWidth: 260, flex: "1 1 320px" }}>
-                    <label className="fieldLabel">Search</label>
-                    <input
-                      className="input"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search title/company/category..."
-                      disabled={loading}
-                    />
-                  </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                <div style={{ marginBottom: 12 }}>
                   {renderPager()}
                 </div>
 
@@ -801,7 +763,7 @@ export function PublicJobsPage() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+                <div style={{ marginTop: 16 }}>
                   {renderPager()}
                 </div>
               </>

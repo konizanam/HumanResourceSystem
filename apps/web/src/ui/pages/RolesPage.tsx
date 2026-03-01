@@ -602,14 +602,28 @@ export function RolesPage() {
                                   </tbody>
                                 </table>
                               </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-                                <span className="readLabel">
+                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination" style={{ marginTop: 12 }}>
+                                <button
+                                  className="btn btnPrimary btnSm"
+                                  style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+                                  type="button"
+                                  disabled={usersPage <= 1}
+                                  onClick={() => setUsersPage((p) => Math.max(1, p - 1))}
+                                >
+                                  {"<-"} Previous
+                                </button>
+                                <span className="publicJobsPagerInfo">
                                   Page {usersPage} of {usersTotalPages} ({filteredUsers.length} users)
                                 </span>
-                                <div style={{ display: "flex", gap: 8 }}>
-                                  <button className="btn btnGhost btnSm" type="button" disabled={usersPage <= 1} onClick={() => setUsersPage((p) => Math.max(1, p - 1))}>Previous</button>
-                                  <button className="btn btnGhost btnSm" type="button" disabled={usersPage >= usersTotalPages} onClick={() => setUsersPage((p) => Math.min(usersTotalPages, p + 1))}>Next</button>
-                                </div>
+                                <button
+                                  className="btn btnPrimary btnSm"
+                                  style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                                  type="button"
+                                  disabled={usersPage >= usersTotalPages}
+                                  onClick={() => setUsersPage((p) => Math.min(usersTotalPages, p + 1))}
+                                >
+                                  Next {"->"}
+                                </button>
                               </div>
                             </div>
                           </div>

@@ -1131,7 +1131,7 @@ export function DashboardPage() {
               </div>
             ) : null}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <div style={{ marginBottom: 10 }}>
               {renderSeekerApplicationsPager()}
             </div>
 
@@ -1196,7 +1196,7 @@ export function DashboardPage() {
                   </table>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                <div style={{ marginTop: 12 }}>
                   {renderSeekerApplicationsPager()}
                 </div>
               </>
@@ -1210,7 +1210,7 @@ export function DashboardPage() {
                 <Link className="btn btnGhost btnSm" to="/app/jobs?browse=1">Browse Jobs</Link>
               </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <div style={{ marginBottom: 12 }}>
               {renderSeekerJobsPager()}
             </div>
             {seekerJobs.length === 0 ? (
@@ -1347,7 +1347,7 @@ export function DashboardPage() {
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <div style={{ marginTop: 12 }}>
               {renderSeekerJobsPager()}
             </div>
 

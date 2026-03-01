@@ -518,10 +518,26 @@ export function AuditPage() {
 
       {/* Pagination */}
       {pagination.pages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 16 }}>
-          <button className="btn btnGhost btnSm" type="button" onClick={() => goToPage(pagination.page - 1)} disabled={pagination.page <= 1 || loading}>← Previous</button>
-          <span className="readLabel">Page {pagination.page} of {pagination.pages} ({pagination.total} logs)</span>
-          <button className="btn btnGhost btnSm" type="button" onClick={() => goToPage(pagination.page + 1)} disabled={pagination.page >= pagination.pages || loading}>Next →</button>
+        <div className="publicJobsPager" role="navigation" aria-label="Audit logs pagination" style={{ marginTop: 16 }}>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+            type="button"
+            onClick={() => goToPage(pagination.page - 1)}
+            disabled={pagination.page <= 1 || loading}
+          >
+            {"<-"} Previous
+          </button>
+          <span className="publicJobsPagerInfo">Page {pagination.page} of {pagination.pages} ({pagination.total} logs)</span>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            type="button"
+            onClick={() => goToPage(pagination.page + 1)}
+            disabled={pagination.page >= pagination.pages || loading}
+          >
+            Next {"->"}
+          </button>
         </div>
       )}
     </div>
