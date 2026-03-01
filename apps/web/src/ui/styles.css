@@ -1580,6 +1580,12 @@ a {
   gap: 6px;
 }
 
+.uploadedDocsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
 .uploadedDocCardTitle {
   font-size: 11px;
   color: var(--muted);

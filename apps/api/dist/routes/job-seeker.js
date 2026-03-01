@@ -534,8 +534,16 @@ exports.jobSeekerRouter.get("/full-profile", async (req, res, next) => {
     try {
         const requesterId = req.user.userId;
         const requestedUserId = typeof req.query.user_id === "string" ? req.query.user_id.trim() : "";
-        const canReadOtherProfiles = req.user?.roles?.includes("ADMIN") || req.user?.roles?.includes("EMPLOYER");
-        const userId = requestedUserId && canReadOtherProfiles ? requestedUserId : requesterId;
+        const roles = Array.isArray(req.user?.roles) ? req.user.roles.map((r) => String(r).toUpperCase()) : [];
+        const perms = Array.isArray(req.user?.permissions)
+            ? req.user.permissions.map((p) => String(p).toLowerCase())
+            : [];
+        const canReadOtherProfiles = roles.includes("ADMIN") ||
+            perms.some((p) => ["view_users", "manage_users", "view_applications", "manage_applications"].includes(p));
+        if (requestedUserId && requestedUserId !== requesterId && !canReadOtherProfiles) {
+            return res.status(403).json({ error: { message: "Forbidden" } });
+        }
+        const userId = requestedUserId && requestedUserId !== requesterId ? requestedUserId : requesterId;
         const [profile, personal, addresses, education, experience, references] = await Promise.all([
             (0, db_1.query)(`SELECT * FROM job_seeker_profiles WHERE user_id = $1`, [userId]),
             (0, db_1.query)(`SELECT * FROM job_seeker_personal_details WHERE user_id = $1`, [userId]),

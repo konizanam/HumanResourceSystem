@@ -743,7 +743,7 @@ export function JobSeekerProfilePage() {
                   }
 
                   return (
-                    <div className="recordList" style={{ marginTop: 0 }}>
+                    <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
                       {unique.map((c, idx) => (
                         <UploadedDocumentCard
                           key={`${userId}-doc-${idx}`}
