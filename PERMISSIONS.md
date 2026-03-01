@@ -42,6 +42,7 @@
 - View page: `VIEW_APPLICATIONS` or route access from Jobs action
 - View applicant profile panel: authenticated user on page
 - Update application status (Longlist/Shortlist/Rejected/Interview/Assessment/Hired): `CHANGE_JOBSEEKER_APP_STATUS`
+- Move applicant back to All Applicants: `MOVE_BACK_TO_ALL_APPLICANTS`
 - View inline documents: authenticated user on page
 
 ## Page: Roles
@@ -95,5 +96,6 @@
 - `APPROVE_COMPANY` — Can approve pending companies
 - `APPLY_JOB` — Can apply for jobs (job seekers)
 - `CHANGE_JOBSEEKER_APP_STATUS` — Can update job seeker application status transitions
+- `MOVE_BACK_TO_ALL_APPLICANTS` — Can move applicants from status lists back to All Applicants
 - `CHANGE_APP_COLOR` — Can change application color theme
 - `MANAGE_NOTIFICATIONS` — Can manage notification preferences

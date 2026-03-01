@@ -639,6 +639,21 @@ router.put('/:id/status',
 
       const application = appCheck.rows[0];
 
+      const normalizedRequestedStatus = String(status ?? '').trim().toUpperCase();
+      const normalizedCurrentStatus = String(application.status ?? '').trim().toUpperCase();
+      const movingBackToAllApplicants =
+        ['APPLIED', 'PENDING'].includes(normalizedRequestedStatus) &&
+        !['APPLIED', 'PENDING'].includes(normalizedCurrentStatus);
+
+      if (movingBackToAllApplicants) {
+        const hasMoveBackPermission = (req.user?.permissions ?? []).some(
+          (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
+        );
+        if (!hasMoveBackPermission) {
+          return res.status(403).json({ error: 'Insufficient permissions to move applicant back to All Applicants' });
+        }
+      }
+
       const hasManageUsers = req.user!.permissions?.includes('MANAGE_USERS');
       // Check if user is authorized (employer who posted the job, or permissioned admin)
       if (application.employer_id !== userId && !hasManageUsers) {

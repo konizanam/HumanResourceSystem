@@ -994,6 +994,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('APPROVE_JOB', 'Approve pending jobs', 'Jobs', 'APPROVE'),
   ('VIEW_APPLICATIONS', 'View job applications', 'Applications', 'VIEW'),
     ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
+    ('MOVE_BACK_TO_ALL_APPLICANTS', 'Move applicant back to All Applicants list', 'Applications', 'UPDATE'),
   ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
   ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
   ('VIEW_CV_DATABASE', 'Access CV search', 'Candidates', 'VIEW'),

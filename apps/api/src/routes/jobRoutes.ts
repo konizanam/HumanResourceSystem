@@ -1114,6 +1114,24 @@ router.patch('/:id/applications/:applicationId/status',
         [req.params.applicationId, req.params.id]
       );
 
+      if (beforeApplicationResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const currentStatus = String(beforeApplicationResult.rows[0]?.status ?? '').trim().toUpperCase();
+      const movingBackToAllApplicants =
+        normalizedStatus === 'APPLIED' &&
+        !['APPLIED', 'PENDING'].includes(currentStatus);
+
+      if (movingBackToAllApplicants) {
+        const hasMoveBackPermission = (req.user?.permissions ?? []).some(
+          (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
+        );
+        if (!hasMoveBackPermission) {
+          return res.status(403).json({ error: 'Insufficient permissions to move applicant back to All Applicants' });
+        }
+      }
+
       const result = await dbQuery(
         `UPDATE applications 
          SET status = $1

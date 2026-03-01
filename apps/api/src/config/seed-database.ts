@@ -1480,6 +1480,7 @@ console.log('📝 Continuing with permissions...');
       { name: 'apply_jobs', description: 'Can apply to jobs', module: 'applications', action: 'create' },
       { name: 'view_applications', description: 'Can view applications', module: 'applications', action: 'view' },
       { name: 'manage_applications', description: 'Can manage applications', module: 'applications', action: 'manage' },
+      { name: 'move_back_to_all_applicants', description: 'Can move applicants back to All Applicants list', module: 'applications', action: 'update' },
       { name: 'view_users', description: 'Can view users', module: 'users', action: 'view' },
       { name: 'manage_users', description: 'Can manage users', module: 'users', action: 'manage' },
     ];

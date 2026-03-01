@@ -720,6 +720,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     ('VIEW_APPLICATIONS', 'View job applications', 'Applications', 'VIEW'),
     ('APPLY_JOB', 'Can apply for jobs', 'Applications', 'CREATE'),
     ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
+    ('MOVE_BACK_TO_ALL_APPLICANTS', 'Move applicant back to All Applicants list', 'Applications', 'UPDATE'),
     ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
     ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
     

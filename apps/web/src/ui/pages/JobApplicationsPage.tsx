@@ -125,6 +125,10 @@ export function JobApplicationsPage() {
     "APPLICATIONS_UPDATE_STATUS",
     "applications.update_status",
   );
+  const canMoveBackToAll = hasPermission(
+    "MOVE_BACK_TO_ALL_APPLICANTS",
+    "move_back_to_all_applicants",
+  );
 
   const loadAll = useCallback(async () => {
     if (!accessToken || !jobId) return;
@@ -254,6 +258,34 @@ export function JobApplicationsPage() {
       setSuccess(`Applicant moved to ${STATUS_ACTIONS.find((s) => s.key === next)?.label ?? next}.`);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to update status");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function onMoveBackToAllApplicants(app: JobApplication) {
+    if (!accessToken || !jobId) return;
+    try {
+      setSavingId(app.id);
+      setError(null);
+      setSuccess(null);
+
+      let updated: JobApplication | null = null;
+      try {
+        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, "applied");
+      } catch {
+        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, "pending");
+      }
+
+      setApplications((prev) => prev.map((p) => (p.id === app.id ? { ...p, ...updated } : p)));
+      setStageOverrides((prev) => {
+        const nextOverrides = { ...prev };
+        delete nextOverrides[app.id];
+        return nextOverrides;
+      });
+      setSuccess("Applicant moved back to All Applicants.");
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to move applicant back to All Applicants");
     } finally {
       setSavingId(null);
     }
@@ -653,6 +685,17 @@ export function JobApplicationsPage() {
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
+                        {canUpdateStatus && canMoveBackToAll && (
+                          <button
+                            type="button"
+                            className="btn btnPrimary btnSm"
+                            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+                            onClick={() => onMoveBackToAllApplicants(app)}
+                            disabled={savingId === app.id}
+                          >
+                            Move Back to All Applicants
+                          </button>
+                        )}
                         {canUpdateStatus &&
                           STATUS_ACTIONS.filter((s) => s.key !== current).map((action) => (
                             <button
