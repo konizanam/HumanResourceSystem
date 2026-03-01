@@ -475,6 +475,18 @@ export function AppLayout({
       </aside>
 
       <main className="content">
+        <div className="mobileTopBar">
+          <button
+            type="button"
+            className="btn btnGhost iconBtn"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+          >
+            <Icon name={mobileOpen ? "close" : "menu"} />
+          </button>
+          <div className="mobileTopBarTitle">{pageName}</div>
+        </div>
         {permissionsLoading ? <div className="pageText">Loading permissions...</div> : <Outlet />}
       </main>
 

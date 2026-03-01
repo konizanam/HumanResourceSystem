@@ -409,6 +409,18 @@ a {
   padding: 16px;
 }
 
+.mobileTopBar {
+  display: none;
+}
+
+.mobileTopBarTitle {
+  font-weight: 900;
+  color: var(--heading);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pageText {
   color: var(--muted);
   font-size: 14px;
@@ -788,6 +800,13 @@ a {
 
   .content {
     padding: 12px;
+  }
+
+  .mobileTopBar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 }
 

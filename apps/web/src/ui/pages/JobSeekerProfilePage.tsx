@@ -8,6 +8,7 @@ import {
   listJobSeekerResumes,
   listMyDocuments,
   getFullProfile,
+  listJobSeekers,
   getIpLocation,
   me,
   uploadJobSeekerDocument,
@@ -24,6 +25,7 @@ import {
   deleteReference,
   type FullProfile,
   type JobListItem,
+  type JobSeekerListItem,
 } from "../api/client";
 
 /* ================================================================== */
@@ -274,6 +276,8 @@ export function JobSeekerProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState<FullProfile | null>(null);
+  const [mode, setMode] = useState<"self" | "directory" | "forbidden">("self");
+  const [jobSeekers, setJobSeekers] = useState<JobSeekerListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeStep, setActiveStep] = useState(0);
   const [editingStep, setEditingStep] = useState<number | null>(null);
@@ -287,10 +291,51 @@ export function JobSeekerProfilePage() {
     if (!accessToken) return;
     try {
       setLoading(true);
+
+      let session: any = null;
+      try {
+        session = await me(accessToken);
+      } catch {
+        session = null;
+      }
+
+      const roles: string[] = Array.isArray(session?.user?.roles)
+        ? session.user.roles.map((r: unknown) => String(r))
+        : [];
+      const permissions: string[] = Array.isArray(session?.user?.permissions)
+        ? session.user.permissions.map((p: unknown) => String(p))
+        : [];
+
+      const normalizedRoles = roles.map((r) => r.toUpperCase());
+      const normalizedPerms = permissions.map((p) => p.toLowerCase());
+      const isJobSeeker = normalizedRoles.includes("JOB_SEEKER");
+      const canViewJobSeekerProfiles = normalizedPerms.some((p) =>
+        ["view_users", "manage_users", "view_applications", "manage_applications"].includes(p),
+      );
+
+      if (!isJobSeeker && canViewJobSeekerProfiles) {
+        setMode("directory");
+        setError(null);
+        setSuccess(null);
+        setPendingJob(null);
+        setData(null);
+
+        const list = await listJobSeekers(accessToken, { page: 1, limit: 200 });
+        setJobSeekers(Array.isArray((list as any)?.job_seekers) ? (list as any).job_seekers : []);
+        return;
+      }
+
+      if (!isJobSeeker) {
+        setMode("forbidden");
+        setData(null);
+        setError("Access denied. You do not have permission to view job seeker profiles.");
+        return;
+      }
+
+      setMode("self");
       const profile = await getFullProfile(accessToken);
       if (!profile.personalDetails) {
         try {
-          const session = await me(accessToken);
           const user = (session as any)?.user ?? {};
           profile.personalDetails = {
             first_name: user.first_name ?? "",
@@ -357,6 +402,58 @@ export function JobSeekerProfilePage() {
       <div className="page">
         <h1 className="pageTitle">Job Seeker Profile</h1>
         <p className="pageText">Loading…</p>
+      </div>
+    );
+  }
+
+  if (mode === "directory") {
+    return (
+      <div className="page">
+        <div className="profileHeader">
+          <h1 className="pageTitle">Job Seeker Profile</h1>
+          <p className="pageText">All Job Seekers</p>
+        </div>
+
+        {error && <div className="errorBox">{error}</div>}
+
+        <div className="jobCardsGrid" role="region" aria-label="Job seeker cards">
+          {jobSeekers.length === 0 ? (
+            <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No job seekers found.</div></div>
+          ) : (
+            jobSeekers.map((seeker, idx) => {
+              const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+              const fullName = `${String(seeker.first_name ?? "").trim()} ${String(seeker.last_name ?? "").trim()}`.trim();
+              const title = fullName || String(seeker.email ?? "Job Seeker");
+              const createdLabel = seeker.created_at
+                ? new Date(seeker.created_at).toLocaleDateString("en-GB")
+                : "—";
+
+              return (
+                <article key={seeker.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                  <div className="dashCardHeader" style={{ marginBottom: 6 }}>
+                    <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{title}</h2>
+                  </div>
+
+                  <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                    <ReadField label="Email" value={seeker.email} />
+                    <ReadField label="Phone" value={seeker.phone} />
+                    <ReadField label="Status" value={seeker.is_active ? "Active" : "Inactive"} />
+                    <ReadField label="Created" value={createdLabel} />
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "forbidden") {
+    return (
+      <div className="page">
+        <h1 className="pageTitle">Job Seeker Profile</h1>
+        <p className="pageText">{error ?? "Access denied."}</p>
       </div>
     );
   }

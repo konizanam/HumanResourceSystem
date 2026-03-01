@@ -1,12 +1,74 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db";
-import { authenticate } from "../middleware/auth";
+import { authenticate, authorizePermission } from "../middleware/auth";
 
 export const jobSeekerRouter = Router();
 
 // All routes require authentication
 jobSeekerRouter.use(authenticate);
+
+/* ================================================================== */
+/*  LIST JOB SEEKERS (admin/employer/HR view)                          */
+/* ================================================================== */
+
+const listJobSeekersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(60),
+  search: z.string().optional().default(""),
+});
+
+jobSeekerRouter.get(
+  "/list",
+  authorizePermission("view_users", "manage_users", "view_applications", "manage_applications"),
+  async (req, res, next) => {
+    try {
+      const parsed = listJobSeekersQuerySchema.parse(req.query);
+      const page = parsed.page;
+      const limit = parsed.limit;
+      const offset = (page - 1) * limit;
+      const search = parsed.search.trim();
+
+      let where = "WHERE LOWER(COALESCE(role, '')) IN ('job_seeker', 'job seeker', 'jobseeker')";
+      const params: unknown[] = [];
+      let paramIndex = 1;
+
+      if (search) {
+        where += ` AND (
+          email ILIKE $${paramIndex} OR
+          first_name ILIKE $${paramIndex} OR
+          last_name ILIKE $${paramIndex} OR
+          (first_name || ' ' || last_name) ILIKE $${paramIndex}
+        )`;
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      const countResult = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM users ${where}`,
+        params,
+      );
+      const total = Number(countResult.rows?.[0]?.count ?? 0);
+      const pages = Math.max(1, Math.ceil(total / limit));
+
+      const listResult = await query(
+        `SELECT id, email, first_name, last_name, phone, is_active, created_at
+         FROM users
+         ${where}
+         ORDER BY created_at DESC
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...params, limit, offset],
+      );
+
+      return res.json({
+        job_seekers: listResult.rows,
+        pagination: { page, limit, total, pages },
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 /* ================================================================== */
 /*  PROFILE (professional summary)                                     */

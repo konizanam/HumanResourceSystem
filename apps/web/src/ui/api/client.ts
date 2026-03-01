@@ -1450,6 +1450,39 @@ export async function listAdminUsers(
   return body;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Job Seeker Directory                                                */
+/* ------------------------------------------------------------------ */
+
+export type JobSeekerListItem = {
+  id: string;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+};
+
+export async function listJobSeekers(
+  token: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  },
+): Promise<{ job_seekers: JobSeekerListItem[]; pagination: Pagination }> {
+  const url = new URL(`${API_BASE}/job-seeker/list`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.search) url.searchParams.set("search", params.search);
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load job seekers");
+  return body;
+}
+
 export async function getAdminUser(token: string, id: string): Promise<AdminUser> {
   const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}`, {
     headers: authHeaders(token),
