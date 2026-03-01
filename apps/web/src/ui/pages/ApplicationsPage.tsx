@@ -114,6 +114,32 @@ export function ApplicationsPage() {
     });
   }, [jobs, search, companyNameById]);
 
+  const statsCards = useMemo(() => {
+    const loadedJobs = jobs.length;
+    const matchingJobs = visibleJobs.length;
+
+    let openJobs = 0;
+    let closedJobs = 0;
+    let totalApplications = 0;
+
+    for (const job of visibleJobs) {
+      const status = String(job.status ?? "").trim().toLowerCase();
+      const applications = Number(job.applications_count ?? 0);
+      if (Number.isFinite(applications)) totalApplications += applications;
+
+      if (status === "open" || status === "active") openJobs += 1;
+      if (status === "closed" || status === "inactive" || status === "expired") closedJobs += 1;
+    }
+
+    return [
+      { label: "Jobs Loaded", value: loadedJobs },
+      { label: "Matches", value: matchingJobs },
+      { label: "Open Jobs", value: openJobs },
+      { label: "Closed Jobs", value: closedJobs },
+      { label: "Applications", value: totalApplications },
+    ];
+  }, [jobs, visibleJobs]);
+
   return (
     <div className="page">
       <div className="companiesHeader">
@@ -126,6 +152,18 @@ export function ApplicationsPage() {
         <p className="pageText">Loading...</p>
       ) : (
         <>
+          <div className="statsCardsGrid" role="region" aria-label="Applications statistics">
+            {statsCards.map((c, idx) => {
+              const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+              return (
+                <div key={c.label} className={`dashCard statsCard ${toneClass}`}>
+                  <div className="readLabel">{c.label}</div>
+                  <div className="statsCardValue">{c.value}</div>
+                </div>
+              );
+            })}
+          </div>
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
             <div style={{ minWidth: 260, flex: "1 1 340px" }}>
               <label className="fieldLabel">Search</label>

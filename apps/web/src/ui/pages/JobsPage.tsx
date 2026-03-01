@@ -598,6 +598,49 @@ export function JobsPage() {
     });
   }, [isJobSeekerView, visibleJobs]);
 
+  const jobsStatsCards = useMemo(() => {
+    const displayedJobs = isJobSeekerView ? seekerVisibleJobs : visibleJobs;
+
+    let openJobs = 0;
+    let draftJobs = 0;
+    let closedJobs = 0;
+    let remoteJobs = 0;
+    let totalApplications = 0;
+    let appliedJobs = 0;
+
+    for (const job of displayedJobs) {
+      const status = String(job.status ?? "").trim().toLowerCase();
+      if (status === "active" || status === "approved" || status === "open") openJobs += 1;
+      else if (status === "draft" || status === "pending") draftJobs += 1;
+      else if (status === "closed" || status === "inactive" || status === "expired") closedJobs += 1;
+
+      if (Boolean(job.remote)) remoteJobs += 1;
+
+      const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
+      if (Number.isFinite(applications)) totalApplications += applications;
+
+      if (appliedJobIds.includes(job.id)) appliedJobs += 1;
+    }
+
+    if (isJobSeekerView) {
+      return [
+        { label: "Jobs on Page", value: displayedJobs.length },
+        { label: "Open Jobs", value: openJobs },
+        { label: "Remote Jobs", value: remoteJobs },
+        { label: "Applied", value: appliedJobs },
+        { label: "Not Applied", value: Math.max(0, displayedJobs.length - appliedJobs) },
+      ];
+    }
+
+    return [
+      { label: "Jobs on Page", value: displayedJobs.length },
+      { label: "Open Jobs", value: openJobs },
+      { label: "Draft Jobs", value: draftJobs },
+      { label: "Closed Jobs", value: closedJobs },
+      { label: "Applications", value: totalApplications },
+    ];
+  }, [appliedJobIds, applicationCounts, isJobSeekerView, seekerVisibleJobs, visibleJobs]);
+
   const activeCompany = useMemo(
     () => companies.find((company) => company.id === companyIdFromUrl) ?? null,
     [companies, companyIdFromUrl],
@@ -1193,6 +1236,18 @@ export function JobsPage() {
 
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
+
+      <div className="statsCardsGrid" role="region" aria-label="Jobs statistics">
+        {jobsStatsCards.map((card, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          return (
+            <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+              <div className="readLabel">{card.label}</div>
+              <div className="statsCardValue">{card.value}</div>
+            </div>
+          );
+        })}
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 480px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
