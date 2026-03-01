@@ -311,7 +311,11 @@ input[type="radio"][required] {
   border-right: 1px solid color-mix(in srgb, var(--stroke) 68%, var(--menu-icon));
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebarCollapsed {
@@ -377,7 +381,9 @@ input[type="radio"][required] {
   padding: 10px;
   display: grid;
   gap: 4px;
-  overflow: visible;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .navItem {
@@ -444,7 +450,7 @@ input[type="radio"][required] {
 }
 
 .sidebarFooter {
-  margin-top: 8px;
+  margin-top: 0;
   position: sticky;
   bottom: 0;
   z-index: 2;
