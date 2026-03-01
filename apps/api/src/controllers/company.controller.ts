@@ -313,7 +313,7 @@ export class CompanyController {
 
   async getSystemSettings(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!hasPermission(req, 'MANAGE_USERS')) {
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'CHANGE_APP_COLOR'])) {
         throw new ForbiddenError('You do not have permission to view system settings');
       }
 
@@ -329,24 +329,47 @@ export class CompanyController {
 
   async updateSystemSettings(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!hasPermission(req, 'MANAGE_USERS')) {
-        throw new ForbiddenError('You do not have permission to update system settings');
-      }
-
       const systemName =
         req.body?.system_name === undefined ? undefined : String(req.body.system_name);
       const brandingLogo =
         req.body?.branding_logo_url === undefined
           ? undefined
           : String(req.body.branding_logo_url);
+      const appColor =
+        req.body?.app_color === undefined
+          ? undefined
+          : String(req.body.app_color);
+
+      const updatingGeneralSettings = systemName !== undefined || brandingLogo !== undefined;
+      const updatingAppColor = appColor !== undefined;
+
+      if (!updatingGeneralSettings && !updatingAppColor) {
+        throw new BadRequestError('No settings provided');
+      }
+
+      if (updatingGeneralSettings && !hasPermission(req, 'MANAGE_USERS')) {
+        throw new ForbiddenError('You do not have permission to update system settings');
+      }
+
+      if (updatingAppColor && !hasPermission(req, 'CHANGE_APP_COLOR')) {
+        throw new ForbiddenError('You do not have permission to change app colors');
+      }
 
       if (systemName !== undefined && !systemName.trim()) {
         throw new BadRequestError('System name is required');
       }
 
+      if (appColor !== undefined) {
+        const candidate = appColor.trim();
+        if (!/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(candidate)) {
+          throw new BadRequestError('App color must be a valid hex color');
+        }
+      }
+
       const settings = await updateSystemSettings({
         system_name: systemName,
         branding_logo_url: brandingLogo,
+        app_color: appColor,
       });
       res.json({
         status: 'success',

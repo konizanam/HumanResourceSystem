@@ -451,27 +451,23 @@ export function JobSeekerProfilePage() {
         const apiTotalRaw = Number(pag.total);
         const apiPagesRaw = Number(pag.pages);
 
-        const apiHasPagination =
-          Number.isFinite(apiPageRaw) && apiPageRaw >= 1 &&
-          Number.isFinite(apiLimitRaw) && apiLimitRaw >= 1 &&
-          Number.isFinite(apiTotalRaw) && apiTotalRaw >= 0 &&
-          Number.isFinite(apiPagesRaw) && apiPagesRaw >= 1;
+        const hasApiPage = Number.isFinite(apiPageRaw) && apiPageRaw >= 1;
+        const hasApiLimit = Number.isFinite(apiLimitRaw) && apiLimitRaw >= 1;
+        const hasApiTotal = Number.isFinite(apiTotalRaw) && apiTotalRaw >= 0;
+        const hasApiPages = Number.isFinite(apiPagesRaw) && apiPagesRaw >= 1;
 
-        const serverPagedLikely =
-          apiHasPagination &&
-          apiLimitRaw === requestedLimit &&
-          apiPageRaw === pageToLoad &&
-          allSeekers.length <= requestedLimit;
-
-        const resolvedTotal = apiHasPagination ? apiTotalRaw : allSeekers.length;
-        const resolvedPages = apiHasPagination
+        const resolvedPage = hasApiPage ? apiPageRaw : pageToLoad;
+        const resolvedLimit = hasApiLimit ? apiLimitRaw : requestedLimit;
+        const resolvedTotal = hasApiTotal ? apiTotalRaw : allSeekers.length;
+        const resolvedPages = hasApiPages
           ? apiPagesRaw
-          : Math.max(1, Math.ceil(resolvedTotal / Math.max(1, requestedLimit)));
+          : Math.max(1, Math.ceil(resolvedTotal / Math.max(1, resolvedLimit)));
 
-        const resolvedPage = apiHasPagination ? apiPageRaw : pageToLoad;
-        const resolvedLimit = apiHasPagination ? apiLimitRaw : requestedLimit;
+        const responseLooksPaged =
+          allSeekers.length <= resolvedLimit &&
+          (!hasApiPage || resolvedPage === pageToLoad);
 
-        const seekers = serverPagedLikely
+        const seekers = responseLooksPaged
           ? allSeekers
           : allSeekers.slice(
               (pageToLoad - 1) * requestedLimit,
@@ -800,6 +796,30 @@ export function JobSeekerProfilePage() {
 
   const isEditingThisStep = editingStep === activeStep;
 
+  const directoryStatsCards = useMemo(() => {
+    let active = 0;
+    let blocked = 0;
+    let inactive = 0;
+
+    for (const seeker of jobSeekers) {
+      if (seeker.is_blocked) {
+        blocked += 1;
+      } else if (seeker.is_active) {
+        active += 1;
+      } else {
+        inactive += 1;
+      }
+    }
+
+    return [
+      { label: "Total Profiles", value: Number(directoryPagination.total ?? 0) },
+      { label: "Profiles on Page", value: jobSeekers.length },
+      { label: "Active", value: active },
+      { label: "Blocked", value: blocked },
+      { label: "Inactive", value: inactive },
+    ];
+  }, [directoryPagination.total, jobSeekers]);
+
   if (loading) {
     return (
       <div className="page">
@@ -819,6 +839,18 @@ export function JobSeekerProfilePage() {
 
         {error && <div className="errorBox">{error}</div>}
         {success && <div className="successBox">{success}</div>}
+
+        <div className="statsCardsGrid" role="region" aria-label="Job seeker profile statistics">
+          {directoryStatsCards.map((card, idx) => {
+            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+            return (
+              <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+                <div className="readLabel">{card.label}</div>
+                <div className="statsCardValue">{card.value}</div>
+              </div>
+            );
+          })}
+        </div>
 
         {/* Filters + Pagination */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>

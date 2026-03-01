@@ -1,4 +1,5 @@
 {
   "version": 1,
-  "company_approval_mode": "auto_approved"
+  "company_approval_mode": "auto_approved",
+  "app_color": "#6366f1"
 }
