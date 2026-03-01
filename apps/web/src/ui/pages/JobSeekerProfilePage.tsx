@@ -442,14 +442,48 @@ export function JobSeekerProfilePage() {
           status: directoryStatus || undefined,
         });
 
-        const seekers = Array.isArray((res as any)?.job_seekers) ? (res as any).job_seekers : [];
+        const allSeekers = Array.isArray((res as any)?.job_seekers) ? (res as any).job_seekers : [];
         const pag = (res as any)?.pagination ?? {};
+
+        const requestedLimit = DIRECTORY_PAGE_LIMIT;
+        const apiPageRaw = Number(pag.page);
+        const apiLimitRaw = Number(pag.limit);
+        const apiTotalRaw = Number(pag.total);
+        const apiPagesRaw = Number(pag.pages);
+
+        const apiHasPagination =
+          Number.isFinite(apiPageRaw) && apiPageRaw >= 1 &&
+          Number.isFinite(apiLimitRaw) && apiLimitRaw >= 1 &&
+          Number.isFinite(apiTotalRaw) && apiTotalRaw >= 0 &&
+          Number.isFinite(apiPagesRaw) && apiPagesRaw >= 1;
+
+        const serverPagedLikely =
+          apiHasPagination &&
+          apiLimitRaw === requestedLimit &&
+          apiPageRaw === pageToLoad &&
+          allSeekers.length <= requestedLimit;
+
+        const resolvedTotal = apiHasPagination ? apiTotalRaw : allSeekers.length;
+        const resolvedPages = apiHasPagination
+          ? apiPagesRaw
+          : Math.max(1, Math.ceil(resolvedTotal / Math.max(1, requestedLimit)));
+
+        const resolvedPage = apiHasPagination ? apiPageRaw : pageToLoad;
+        const resolvedLimit = apiHasPagination ? apiLimitRaw : requestedLimit;
+
+        const seekers = serverPagedLikely
+          ? allSeekers
+          : allSeekers.slice(
+              (pageToLoad - 1) * requestedLimit,
+              (pageToLoad - 1) * requestedLimit + requestedLimit,
+            );
+
         setJobSeekers(seekers);
         setDirectoryPagination({
-          page: Number(pag.page ?? pageToLoad),
-          limit: Number(pag.limit ?? DIRECTORY_PAGE_LIMIT),
-          total: Number(pag.total ?? seekers.length ?? 0),
-          pages: Number(pag.pages ?? 1),
+          page: resolvedPage,
+          limit: resolvedLimit,
+          total: resolvedTotal,
+          pages: resolvedPages,
         });
       } catch (e) {
         setJobSeekers([]);

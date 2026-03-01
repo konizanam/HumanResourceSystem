@@ -202,6 +202,22 @@ export function JobApplicationsPage() {
     return map;
   }, [applications, stageOverrides]);
 
+  const statsCards = useMemo(() => {
+    const total = applications.length;
+    const unassigned = mainListApplications.length;
+    const cards = [
+      { label: "Total Applicants", value: total },
+      { label: "Unassigned", value: unassigned },
+      { label: "Longlisted", value: grouped.longlisted.length },
+      { label: "Shortlisted", value: grouped.shortlisted.length },
+      { label: "Interview", value: grouped.interview.length },
+      { label: "Assessment", value: grouped.assessment.length },
+      { label: "Hired", value: grouped.hired.length },
+      { label: "Rejected", value: grouped.rejected.length },
+    ];
+    return cards;
+  }, [applications.length, grouped, mainListApplications.length]);
+
   const pagination = useMemo(() => {
     const total = mainListApplications.length;
     const pages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
@@ -440,6 +456,18 @@ export function JobApplicationsPage() {
 
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
+
+      <div className="statsCardsGrid" role="region" aria-label="Application statistics">
+        {statsCards.map((c, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          return (
+            <div key={c.label} className={`dashCard statsCard ${toneClass}`}>
+              <div className="readLabel">{c.label}</div>
+              <div className="statsCardValue">{c.value}</div>
+            </div>
+          );
+        })}
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 340px" }}>

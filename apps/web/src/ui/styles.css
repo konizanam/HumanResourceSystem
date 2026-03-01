@@ -507,6 +507,24 @@ a {
   margin-top: 12px;
 }
 
+.statsCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.statsCard {
+  padding: 12px 14px;
+}
+
+.statsCardValue {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--heading);
+  line-height: 1.1;
+}
+
 /* =====================================================
    JOBS (Job Seeker Card View)
    ===================================================== */

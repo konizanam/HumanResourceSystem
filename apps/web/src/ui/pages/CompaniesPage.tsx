@@ -277,6 +277,33 @@ export function CompaniesPage() {
     return filteredCompanies.slice(start, start + COMPANY_PAGE_LIMIT);
   }, [filteredCompanies, companiesPagination.page]);
 
+  const companyStats = useMemo(() => {
+    const total = filteredCompanies.length;
+    let pending = 0;
+    let approved = 0;
+    let deactivated = 0;
+    let totalUsers = 0;
+
+    for (const c of filteredCompanies) {
+      const status = String(c.status ?? "").trim().toLowerCase();
+      if (status === "pending") pending += 1;
+      else if (status === "deactivated") deactivated += 1;
+      else if (status === "active" || status === "approved") approved += 1;
+
+      const ucRaw = c.user_count;
+      const asNum = typeof ucRaw === "number" ? ucRaw : Number(String(ucRaw ?? "").trim());
+      if (Number.isFinite(asNum)) totalUsers += asNum;
+    }
+
+    return [
+      { label: "Total Companies", value: total },
+      { label: "Pending", value: pending },
+      { label: "Approved", value: approved },
+      { label: "Deactivated", value: deactivated },
+      { label: "Users", value: totalUsers },
+    ];
+  }, [filteredCompanies]);
+
   useEffect(() => {
     if (companiesPage > companiesPagination.pages) {
       setCompaniesPage(companiesPagination.pages);
@@ -671,6 +698,18 @@ export function CompaniesPage() {
 
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
+
+      <div className="statsCardsGrid" role="region" aria-label="Company statistics">
+        {companyStats.map((c, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          return (
+            <div key={c.label} className={`dashCard statsCard ${toneClass}`}>
+              <div className="readLabel">{c.label}</div>
+              <div className="statsCardValue">{c.value}</div>
+            </div>
+          );
+        })}
+      </div>
 
       {addOpen && (
         <div className="dropPanel" role="region" aria-label="Add company">
