@@ -175,31 +175,29 @@ export function ApplicationsPage() {
               />
             </div>
 
-            {pagination.pages > 1 ? (
-              <div className="publicJobsPager" role="navigation" aria-label="Applications pagination top">
-                <button
-                  className="btn btnPrimary btnSm"
-                  style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  {"<-"} Previous
-                </button>
-                <span className="publicJobsPagerInfo">
-                  Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
-                </span>
-                <button
-                  className="btn btnPrimary btnSm"
-                  style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-                  disabled={page >= pagination.pages || loading}
-                >
-                  Next {"->"}
-                </button>
-              </div>
-            ) : null}
+            <div className="publicJobsPager" role="navigation" aria-label="Applications pagination top">
+              <button
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+              >
+                {"<-"} Previous
+              </button>
+              <span className="publicJobsPagerInfo">
+                Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
+              </span>
+              <button
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                type="button"
+                onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                disabled={page >= pagination.pages || loading}
+              >
+                Next {"->"}
+              </button>
+            </div>
           </div>
 
           <div className="jobCardsGrid" role="region" aria-label="Applications jobs list">
@@ -243,31 +241,29 @@ export function ApplicationsPage() {
             )}
           </div>
 
-          {pagination.pages > 1 ? (
-            <div className="publicJobsPager" role="navigation" aria-label="Applications pagination" style={{ marginTop: 16 }}>
-              <button
-                className="btn btnPrimary btnSm"
-                style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1 || loading}
-              >
-                {"<-"} Previous
-              </button>
-              <span className="publicJobsPagerInfo">
-                Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
-              </span>
-              <button
-                className="btn btnPrimary btnSm"
-                style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-                type="button"
-                onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-                disabled={page >= pagination.pages || loading}
-              >
-                Next {"->"}
-              </button>
-            </div>
-          ) : null}
+          <div className="publicJobsPager" role="navigation" aria-label="Applications pagination" style={{ marginTop: 16 }}>
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+            >
+              {"<-"} Previous
+            </button>
+            <span className="publicJobsPagerInfo">
+              Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
+            </span>
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+              type="button"
+              onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+              disabled={page >= pagination.pages || loading}
+            >
+              Next {"->"}
+            </button>
+          </div>
         </>
       )}
     </div>
