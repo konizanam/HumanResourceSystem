@@ -25,6 +25,7 @@ type BeforeAfter = {
 export function AuditPage() {
   const DETAILS_PREVIEW_LINES = 3;
   const DETAILS_PREVIEW_CHARS = 360;
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const navigate = useNavigate();
@@ -52,7 +53,7 @@ export function AuditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 5, total: 0, pages: 0 });
   const [actionFilter, setActionFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState(searchParams.get("target_type") ?? "");
   const [targetIdFilter, setTargetIdFilter] = useState(searchParams.get("target_id") ?? "");
@@ -143,7 +144,38 @@ export function AuditPage() {
 
   useEffect(() => { load(1); }, [load]);
 
-  function goToPage(page: number) { if (page >= 1 && page <= pagination.pages) load(page); }
+  function goToPage(page: number) {
+    const totalPages = Math.max(1, Number(pagination.pages ?? 1));
+    if (page >= 1 && page <= totalPages) load(page);
+  }
+
+  function renderPager(ariaLabel: string) {
+    const totalPages = Math.max(1, Number(pagination.pages ?? 1));
+    const currentPage = Math.min(Math.max(1, Number(pagination.page ?? 1)), totalPages);
+    return (
+      <div className="publicJobsPager" role="navigation" aria-label={ariaLabel}>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => goToPage(currentPage - 1)}
+          disabled={currentPage <= 1 || loading}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">Page {currentPage} of {totalPages} ({pagination.total} logs)</span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() => goToPage(currentPage + 1)}
+          disabled={currentPage >= totalPages || loading}
+        >
+          Next {"->"}
+        </button>
+      </div>
+    );
+  }
 
   if (loading && logs.length === 0) {
     return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div><p className="pageText">Loading…</p></div>);
@@ -406,6 +438,26 @@ export function AuditPage() {
             <input className="input" placeholder="Filter by target id…" value={targetIdFilter} onChange={(e) => setTargetIdFilter(e.target.value)} />
           </div>
         ) : null}
+        <div style={{ minWidth: 170 }}>
+          <label className="fieldLabel">Rows per page</label>
+          <select
+            className="input"
+            value={String(pagination.limit)}
+            onChange={(e) => {
+              const nextLimit = Number(e.target.value);
+              if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
+              setPagination((prev) => ({ ...prev, limit: nextLimit, page: 1 }));
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        {renderPager("Audit logs pagination top")}
       </div>
 
       {/* Table */}
@@ -517,29 +569,9 @@ export function AuditPage() {
       </div>
 
       {/* Pagination */}
-      {pagination.pages > 1 && (
-        <div className="publicJobsPager" role="navigation" aria-label="Audit logs pagination" style={{ marginTop: 16 }}>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-            type="button"
-            onClick={() => goToPage(pagination.page - 1)}
-            disabled={pagination.page <= 1 || loading}
-          >
-            {"<-"} Previous
-          </button>
-          <span className="publicJobsPagerInfo">Page {pagination.page} of {pagination.pages} ({pagination.total} logs)</span>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-            type="button"
-            onClick={() => goToPage(pagination.page + 1)}
-            disabled={pagination.page >= pagination.pages || loading}
-          >
-            Next {"->"}
-          </button>
-        </div>
-      )}
+      <div style={{ marginTop: 16 }}>
+        {renderPager("Audit logs pagination")}
+      </div>
     </div>
   );
 }

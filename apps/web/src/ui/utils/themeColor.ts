@@ -28,13 +28,27 @@ function clampChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
+function toHexColor(r: number, g: number, b: number): string {
+  const asHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${asHex(clampChannel(r))}${asHex(clampChannel(g))}${asHex(clampChannel(b))}`;
+}
+
+function blend(hex: string, towardHex: string, amount: number): string {
+  const a = toRgb(hex);
+  const b = toRgb(towardHex);
+  const t = Math.max(0, Math.min(1, amount));
+  const rr = a.r + (b.r - a.r) * t;
+  const gg = a.g + (b.g - a.g) * t;
+  const bb = a.b + (b.b - a.b) * t;
+  return toHexColor(rr, gg, bb);
+}
+
 function darken(hex: string, factor: number): string {
   const { r, g, b } = toRgb(hex);
   const rr = clampChannel(r * factor);
   const gg = clampChannel(g * factor);
   const bb = clampChannel(b * factor);
-  const asHex = (n: number) => n.toString(16).padStart(2, "0");
-  return `#${asHex(rr)}${asHex(gg)}${asHex(bb)}`;
+  return toHexColor(rr, gg, bb);
 }
 
 export function applyAppThemeColor(appColor: unknown) {
@@ -44,10 +58,22 @@ export function applyAppThemeColor(appColor: unknown) {
   const active = darken(base, 0.78);
   const { r, g, b } = toRgb(base);
   const accentSoft = `rgba(${r}, ${g}, ${b}, 0.14)`;
+  const bg0 = blend(base, "#ffffff", 0.96);
+  const bg1 = blend(base, "#ffffff", 0.92);
+  const card2 = blend(base, "#ffffff", 0.94);
+  const sidebarBg = blend(base, "#ffffff", 0.88);
+  const sidebarSurface = blend(base, "#ffffff", 0.93);
+  const contentBg = blend(base, "#ffffff", 0.95);
 
   const root = document.documentElement;
   root.style.setProperty("--menu-icon", base);
   root.style.setProperty("--menu-icon-active", active);
   root.style.setProperty("--primary", active);
   root.style.setProperty("--accent-soft", accentSoft);
+  root.style.setProperty("--bg0", bg0);
+  root.style.setProperty("--bg1", bg1);
+  root.style.setProperty("--card2", card2);
+  root.style.setProperty("--sidebar-bg", sidebarBg);
+  root.style.setProperty("--sidebar-surface", sidebarSurface);
+  root.style.setProperty("--content-bg", contentBg);
 }

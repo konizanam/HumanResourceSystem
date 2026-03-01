@@ -13,6 +13,20 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
 
+function normalizeHexColor(value: string): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "#6366f1";
+  const withHash = raw.startsWith("#") ? raw : `#${raw}`;
+  if (/^#([0-9a-fA-F]{3})$/.test(withHash)) {
+    const shortHex = withHash.slice(1);
+    return `#${shortHex.split("").map((c) => `${c}${c}`).join("").toLowerCase()}`;
+  }
+  if (/^#([0-9a-fA-F]{6})$/.test(withHash)) {
+    return withHash.toLowerCase();
+  }
+  return "#6366f1";
+}
+
 export function GlobalSettingsPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -38,6 +52,12 @@ export function GlobalSettingsPage() {
   const canEdit = hasPermission("MANAGE_USERS");
   const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
   const canEditSystemSettings = canEdit || canChangeAppColor;
+  const currentAppColor = normalizeHexColor(appColor);
+
+  const applySelectedColor = (nextColor: string) => {
+    setAppColor(nextColor);
+    applyAppThemeColor(nextColor);
+  };
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -229,32 +249,36 @@ export function GlobalSettingsPage() {
             <span className="fieldLabel">Branding Logo URL</span>
             <input className="input" value={brandingLogoUrl} onChange={(e) => setBrandingLogoUrl(e.target.value)} disabled={!canEdit || saving || loading} />
           </label>
-          <label className="field">
-            <span className="fieldLabel">App Color</span>
-            <input
-              className="input"
-              type="color"
-              value={appColor}
-              onChange={(e) => {
-                setAppColor(e.target.value);
-                applyAppThemeColor(e.target.value);
-              }}
-              disabled={!canChangeAppColor || saving || loading}
-            />
-          </label>
-          <label className="field">
-            <span className="fieldLabel">App Color Hex</span>
-            <input
-              className="input"
-              value={appColor}
-              onChange={(e) => {
-                setAppColor(e.target.value);
-                applyAppThemeColor(e.target.value);
-              }}
-              disabled={!canChangeAppColor || saving || loading}
-              placeholder="#6366f1"
-            />
-          </label>
+          <div className="field fieldFull">
+            <span className="fieldLabel">App Color (Current: {currentAppColor})</span>
+            <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
+              <input
+                className="input"
+                type="color"
+                value={currentAppColor}
+                onChange={(e) => {
+                  applySelectedColor(e.target.value);
+                }}
+                disabled={!canChangeAppColor || saving || loading}
+                aria-label="Select app color"
+              />
+              <input
+                className="input"
+                value={appColor}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setAppColor(raw);
+                  if (/^#?[0-9a-fA-F]{3}$/.test(raw) || /^#?[0-9a-fA-F]{6}$/.test(raw)) {
+                    applyAppThemeColor(raw);
+                  }
+                }}
+                disabled={!canChangeAppColor || saving || loading}
+                placeholder="#6366f1"
+                aria-label="App color hex code"
+              />
+            </div>
+            <p className="pageText">Use the picker or a valid hex value (for example, #6366f1).</p>
+          </div>
           <div className="field fieldFull">
             <span className="fieldLabel">Company Approval Mode</span>
             <div style={{ display: "grid", gap: 10 }}>
