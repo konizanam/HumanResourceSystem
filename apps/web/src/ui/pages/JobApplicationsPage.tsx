@@ -285,6 +285,16 @@ export function JobApplicationsPage() {
     const selectedDoc = documentUrlByAppId[app.id];
     const docs = profileDocuments(app);
 
+    const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
+    const lastName = String(readValue(personal, "last_name", "lastName") ?? "").trim();
+    const computedFullName = `${firstName} ${lastName}`.trim();
+    const resolvedFullName =
+      computedFullName ||
+      String(readValue(personal, "full_name", "fullName") ?? "").trim() ||
+      String(app.applicant_name ?? "").trim() ||
+      String(app.applicant_email ?? "").trim() ||
+      "—";
+
     return (
       <div className="dropPanel">
         <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
@@ -295,7 +305,7 @@ export function JobApplicationsPage() {
         ) : (
           <>
             <Section title="Personal Details">
-              <ReadField label="Full Name" value={readValue(personal, "full_name", "fullName")} />
+              <ReadField label="Full Name" value={resolvedFullName} />
               <ReadField label="Email" value={app.applicant_email} />
               <ReadField label="Phone" value={app.applicant_phone} />
               <ReadField label="Gender" value={readValue(personal, "gender")} />

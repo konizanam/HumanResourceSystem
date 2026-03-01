@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listJobs, type JobListItem } from "../api/client";
+import { listCompanies, listJobs, type JobListItem } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
@@ -13,7 +13,7 @@ function ReadField({ label, value }: { label: string; value: string | number }) 
   );
 }
 
-function resolveCompanyName(job: JobListItem): string {
+function resolveCompanyName(job: JobListItem, companyNameById?: Record<string, string>): string {
   const direct = String(job.company ?? "").trim();
   if (direct) return direct;
 
@@ -22,6 +22,11 @@ function resolveCompanyName(job: JobListItem): string {
 
   const companyName = String((job as any)?.company_name ?? "").trim();
   if (companyName) return companyName;
+
+  const companyId = String(job.company_id ?? "").trim();
+  if (companyId && companyNameById && companyNameById[companyId]) {
+    return companyNameById[companyId];
+  }
 
   return "—";
 }
@@ -34,11 +39,40 @@ export function ApplicationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [companyNameById, setCompanyNameById] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_LIMIT, total: 0, pages: 1 });
 
   const isAdminView = hasPermission("MANAGE_USERS");
+
+  useEffect(() => {
+    if (!accessToken) {
+      setCompanyNameById({});
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const companies = await listCompanies(accessToken);
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const c of companies ?? []) {
+          const id = String((c as any)?.id ?? "").trim();
+          const name = String((c as any)?.name ?? "").trim();
+          if (id && name) map[id] = name;
+        }
+        setCompanyNameById(map);
+      } catch {
+        if (!cancelled) setCompanyNameById({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   const load = useCallback(async (nextPage = 1) => {
     if (!accessToken) return;
@@ -73,12 +107,12 @@ export function ApplicationsPage() {
     if (!q) return jobs;
     return jobs.filter((job) => {
       const title = String(job.title ?? "").toLowerCase();
-      const company = resolveCompanyName(job).toLowerCase();
+      const company = resolveCompanyName(job, companyNameById).toLowerCase();
       const location = String(job.location ?? "").toLowerCase();
       const status = String(job.status ?? "").toLowerCase();
       return title.includes(q) || company.includes(q) || location.includes(q) || status.includes(q);
     });
-  }, [jobs, search]);
+  }, [jobs, search, companyNameById]);
 
   return (
     <div className="page">
@@ -137,7 +171,7 @@ export function ApplicationsPage() {
               visibleJobs.map((job, idx) => {
                 const applications = Number(job.applications_count ?? 0);
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-                const companyName = resolveCompanyName(job);
+                const companyName = resolveCompanyName(job, companyNameById);
                 return (
                   <article key={job.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
                     <div className="dashCardHeader" style={{ marginBottom: 6 }}>

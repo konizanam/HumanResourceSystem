@@ -16,6 +16,7 @@ const listJobSeekersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(200).optional().default(60),
   search: z.string().optional().default(""),
+  status: z.string().optional().default(""),
 });
 
 jobSeekerRouter.get(
@@ -28,34 +29,54 @@ jobSeekerRouter.get(
       const limit = parsed.limit;
       const offset = (page - 1) * limit;
       const search = parsed.search.trim();
+      const status = parsed.status.trim().toLowerCase();
 
-      let where = "WHERE LOWER(COALESCE(role, '')) IN ('job_seeker', 'job seeker', 'jobseeker')";
       const params: unknown[] = [];
       let paramIndex = 1;
 
+      let where = "WHERE UPPER(r.name) = 'JOB_SEEKER'";
+
+      if (status === 'active') {
+        where += ' AND u.is_active = true AND COALESCE(u.is_blocked, false) = false';
+      } else if (status === 'inactive') {
+        where += ' AND u.is_active = false';
+      } else if (status === 'blocked') {
+        where += ' AND COALESCE(u.is_blocked, false) = true';
+      }
+
       if (search) {
         where += ` AND (
-          email ILIKE $${paramIndex} OR
-          first_name ILIKE $${paramIndex} OR
-          last_name ILIKE $${paramIndex} OR
-          (first_name || ' ' || last_name) ILIKE $${paramIndex}
+          u.email ILIKE $${paramIndex} OR
+          u.first_name ILIKE $${paramIndex} OR
+          u.last_name ILIKE $${paramIndex} OR
+          (u.first_name || ' ' || u.last_name) ILIKE $${paramIndex}
         )`;
         params.push(`%${search}%`);
         paramIndex++;
       }
 
       const countResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM users ${where}`,
+        `SELECT COUNT(DISTINCT u.id) as count
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id
+         ${where}`,
         params,
       );
       const total = Number(countResult.rows?.[0]?.count ?? 0);
       const pages = Math.max(1, Math.ceil(total / limit));
 
       const listResult = await query(
-        `SELECT id, email, first_name, last_name, phone, is_active, created_at
-         FROM users
+        `SELECT DISTINCT
+           u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active,
+           COALESCE(u.is_blocked, false) as is_blocked,
+           u.blocked_at, u.block_reason,
+           u.created_at
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id
          ${where}
-         ORDER BY created_at DESC
+         ORDER BY u.created_at DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...params, limit, offset],
       );

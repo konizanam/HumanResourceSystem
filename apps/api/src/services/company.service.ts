@@ -10,9 +10,25 @@ export class CompanyService {
     this.db = new DatabaseService();
   }
 
+  private normalizePermissionName(input: string) {
+    return String(input ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  private async isAdminUser(userId: string): Promise<boolean> {
+    const roles = await this.db.getUserRoles(userId);
+    return Array.isArray(roles) && roles.some((r) => String(r).toUpperCase() === 'ADMIN');
+  }
+
+  private async hasSystemCompanyAccess(userId: string): Promise<boolean> {
+    if (await this.isAdminUser(userId)) return true;
+    const userPermissions = await this.db.getUserPermissions(userId);
+    const normalized = new Set((userPermissions ?? []).map((p) => this.normalizePermissionName(p)));
+    return normalized.has(this.normalizePermissionName('MANAGE_USERS'));
+  }
+
   async getAllCompanies(userId: string) {
     const userPermissions = await this.db.getUserPermissions(userId);
-    const isSystemManager = userPermissions.includes('MANAGE_USERS');
+    const isSystemManager = await this.hasSystemCompanyAccess(userId);
     const userRoles = await this.db.getUserRoles(userId);
     const isJobSeeker = userRoles.includes('JOB_SEEKER');
 
@@ -73,10 +89,12 @@ export class CompanyService {
   }
 
   async getCompanyById(companyId: string, userId: string) {
-    // Check if user has access to this company
-    const hasAccess = await this.db.checkCompanyAccess(companyId, userId);
-    if (!hasAccess) {
-      throw new ForbiddenError('You do not have access to this company');
+    const isSystemManager = await this.hasSystemCompanyAccess(userId);
+    if (!isSystemManager) {
+      const hasAccess = await this.db.checkCompanyAccess(companyId, userId);
+      if (!hasAccess) {
+        throw new ForbiddenError('You do not have access to this company');
+      }
     }
 
     const result = await query(
@@ -296,10 +314,12 @@ export class CompanyService {
   }
 
   async getCompanyUsers(companyId: string, userId: string) {
-    // Check if user has access to this company
-    const hasAccess = await this.db.checkCompanyAccess(companyId, userId);
-    if (!hasAccess) {
-      throw new ForbiddenError('You do not have access to this company');
+    const isSystemManager = await this.hasSystemCompanyAccess(userId);
+    if (!isSystemManager) {
+      const hasAccess = await this.db.checkCompanyAccess(companyId, userId);
+      if (!hasAccess) {
+        throw new ForbiddenError('You do not have access to this company');
+      }
     }
 
     const result = await query(
@@ -370,16 +390,11 @@ export class CompanyService {
   }
 
   private async checkCompanyPermission(companyId: string, userId: string, permission: string): Promise<boolean> {
-    // MANAGE_USERS acts as system admin capability in permission-based checks.
-    const userPermissions = await this.db.getUserPermissions(userId);
-    if (userPermissions.includes('MANAGE_USERS')) {
-      return true;
-    }
+    if (await this.hasSystemCompanyAccess(userId)) return true;
 
-    // Check if user has specific permission and is associated with company
-    if (!userPermissions.includes(permission)) {
-      return false;
-    }
+    const userPermissions = await this.db.getUserPermissions(userId);
+    const normalized = new Set((userPermissions ?? []).map((p) => this.normalizePermissionName(p)));
+    if (!normalized.has(this.normalizePermissionName(permission))) return false;
 
     // Check if user is associated with company
     return this.db.checkCompanyAccess(companyId, userId);

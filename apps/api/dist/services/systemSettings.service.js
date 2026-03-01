@@ -5,11 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCompanyApprovalMode = getCompanyApprovalMode;
 exports.setCompanyApprovalMode = setCompanyApprovalMode;
+exports.getSystemSettings = getSystemSettings;
+exports.updateSystemSettings = updateSystemSettings;
 const promises_1 = __importDefault(require("fs/promises"));
 const path_1 = __importDefault(require("path"));
 const DEFAULT_SETTINGS = {
     version: 1,
     company_approval_mode: "auto_approved",
+    system_name: "Human Resource System",
+    branding_logo_url: "",
 };
 function settingsFilePath() {
     // When compiled, __dirname is .../apps/api/dist/services.
@@ -24,9 +28,15 @@ async function readSettings() {
         const mode = parsed.company_approval_mode === "pending" || parsed.company_approval_mode === "auto_approved"
             ? parsed.company_approval_mode
             : DEFAULT_SETTINGS.company_approval_mode;
+        const systemNameRaw = typeof parsed.system_name === "string" ? parsed.system_name.trim() : "";
+        const brandingLogoRaw = typeof parsed.branding_logo_url === "string"
+            ? parsed.branding_logo_url.trim()
+            : "";
         return {
             version: 1,
             company_approval_mode: mode,
+            system_name: systemNameRaw || DEFAULT_SETTINGS.system_name,
+            branding_logo_url: brandingLogoRaw,
         };
     }
     catch {
@@ -50,5 +60,22 @@ async function setCompanyApprovalMode(mode) {
     settings.company_approval_mode = mode;
     await writeSettings(settings);
     return settings.company_approval_mode;
+}
+async function getSystemSettings() {
+    return readSettings();
+}
+async function updateSystemSettings(changes) {
+    const settings = await readSettings();
+    if (typeof changes.system_name === "string") {
+        const nextName = changes.system_name.trim();
+        if (nextName) {
+            settings.system_name = nextName;
+        }
+    }
+    if (typeof changes.branding_logo_url === "string") {
+        settings.branding_logo_url = changes.branding_logo_url.trim();
+    }
+    await writeSettings(settings);
+    return settings;
 }
 //# sourceMappingURL=systemSettings.service.js.map

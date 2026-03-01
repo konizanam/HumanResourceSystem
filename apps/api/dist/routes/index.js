@@ -21,8 +21,10 @@ const jobSeekerCertificationsRoutes_1 = __importDefault(require("./jobSeekerCert
 const notificationsRoutes_1 = __importDefault(require("./notificationsRoutes"));
 const adminRoutes_1 = __importDefault(require("./adminRoutes"));
 const rolePermissionRoutes_1 = __importDefault(require("./rolePermissionRoutes"));
+const public_routes_1 = __importDefault(require("./public.routes"));
 const router = (0, express_1.Router)();
 router.use('/auth', auth_routes_1.authRouter);
+router.use('/public', public_routes_1.default);
 router.use('/profile', profile_routes_1.default);
 router.use('/companies', company_routes_1.default);
 router.use('/documents', document_routes_1.default);

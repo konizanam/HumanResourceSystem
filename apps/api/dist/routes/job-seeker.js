@@ -9,6 +9,58 @@ exports.jobSeekerRouter = (0, express_1.Router)();
 // All routes require authentication
 exports.jobSeekerRouter.use(auth_1.authenticate);
 /* ================================================================== */
+/*  LIST JOB SEEKERS (admin/employer/HR view)                          */
+/* ================================================================== */
+const listJobSeekersQuerySchema = zod_1.z.object({
+    page: zod_1.z.coerce.number().int().min(1).optional().default(1),
+    limit: zod_1.z.coerce.number().int().min(1).max(200).optional().default(60),
+    search: zod_1.z.string().optional().default(""),
+});
+exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users", "manage_users", "view_applications", "manage_applications"), async (req, res, next) => {
+    try {
+        const parsed = listJobSeekersQuerySchema.parse(req.query);
+        const page = parsed.page;
+        const limit = parsed.limit;
+        const offset = (page - 1) * limit;
+        const search = parsed.search.trim();
+        const params = [];
+        let paramIndex = 1;
+        let where = "WHERE UPPER(r.name) = 'JOB_SEEKER'";
+        if (search) {
+            where += ` AND (
+          u.email ILIKE $${paramIndex} OR
+          u.first_name ILIKE $${paramIndex} OR
+          u.last_name ILIKE $${paramIndex} OR
+          (u.first_name || ' ' || u.last_name) ILIKE $${paramIndex}
+        )`;
+            params.push(`%${search}%`);
+            paramIndex++;
+        }
+        const countResult = await (0, db_1.query)(`SELECT COUNT(DISTINCT u.id) as count
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id
+         ${where}`, params);
+        const total = Number(countResult.rows?.[0]?.count ?? 0);
+        const pages = Math.max(1, Math.ceil(total / limit));
+        const listResult = await (0, db_1.query)(`SELECT DISTINCT
+           u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active, u.created_at
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id
+         ${where}
+         ORDER BY u.created_at DESC
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`, [...params, limit, offset]);
+        return res.json({
+            job_seekers: listResult.rows,
+            pagination: { page, limit, total, pages },
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+});
+/* ================================================================== */
 /*  PROFILE (professional summary)                                     */
 /* ================================================================== */
 exports.jobSeekerRouter.get("/profile", async (req, res, next) => {

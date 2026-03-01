@@ -14,6 +14,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
 const swagger_1 = require("./swagger");
+const crudAudit_1 = require("./middleware/crudAudit");
 // Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../.env') });
 // Create Express application
@@ -43,6 +44,8 @@ app.use((req, res, next) => {
     console.log(`[${timestamp}] ${req.method} ${req.path}`);
     next();
 });
+// Centralized audit logging for successful CRUD operations
+app.use(crudAudit_1.crudAuditMiddleware);
 // =====================
 // Health Check Endpoints
 // =====================

@@ -145,6 +145,10 @@ exports.authRouter.post("/register", async (req, res, next) => {
        VALUES ($1, $2, $3, $4, FALSE)
        RETURNING id`, [data.firstName, data.lastName, data.email, passwordHash]);
         const userId = userRows[0].id;
+        res.locals.auditUserId = userId;
+        res.locals.auditAction = "AUTH_REGISTER";
+        res.locals.auditTargetType = "auth";
+        res.locals.auditTargetId = userId;
         // Assign JOB_SEEKER role
         await client.query(`INSERT INTO user_roles (user_id, role_id)
        SELECT $1, id FROM roles WHERE name = 'JOB_SEEKER'`, [userId]);
@@ -254,6 +258,10 @@ exports.authRouter.post("/login", async (req, res, next) => {
             name: pub.name,
             roles: user.roles,
         });
+        res.locals.auditUserId = user.id;
+        res.locals.auditAction = "AUTH_LOGIN_CHALLENGE";
+        res.locals.auditTargetType = "auth";
+        res.locals.auditTargetId = user.id;
         // Best-effort: send the OTP to the user's email.
         void sendTwoFactorCodeEmail({
             to: user.email,
@@ -301,6 +309,10 @@ exports.authRouter.post("/2fa/challenge", async (req, res, next) => {
             name: pub.name,
             roles: user.roles,
         });
+        res.locals.auditUserId = user.id;
+        res.locals.auditAction = "AUTH_2FA_CHALLENGE";
+        res.locals.auditTargetType = "auth";
+        res.locals.auditTargetId = user.id;
         void sendTwoFactorCodeEmail({
             to: user.email,
             userFullName: pub.name,
@@ -352,6 +364,10 @@ exports.authRouter.post("/2fa/verify", async (req, res, next) => {
             name: challenge.name,
             roles: challenge.roles,
         });
+        res.locals.auditUserId = challenge.userId;
+        res.locals.auditAction = "AUTH_LOGIN_SUCCESS";
+        res.locals.auditTargetType = "auth";
+        res.locals.auditTargetId = challenge.userId;
         return res.json({
             tokenType: "Bearer",
             accessToken,
@@ -437,6 +453,10 @@ exports.authRouter.post("/reset-password", async (req, res, next) => {
            password_reset_requested_at = NULL,
            updated_at = NOW()
        WHERE id = $2`, [passwordHash, rows[0].id]);
+        res.locals.auditUserId = rows[0].id;
+        res.locals.auditAction = "AUTH_PASSWORD_RESET";
+        res.locals.auditTargetType = "auth";
+        res.locals.auditTargetId = rows[0].id;
         return res.json({ message: "Password has been reset successfully" });
     }
     catch (err) {

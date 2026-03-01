@@ -10,9 +10,20 @@ import {
 } from '../services/systemSettings.service';
 import { logAudit } from '../helpers/auditLogger';
 
+function normalizePermissionName(input: string) {
+  return String(input ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function isAdmin(req: Request): boolean {
+  const roles = Array.isArray(req.user?.roles) ? req.user?.roles : [];
+  return roles.some((r) => String(r).toUpperCase() === 'ADMIN');
+}
+
 function hasPermission(req: Request, permission: string): boolean {
+  if (isAdmin(req)) return true;
   const permissions = Array.isArray(req.user?.permissions) ? req.user?.permissions : [];
-  return permissions.includes(permission);
+  const normalized = new Set(permissions.map(normalizePermissionName));
+  return normalized.has(normalizePermissionName(permission));
 }
 
 function hasAnyPermission(req: Request, candidates: string[]): boolean {
