@@ -1503,14 +1503,16 @@ export function JobsPage() {
                           {alreadyApplied ? "Applied" : "Apply"}
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn btnGhost btnSm"
-                        onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
-                        disabled={saving}
-                      >
-                        {isOpen ? "Hide Details" : "View Details"}
-                      </button>
+                      {!isOpen ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                          disabled={saving}
+                        >
+                          View Details
+                        </button>
+                      ) : null}
                     </div>
 
                     {isOpen && (
@@ -1523,6 +1525,16 @@ export function JobsPage() {
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
                           <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                        </div>
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="btn btnGhost btnSm"
+                            onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                            disabled={saving}
+                          >
+                            Hide Details
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1572,14 +1584,16 @@ export function JobsPage() {
                     </div>
 
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        className="btn btnGhost btnSm"
-                        onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
-                        disabled={saving}
-                      >
-                        {isOpen ? "Hide Details" : "View Details"}
-                      </button>
+                      {!isOpen ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm"
+                          onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                          disabled={saving}
+                        >
+                          View Details
+                        </button>
+                      ) : null}
                       {canManageThisJob ? (
                         <button
                           type="button"
@@ -1638,6 +1652,16 @@ export function JobsPage() {
                         <div style={{ marginTop: 12 }}>
                           <span className="readLabel">Description</span>
                           <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                        </div>
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="btn btnGhost btnSm"
+                            onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                            disabled={saving}
+                          >
+                            Hide Details
+                          </button>
                         </div>
                       </div>
                     ) : null}
