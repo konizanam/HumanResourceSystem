@@ -391,9 +391,13 @@ input[type="radio"][required] {
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
+  min-height: 32px;
   border-radius: 12px;
   border: 1px solid transparent;
   color: color-mix(in srgb, var(--text) 86%, var(--menu-icon-active));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
@@ -434,8 +438,8 @@ input[type="radio"][required] {
 }
 
 .navItemIcon .icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .navItemLabel {
@@ -2329,6 +2333,8 @@ input[type="radio"][required] {
   align-items: center;
   gap: 8px;
   border-color: var(--menu-icon);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .actionMenuBtn::after {
@@ -2368,10 +2374,12 @@ input[type="radio"][required] {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   cursor: pointer;
   color: var(--text);
   font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
 }
 
 .actionMenuItem:hover {
