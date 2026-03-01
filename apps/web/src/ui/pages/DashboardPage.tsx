@@ -5,7 +5,6 @@ import {
   getAdminStatistics,
   getCompany,
   getEmployerDashboard,
-  getFullProfile,
   getJob,
   getPublicCompany,
   listJobCategories,
@@ -18,7 +17,6 @@ import {
   type AdminStatistics,
   type AuditLog,
   type EmployerDashboardData,
-  type FullProfile,
   type JobApplication,
   type JobListItem,
 } from "../api/client";
@@ -117,7 +115,6 @@ export function DashboardPage() {
     pages: 1,
   });
   const [seekerApplications, setSeekerApplications] = useState<JobApplication[]>([]);
-  const [seekerProfile, setSeekerProfile] = useState<FullProfile | null>(null);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
   const [seekerCompanies, setSeekerCompanies] = useState<Company[]>([]);
   const [seekerCategories, setSeekerCategories] = useState<Array<{ id: string; name: string }>>([]);
@@ -143,15 +140,16 @@ export function DashboardPage() {
     companies: 0,
     jobsLast30Days: 0,
   });
+  const [platformStatusFilter, setPlatformStatusFilter] = useState<string>("all");
+  const [platformWindowDays, setPlatformWindowDays] = useState<number>(14);
+  const [seekerStatusFilter, setSeekerStatusFilter] = useState<string>("all");
+  const [seekerWindowDays, setSeekerWindowDays] = useState<number>(14);
 
-  const canViewAdminDashboard = hasPermission("MANAGE_USERS");
+  const canViewAdminDashboard = hasPermission("ADMIN_DASHBOARD", "MANAGE_USERS");
   const canViewEmployerDashboard =
     !canViewAdminDashboard &&
-    (hasPermission("CREATE_JOB") || hasPermission("VIEW_APPLICATIONS"));
-  const isJobSeekerUser =
-    !canViewAdminDashboard &&
-    !hasPermission("CREATE_JOB") &&
-    !hasPermission("VIEW_APPLICATIONS");
+    hasPermission("EMPLOYER_DASHBOARD", "CREATE_JOB");
+  const isJobSeekerUser = !canViewAdminDashboard && !canViewEmployerDashboard;
   const isStandardDashboardUser = !isJobSeekerUser;
   const canViewSeekerDashboard = isJobSeekerUser;
   const canApplyJob = canViewSeekerDashboard && hasPermission("APPLY_JOB");
@@ -180,10 +178,9 @@ export function DashboardPage() {
     };
 
     const loadJobSeekerDashboard = async () => {
-      const [jobs, applications, profile, companies] = await Promise.all([
+      const [jobs, applications, companies] = await Promise.all([
         listJobs(accessToken, { page: seekerJobsPage, limit: 5, status: "active" }),
         listMyApplications(accessToken, { page: seekerApplicationsPage, limit: 5, sort: "newest" }),
-        getFullProfile(accessToken),
         listCompanies(accessToken),
       ]);
       setSeekerJobs(jobs.jobs ?? []);
@@ -200,7 +197,6 @@ export function DashboardPage() {
         total: Number(applications.pagination?.total ?? 0),
         pages: Number(applications.pagination?.pages ?? 1),
       });
-      setSeekerProfile(profile);
       setSeekerCompanies(Array.isArray(companies) ? companies : []);
     };
 
@@ -255,15 +251,16 @@ export function DashboardPage() {
       setEmployerData(null);
       setSeekerJobs([]);
       setSeekerApplications([]);
-      setSeekerProfile(null);
       setSeekerCompanies([]);
       setPlatformJobsSnapshot([]);
       setPlatformStats({ totalJobs: 0, activeJobs: 0, companies: 0, jobsLast30Days: 0 });
 
-      try {
-        await loadUniversalDashboard();
-      } catch {
-        // Keep dashboard visible even when summary widgets cannot be loaded.
+      if (!canViewSeekerDashboard) {
+        try {
+          await loadUniversalDashboard();
+        } catch {
+          // Keep dashboard visible even when summary widgets cannot be loaded.
+        }
       }
 
       if (canViewAdminDashboard) {
@@ -316,13 +313,29 @@ export function DashboardPage() {
     void load();
   }, [load]);
 
+  const seekerFilteredApplications = useMemo(() => {
+    const now = Date.now();
+    const minDate = now - seekerWindowDays * 24 * 60 * 60 * 1000;
+    return (seekerApplications ?? []).filter((app) => {
+      const status = String(app.status ?? "").trim().toLowerCase();
+      const matchStatus = seekerStatusFilter === "all" || status === seekerStatusFilter;
+      if (!matchStatus) return false;
+
+      const rawDate = (app as any).applied_at ?? app.created_at;
+      if (!rawDate) return false;
+      const ts = new Date(String(rawDate)).getTime();
+      if (!Number.isFinite(ts)) return false;
+      return ts >= minDate;
+    });
+  }, [seekerApplications, seekerStatusFilter, seekerWindowDays]);
+
   const seekerStatusBreakdown = useMemo(() => {
-    return seekerApplications.reduce<Record<string, number>>((acc, app) => {
+    return seekerFilteredApplications.reduce<Record<string, number>>((acc, app) => {
       const key = String(app.status ?? "unknown");
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
-  }, [seekerApplications]);
+  }, [seekerFilteredApplications]);
 
   const seekerStatusBreakdownList = useMemo(() => {
     return Object.entries(seekerStatusBreakdown)
@@ -333,8 +346,32 @@ export function DashboardPage() {
   }, [seekerStatusBreakdown]);
 
   const seekerActivitySpark = useMemo(() => {
-    return toDailySeries(seekerApplications, 14);
-  }, [seekerApplications]);
+    return toDailySeries(seekerFilteredApplications, seekerWindowDays);
+  }, [seekerFilteredApplications, seekerWindowDays]);
+
+  const seekerStatusChart = useMemo(() => {
+    return toChartData(seekerStatusBreakdown, 8);
+  }, [seekerStatusBreakdown]);
+
+  const seekerStatCards = useMemo(() => {
+    const total = seekerFilteredApplications.length;
+    const shortlisted = seekerFilteredApplications.filter((app) =>
+      String(app.status ?? "").toLowerCase().includes("short")
+    ).length;
+    const interviews = seekerFilteredApplications.filter((app) =>
+      String(app.status ?? "").toLowerCase().includes("interview")
+    ).length;
+    const hired = seekerFilteredApplications.filter((app) =>
+      ["hired", "accepted"].includes(String(app.status ?? "").toLowerCase())
+    ).length;
+
+    return [
+      { label: "Applications (filtered)", value: total },
+      { label: "Shortlisted", value: shortlisted },
+      { label: "Interviews", value: interviews },
+      { label: "Hired", value: hired },
+    ];
+  }, [seekerFilteredApplications]);
 
   const seekerAppliedJobIds = useMemo(() => {
     return new Set(
@@ -420,14 +457,14 @@ export function DashboardPage() {
   }, [accessToken, canViewSeekerDashboard, permissionsLoading]);
 
   const seekerRecentApplications = useMemo(() => {
-    return [...(seekerApplications ?? [])].sort((a, b) => {
+    return [...(seekerFilteredApplications ?? [])].sort((a, b) => {
       const aRaw = (a as any).applied_at ?? a.created_at;
       const bRaw = (b as any).applied_at ?? b.created_at;
       const aT = aRaw ? new Date(aRaw).getTime() : 0;
       const bT = bRaw ? new Date(bRaw).getTime() : 0;
       return bT - aT;
     });
-  }, [seekerApplications]);
+  }, [seekerFilteredApplications]);
 
   const renderSeekerJobsPager = useCallback(() => {
     if (seekerJobsPagination.pages <= 1) return null;
@@ -555,19 +592,6 @@ export function DashboardPage() {
       setCompanyModalLoading(false);
     }
   }, [accessToken, canViewSeekerDashboard, seekerCompanies]);
-
-  const seekerCompletion = useMemo(() => {
-    const total = 5;
-    const done =
-      (seekerProfile?.personalDetails ? 1 : 0) +
-      ((seekerProfile?.addresses?.length ?? 0) > 0 ? 1 : 0) +
-      ((seekerProfile?.education?.length ?? 0) > 0 ? 1 : 0) +
-      ((seekerProfile?.experience?.length ?? 0) > 0 ? 1 : 0) +
-      ((seekerProfile?.references?.length ?? 0) > 0 ? 1 : 0);
-
-    const percent = Math.round((done / total) * 100);
-    return { done, total, percent };
-  }, [seekerProfile]);
 
   const employerStatusChart = useMemo(() => {
     const breakdown = (employerData?.recent_applications ?? []).reduce<Record<string, number>>(
@@ -697,41 +721,71 @@ export function DashboardPage() {
     ];
   }, [adminStats]);
 
+  const filteredPlatformJobs = useMemo(() => {
+    const selectedStatus = platformStatusFilter.trim().toLowerCase();
+    if (!selectedStatus || selectedStatus === "all") return platformJobsSnapshot;
+    return (platformJobsSnapshot ?? []).filter(
+      (job) => String(job.status ?? "").trim().toLowerCase() === selectedStatus,
+    );
+  }, [platformJobsSnapshot, platformStatusFilter]);
+
   const platformStatCards = useMemo(() => {
+    const jobsForCards = filteredPlatformJobs;
+    const now = Date.now();
+    const minDate = now - platformWindowDays * 24 * 60 * 60 * 1000;
+    const jobsInWindow = jobsForCards.filter((job) => {
+      if (!job.created_at) return false;
+      const ts = new Date(String(job.created_at)).getTime();
+      return Number.isFinite(ts) && ts >= minDate;
+    }).length;
+
+    const activeJobs = jobsForCards.filter((job) => {
+      const status = String(job.status ?? "").toLowerCase();
+      return status === "active" || status === "approved";
+    }).length;
+
     return [
-      { label: "Total Jobs", value: platformStats.totalJobs },
-      { label: "Active Jobs", value: platformStats.activeJobs },
+      { label: "Total Jobs (filtered)", value: jobsForCards.length || platformStats.totalJobs },
+      { label: "Active Jobs", value: activeJobs },
       { label: "Total Companies", value: platformStats.companies },
-      { label: "Jobs Posted (30 days)", value: platformStats.jobsLast30Days },
+      { label: `Jobs Posted (${platformWindowDays} days)`, value: jobsInWindow },
     ];
-  }, [platformStats.activeJobs, platformStats.companies, platformStats.jobsLast30Days, platformStats.totalJobs]);
+  }, [filteredPlatformJobs, platformStats.companies, platformStats.totalJobs, platformWindowDays]);
 
   const platformJobsStatusChart = useMemo(() => {
-    const breakdown = (platformJobsSnapshot ?? []).reduce<Record<string, number>>((acc, job) => {
+    const breakdown = (filteredPlatformJobs ?? []).reduce<Record<string, number>>((acc, job) => {
       const key = String(job.status ?? "unknown").trim().toLowerCase() || "unknown";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
     return toChartData(breakdown, 6);
-  }, [platformJobsSnapshot]);
+  }, [filteredPlatformJobs]);
 
   const platformEmploymentTypeChart = useMemo(() => {
-    const breakdown = (platformJobsSnapshot ?? []).reduce<Record<string, number>>((acc, job) => {
+    const breakdown = (filteredPlatformJobs ?? []).reduce<Record<string, number>>((acc, job) => {
       const key = String(job.employment_type ?? "unspecified").trim().toLowerCase() || "unspecified";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
     return toChartData(breakdown, 6);
-  }, [platformJobsSnapshot]);
+  }, [filteredPlatformJobs]);
 
   const platformPostingTrend = useMemo(() => {
+    const now = Date.now();
+    const minDate = now - platformWindowDays * 24 * 60 * 60 * 1000;
+    const inRange = (filteredPlatformJobs ?? []).filter((job) => {
+      if (!job.created_at) return false;
+      const ts = new Date(String(job.created_at)).getTime();
+      return Number.isFinite(ts) && ts >= minDate;
+    });
+
     return toDailySeries(
-      platformJobsSnapshot.map((job) => ({
+      inRange.map((job) => ({
         created_at: job.created_at ?? undefined,
       })),
-      14,
+      platformWindowDays,
     );
-  }, [platformJobsSnapshot]);
+  }, [filteredPlatformJobs, platformWindowDays]);
 
   if (loading || permissionsLoading) {
     return <div className="page"><h1 className="pageTitle">Dashboard</h1><p className="pageText">Loading...</p></div>;
@@ -743,49 +797,82 @@ export function DashboardPage() {
       {success && <div className="successBox">{success}</div>}
       {error && <div className="errorBox">{error}</div>}
 
-      <div className="dashCard" style={{ marginBottom: 12 }}>
-        <div className="dashCardHeader">
-          <h2 className="dashCardTitle">Platform Overview</h2>
-          <span className="dashCardMeta">Visible to all users</span>
-        </div>
-        <div className="statsCardsGrid" role="region" aria-label="Universal dashboard statistics">
-          {platformStatCards.map((card, idx) => {
-            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-            return (
-              <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
-                <div className="readLabel">{card.label}</div>
-                <div className="statsCardValue">{card.value}</div>
+      {!canViewSeekerDashboard ? (
+        <>
+          <div className="dashCard" style={{ marginBottom: 12 }}>
+            <div className="dashCardHeader">
+              <h2 className="dashCardTitle">Platform Overview</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <label className="readLabel" htmlFor="platform-status-filter" style={{ margin: 0 }}>Status</label>
+                <select
+                  id="platform-status-filter"
+                  className="input"
+                  value={platformStatusFilter}
+                  onChange={(e) => setPlatformStatusFilter(e.target.value)}
+                  style={{ width: 150, padding: "6px 8px", fontSize: 13 }}
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="closed">Closed</option>
+                  <option value="draft">Draft</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                </select>
+                <label className="readLabel" htmlFor="platform-window-filter" style={{ margin: 0 }}>Window</label>
+                <select
+                  id="platform-window-filter"
+                  className="input"
+                  value={String(platformWindowDays)}
+                  onChange={(e) => setPlatformWindowDays(Number(e.target.value) || 14)}
+                  style={{ width: 120, padding: "6px 8px", fontSize: 13 }}
+                >
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                </select>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="dashGraphs" style={{ marginBottom: 12 }}>
-        <div className="dashCard">
-          <div className="dashCardHeader">
-            <h2 className="dashCardTitle">New Job Posts Trend</h2>
-            <span className="dashCardMeta">Last 14 days</span>
+            </div>
+            <div className="statsCardsGrid" role="region" aria-label="Universal dashboard statistics">
+              {platformStatCards.map((card, idx) => {
+                const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+                return (
+                  <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+                    <div className="readLabel">{card.label}</div>
+                    <div className="statsCardValue">{card.value}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <Sparkline values={platformPostingTrend} />
-        </div>
 
-        <div className="dashCard">
-          <div className="dashCardHeader">
-            <h2 className="dashCardTitle">Job Status Distribution</h2>
-            <span className="dashCardMeta">Current snapshot</span>
-          </div>
-          <BarChart data={platformJobsStatusChart} emptyText="No job status data yet." />
-        </div>
+          <div className="dashGraphs" style={{ marginBottom: 12 }}>
+            <div className="dashCard">
+              <div className="dashCardHeader">
+                <h2 className="dashCardTitle">New Job Posts Trend</h2>
+                <span className="dashCardMeta">Last {platformWindowDays} days</span>
+              </div>
+              <Sparkline values={platformPostingTrend} />
+            </div>
 
-        <div className="dashCard">
-          <div className="dashCardHeader">
-            <h2 className="dashCardTitle">Employment Types</h2>
-            <span className="dashCardMeta">Current snapshot</span>
+            <div className="dashCard">
+              <div className="dashCardHeader">
+                <h2 className="dashCardTitle">Job Status Distribution</h2>
+                <span className="dashCardMeta">Current snapshot</span>
+              </div>
+              <BarChart data={platformJobsStatusChart} emptyText="No job status data yet." />
+            </div>
+
+            <div className="dashCard">
+              <div className="dashCardHeader">
+                <h2 className="dashCardTitle">Employment Types</h2>
+                <span className="dashCardMeta">Current snapshot</span>
+              </div>
+              <BarChart data={platformEmploymentTypeChart} emptyText="No employment type data yet." />
+            </div>
           </div>
-          <BarChart data={platformEmploymentTypeChart} emptyText="No employment type data yet." />
-        </div>
-      </div>
+        </>
+      ) : null}
 
       {isStandardDashboardUser && (
         <>
@@ -924,24 +1011,71 @@ export function DashboardPage() {
 
       {canViewSeekerDashboard && (
         <>
+          <div className="dashCard" style={{ marginBottom: 12 }}>
+            <div className="dashCardHeader">
+              <h2 className="dashCardTitle">My Dashboard Filters</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <label className="readLabel" htmlFor="seeker-status-filter" style={{ margin: 0 }}>Status</label>
+                <select
+                  id="seeker-status-filter"
+                  className="input"
+                  value={seekerStatusFilter}
+                  onChange={(e) => setSeekerStatusFilter(e.target.value)}
+                  style={{ width: 170, padding: "6px 8px", fontSize: 13 }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="applied">Applied</option>
+                  <option value="screening">Screening</option>
+                  <option value="long_listed">Longlisted</option>
+                  <option value="shortlisted">Shortlisted</option>
+                  <option value="oral_interview">Interview</option>
+                  <option value="hired">Hired</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="withdrawn">Withdrawn</option>
+                </select>
+                <label className="readLabel" htmlFor="seeker-window-filter" style={{ margin: 0 }}>Window</label>
+                <select
+                  id="seeker-window-filter"
+                  className="input"
+                  value={String(seekerWindowDays)}
+                  onChange={(e) => setSeekerWindowDays(Number(e.target.value) || 14)}
+                  style={{ width: 120, padding: "6px 8px", fontSize: 13 }}
+                >
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                </select>
+              </div>
+            </div>
+            <div className="statsCardsGrid" role="region" aria-label="Job seeker dashboard statistics">
+              {seekerStatCards.map((card, idx) => {
+                const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+                return (
+                  <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+                    <div className="readLabel">{card.label}</div>
+                    <div className="statsCardValue">{card.value}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="dashGraphs">
             <div className="dashCard">
               <div className="dashCardHeader">
-                <h2 className="dashCardTitle">Profile Completion</h2>
-                <span className="dashCardMeta">Keep it updated</span>
+                <h2 className="dashCardTitle">Application Activity</h2>
+                <span className="dashCardMeta">Last {seekerWindowDays} days</span>
               </div>
-              <ProgressBar value={seekerCompletion.percent} />
-              <div className="dashCardFooter">
-                <Link className="btn btnGhost btnSm" to="/app/job-seekers">Complete Profile</Link>
-              </div>
+              <Sparkline values={seekerActivitySpark} />
             </div>
 
             <div className="dashCard">
               <div className="dashCardHeader">
-                <h2 className="dashCardTitle">Application Activity</h2>
-                <span className="dashCardMeta">Last 14 days</span>
+                <h2 className="dashCardTitle">My Status Distribution</h2>
+                <span className="dashCardMeta">Filtered view</span>
               </div>
-              <Sparkline values={seekerActivitySpark} />
+              <BarChart data={seekerStatusChart} emptyText="No applications in selected filters." />
             </div>
           </div>
 
@@ -1428,20 +1562,9 @@ function BarChart({ data, emptyText }: { data: ChartDatum[]; emptyText: string }
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  return (
-    <div className="dashProgress" aria-label={`Completion ${v}%`}>
-      <div className="dashProgressTrack" aria-hidden="true">
-        <div className="dashProgressFill" style={{ width: `${v}%` }} />
-      </div>
-      <div className="dashProgressMeta">{v}%</div>
-    </div>
-  );
-}
-
 function Sparkline({ values }: { values: number[] }) {
   const clean = (values ?? []).map((n) => (Number.isFinite(n) ? Number(n) : 0));
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const max = Math.max(1, ...clean);
   const min = Math.min(0, ...clean);
   const range = Math.max(1, max - min);
@@ -1458,15 +1581,71 @@ function Sparkline({ values }: { values: number[] }) {
   });
 
   const d = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+  const activeIndex =
+    hoveredIndex === null ? null : Math.max(0, Math.min(clean.length - 1, hoveredIndex));
+  const activePoint = activeIndex === null ? null : pts[activeIndex];
+  const activeValue = activeIndex === null ? null : clean[activeIndex];
 
   return (
-    <div className="dashSpark">
-      <svg viewBox={`0 0 ${w} ${h}`} className="dashSparkSvg" aria-hidden="true">
+    <div className="dashSpark" style={{ position: "relative" }}>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="dashSparkSvg"
+        aria-hidden="true"
+        onMouseLeave={() => setHoveredIndex(null)}
+        onMouseMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const ratio = rect.width > 0 ? x / rect.width : 0;
+          const idx = Math.round(ratio * Math.max(0, clean.length - 1));
+          setHoveredIndex(Math.max(0, Math.min(clean.length - 1, idx)));
+        }}
+      >
         <polyline className="dashSparkLine" points={d} />
         {pts.map((p, idx) => (
           <circle key={idx} className="dashSparkDot" cx={p.x} cy={p.y} r={3.25} />
         ))}
+        {activePoint ? (
+          <>
+            <line
+              x1={activePoint.x}
+              x2={activePoint.x}
+              y1={padY / 2}
+              y2={h - padY / 2}
+              stroke="var(--menu-icon)"
+              strokeDasharray="3 3"
+              strokeWidth={1}
+              opacity={0.75}
+            />
+            <circle
+              cx={activePoint.x}
+              cy={activePoint.y}
+              r={4.25}
+              fill="var(--menu-icon-active)"
+              stroke="#fff"
+              strokeWidth={1.5}
+            />
+          </>
+        ) : null}
       </svg>
+      {activePoint !== null && activeValue !== null ? (
+        <div
+          className="dashCardMeta"
+          style={{
+            position: "absolute",
+            top: 4,
+            left: `${Math.max(8, Math.min(220, (activePoint.x / w) * 100))}%`,
+            transform: "translateX(-50%)",
+            background: "var(--card)",
+            border: "1px solid var(--stroke)",
+            borderRadius: 8,
+            padding: "2px 8px",
+            pointerEvents: "none",
+          }}
+        >
+          Value: {activeValue}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 ## Page: Dashboard
 - View page: authenticated user
-- Admin widgets (system statistics + audit preview): `MANAGE_USERS`
-- Employer widgets (my jobs/applications overview): `CREATE_JOB` (without `MANAGE_USERS`)
-- Job seeker widgets (profile completion/jobs/applications): authenticated user without `MANAGE_USERS`/`CREATE_JOB`
+- Admin widgets (system statistics + audit preview): `ADMIN_DASHBOARD`
+- Employer widgets (my jobs/applications overview): `EMPLOYER_DASHBOARD`
+- Job seeker widgets (my dashboard filters stats/charts): `JOB_SEEKER_DASHBOARD`
+- Platform overview widgets: non-job-seeker dashboard users
 
 ## Page: Companies
 - View page: `VIEW_JOB` (any authenticated user with access to app menu)
@@ -94,8 +95,11 @@
 
 ## New Permissions
 - `APPROVE_COMPANY` — Can approve pending companies
+- `ADMIN_DASHBOARD` — Can access admin dashboard widgets
 - `APPLY_JOB` — Can apply for jobs (job seekers)
 - `CHANGE_JOBSEEKER_APP_STATUS` — Can update job seeker application status transitions
 - `MOVE_BACK_TO_ALL_APPLICANTS` — Can move applicants from status lists back to All Applicants
 - `CHANGE_APP_COLOR` — Can change application color theme
+- `EMPLOYER_DASHBOARD` — Can access employer dashboard widgets
+- `JOB_SEEKER_DASHBOARD` — Can access job seeker dashboard widgets
 - `MANAGE_NOTIFICATIONS` — Can manage notification preferences

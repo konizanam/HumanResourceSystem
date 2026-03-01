@@ -1005,6 +1005,9 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('APPROVE_COMPANY', 'Can approve pending companies', 'Company', 'APPROVE'),
   ('APPLY_JOB', 'Can apply for jobs', 'Applications', 'CREATE'),
     ('CHANGE_APP_COLOR', 'Can change application color theme', 'System', 'UPDATE'),
+    ('ADMIN_DASHBOARD', 'Access admin dashboard widgets', 'Dashboard', 'VIEW'),
+    ('EMPLOYER_DASHBOARD', 'Access employer dashboard widgets', 'Dashboard', 'VIEW'),
+    ('JOB_SEEKER_DASHBOARD', 'Access job seeker dashboard widgets', 'Dashboard', 'VIEW'),
   ('MANAGE_NOTIFICATIONS', 'Can manage notification preferences', 'Notifications', 'MANAGE'),
   ('MANAGE_USERS', 'Create and manage users', 'Users', 'MANAGE'),
   ('VIEW_AUDIT_LOGS', 'Access audit logs', 'System', 'VIEW')
@@ -1022,7 +1025,7 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r
-JOIN permissions p ON p.name IN ('APPLY_JOB', 'MANAGE_NOTIFICATIONS')
+JOIN permissions p ON p.name IN ('APPLY_JOB', 'MANAGE_NOTIFICATIONS', 'JOB_SEEKER_DASHBOARD')
 WHERE r.name = 'JOB_SEEKER'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -1030,7 +1033,7 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r
-JOIN permissions p ON p.name IN ('MANAGE_NOTIFICATIONS', 'APPROVE_COMPANY')
+JOIN permissions p ON p.name IN ('MANAGE_NOTIFICATIONS', 'APPROVE_COMPANY', 'EMPLOYER_DASHBOARD')
 WHERE r.name IN ('HR_MANAGER', 'EMPLOYER')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 

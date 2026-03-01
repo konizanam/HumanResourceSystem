@@ -681,9 +681,10 @@ export function PublicJobsPage() {
                       disabled={loading}
                     />
                   </div>
-                  <div style={{ marginLeft: "auto" }}>
-                    {renderPager()}
-                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                  {renderPager()}
                 </div>
 
                 <div className="jobCardsGrid" role="region" aria-label="Jobs cards">

@@ -303,6 +303,19 @@ export function AppLayout({
   }, [accessToken]);
 
   useEffect(() => {
+    const onMessagesUnreadUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ total?: number }>).detail;
+      const next = Number(detail?.total ?? 0);
+      setUnreadNotificationCount(Number.isFinite(next) ? Math.max(0, next) : 0);
+    };
+
+    window.addEventListener("hrs:messages-unread-updated", onMessagesUnreadUpdated);
+    return () => {
+      window.removeEventListener("hrs:messages-unread-updated", onMessagesUnreadUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!accessToken) return;
 
     let cancelled = false;

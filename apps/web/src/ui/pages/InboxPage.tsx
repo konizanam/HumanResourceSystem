@@ -84,6 +84,16 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     return unreadTotal > 0 ? unreadTotal : computed;
   }, [unreadTotal, visibleNotifications]);
 
+  useEffect(() => {
+    if (mode !== "messages") return;
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("hrs:messages-unread-updated", {
+        detail: { total: Number(unreadCount) || 0 },
+      }),
+    );
+  }, [mode, unreadCount]);
+
   const industries = useMemo(() => {
     const names = new Set<string>();
     for (const company of companies) {

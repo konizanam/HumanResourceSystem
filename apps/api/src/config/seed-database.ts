@@ -1499,6 +1499,9 @@ console.log('📝 Continuing with permissions...');
       { name: 'view_applications', description: 'Can view applications', module: 'applications', action: 'view' },
       { name: 'manage_applications', description: 'Can manage applications', module: 'applications', action: 'manage' },
       { name: 'move_back_to_all_applicants', description: 'Can move applicants back to All Applicants list', module: 'applications', action: 'update' },
+      { name: 'admin_dashboard', description: 'Can access admin dashboard widgets', module: 'dashboard', action: 'view' },
+      { name: 'employer_dashboard', description: 'Can access employer dashboard widgets', module: 'dashboard', action: 'view' },
+      { name: 'job_seeker_dashboard', description: 'Can access job seeker dashboard widgets', module: 'dashboard', action: 'view' },
       { name: 'view_users', description: 'Can view users', module: 'users', action: 'view' },
       { name: 'manage_users', description: 'Can manage users', module: 'users', action: 'manage' },
     ];
@@ -1523,21 +1526,27 @@ console.log('📝 Continuing with permissions...');
     // Job seeker permissions
     await client.query(
       `INSERT INTO role_permissions (role_id, permission_id) VALUES 
-       ($1, $2), ($1, $3)`,
-      [roleIds.JOB_SEEKER, permissionIds.view_jobs, permissionIds.apply_jobs]
+       ($1, $2), ($1, $3), ($1, $4)`,
+      [
+        roleIds.JOB_SEEKER,
+        permissionIds.view_jobs,
+        permissionIds.apply_jobs,
+        permissionIds.job_seeker_dashboard,
+      ]
     );
     
     // Employer permissions
     await client.query(
       `INSERT INTO role_permissions (role_id, permission_id) VALUES 
-       ($1, $2), ($1, $3), ($1, $4), ($1, $5), ($1, $6)`,
+       ($1, $2), ($1, $3), ($1, $4), ($1, $5), ($1, $6), ($1, $7)`,
       [
         roleIds.EMPLOYER,
         permissionIds.view_jobs,
         permissionIds.create_jobs,
         permissionIds.edit_jobs,
         permissionIds.view_applications,
-        permissionIds.manage_applications
+        permissionIds.manage_applications,
+        permissionIds.employer_dashboard,
       ]
     );
     

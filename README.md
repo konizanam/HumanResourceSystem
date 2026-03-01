@@ -72,4 +72,7 @@ Monorepo (npm workspaces) with:
 - Job seeker application status changes require: `CHANGE_JOBSEEKER_APP_STATUS`
 - Moving applicants back to All Applicants requires: `MOVE_BACK_TO_ALL_APPLICANTS`
 - App color theme changes require: `CHANGE_APP_COLOR`
+- Admin dashboard widgets require: `ADMIN_DASHBOARD`
+- Employer dashboard widgets require: `EMPLOYER_DASHBOARD`
+- Job seeker dashboard widgets require: `JOB_SEEKER_DASHBOARD`
 - Full page-to-permission mapping is documented in `PERMISSIONS.md`

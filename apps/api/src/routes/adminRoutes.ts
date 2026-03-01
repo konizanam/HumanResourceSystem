@@ -1022,14 +1022,30 @@ router.get('/statistics',
           COUNT(*) as total,
           COUNT(CASE WHEN is_active = TRUE AND (is_blocked = FALSE OR is_blocked IS NULL) THEN 1 END) as active,
           COUNT(CASE WHEN is_blocked = TRUE THEN 1 END) as blocked,
-          COUNT(CASE WHEN LOWER(COALESCE(role, '')) IN ('job_seeker', 'job seeker', 'jobseeker') THEN 1 END) as job_seekers,
-          COUNT(CASE WHEN LOWER(COALESCE(role, '')) = 'employer' THEN 1 END) as employers,
-          COUNT(CASE WHEN LOWER(COALESCE(role, '')) = 'admin' THEN 1 END) as admins,
-          COUNT(CASE WHEN LOWER(COALESCE(role, '')) = 'hr' THEN 1 END) as hr,
+          COUNT(CASE WHEN EXISTS (
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND UPPER(COALESCE(r.name, '')) IN ('JOB_SEEKER')
+          ) THEN 1 END) as job_seekers,
+          COUNT(CASE WHEN EXISTS (
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND UPPER(COALESCE(r.name, '')) IN ('EMPLOYER', 'RECRUITER')
+          ) THEN 1 END) as employers,
+          COUNT(CASE WHEN EXISTS (
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND UPPER(COALESCE(r.name, '')) = 'ADMIN'
+          ) THEN 1 END) as admins,
+          COUNT(CASE WHEN EXISTS (
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND UPPER(COALESCE(r.name, '')) IN ('HR', 'HR_MANAGER')
+          ) THEN 1 END) as hr,
           COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today,
           COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_this_week,
           COUNT(CASE WHEN created_at >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as new_this_month
-         FROM users`
+         FROM users u`
       );
 
       // Job statistics

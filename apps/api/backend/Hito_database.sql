@@ -736,6 +736,9 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     ('MANAGE_NOTIFICATIONS', 'Can manage notification preferences', 'Notifications', 'MANAGE'),
     
     -- User management
+    ('ADMIN_DASHBOARD', 'Access admin dashboard widgets', 'Dashboard', 'VIEW'),
+    ('EMPLOYER_DASHBOARD', 'Access employer dashboard widgets', 'Dashboard', 'VIEW'),
+    ('JOB_SEEKER_DASHBOARD', 'Access job seeker dashboard widgets', 'Dashboard', 'VIEW'),
     ('MANAGE_USERS', 'Create and manage users', 'Users', 'MANAGE'),
     ('VIEW_AUDIT_LOGS', 'Access audit logs', 'System', 'VIEW');
 
@@ -751,6 +754,7 @@ SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'HR_MANAGER' 
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB', 'APPROVE_JOB',
+               'EMPLOYER_DASHBOARD',
                'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS', 
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE',
                'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS',
@@ -762,6 +766,7 @@ SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'RECRUITER'
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB',
+               'EMPLOYER_DASHBOARD',
                'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS',
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE');
 
@@ -770,14 +775,14 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'APPROVER'
-AND p.name IN ('VIEW_JOB', 'APPROVE_JOB', 'VIEW_APPLICATIONS');
+AND p.name IN ('VIEW_JOB', 'APPROVE_JOB', 'VIEW_APPLICATIONS', 'EMPLOYER_DASHBOARD');
 
 -- Job Seeker permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'JOB_SEEKER'
-AND p.name IN ('VIEW_JOB', 'APPLY_JOB', 'MANAGE_NOTIFICATIONS');
+AND p.name IN ('VIEW_JOB', 'APPLY_JOB', 'MANAGE_NOTIFICATIONS', 'JOB_SEEKER_DASHBOARD');
 
 -- Insert default job categories
 INSERT INTO job_categories (name) VALUES
