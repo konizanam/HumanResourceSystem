@@ -562,7 +562,6 @@ export function JobsPage() {
   }, [searchParams]);
 
   const renderSeekerPager = useCallback(() => {
-    if (pagination.pages <= 1) return null;
     return (
       <div className="publicJobsPager" role="navigation" aria-label="Jobs pagination">
         <button
@@ -1268,15 +1267,17 @@ export function JobsPage() {
             </button>
           ) : null}
 
-          <div style={{ minWidth: 240, flex: "1 1 280px" }}>
-            <label className="fieldLabel">Search</label>
-            <input
-              className="input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title/company/category..."
-            />
-          </div>
+          {!isJobSeekerView ? (
+            <div style={{ minWidth: 240, flex: "1 1 280px" }}>
+              <label className="fieldLabel">Search</label>
+              <input
+                className="input"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search title/company/category..."
+              />
+            </div>
+          ) : null}
 
           {!isJobSeekerView ? (
             <div style={{ minWidth: 160 }}>
@@ -1291,9 +1292,7 @@ export function JobsPage() {
           ) : null}
         </div>
 
-        <div style={{ marginLeft: "auto" }}>
-          {renderSeekerPager()}
-        </div>
+        <div style={{ width: "100%" }}>{renderSeekerPager()}</div>
       </div>
 
       {companyIdFromUrl && (
@@ -1642,7 +1641,7 @@ export function JobsPage() {
           </div>
         )}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+      <div style={{ marginTop: 16 }}>
         {renderSeekerPager()}
       </div>
 
