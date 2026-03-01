@@ -95,6 +95,9 @@ body {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .auditJsonLine {
@@ -311,12 +314,9 @@ input[type="radio"][required] {
   border-right: 1px solid color-mix(in srgb, var(--stroke) 68%, var(--menu-icon));
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
+  position: static;
+  height: auto;
+  overflow: visible;
 }
 
 .sidebarCollapsed {
@@ -494,6 +494,29 @@ input[type="radio"][required] {
   min-width: 0;
   padding: 16px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 82%, var(--card)), var(--bg1));
+}
+
+.appTopUserBar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 88%, var(--card)), transparent);
+}
+
+.appTopUserName {
+  color: var(--heading);
+  font-weight: 700;
+  font-size: 14px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobileTopBar {

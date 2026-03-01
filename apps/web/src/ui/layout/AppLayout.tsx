@@ -227,14 +227,6 @@ export function AppLayout({
     }
   }, [accessToken, userEmail, userName]);
 
-  const displayInitials = useMemo(() => {
-    const raw = displayName.trim();
-    if (!raw) return "";
-    const parts = raw.split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }, [displayName]);
-
   const sidebarClassName =
     (collapsed ? "sidebar sidebarCollapsed" : "sidebar") +
     (mobileOpen ? " sidebarMobileOpen" : "");
@@ -470,33 +462,26 @@ export function AppLayout({
           })}
         </nav>
 
-        <div className="sidebarFooter">
-          {displayName ? (
-            collapsed ? (
-              <div className="sidebarUserBadge" title={displayName} aria-label={displayName}>
-                {displayInitials}
-              </div>
-            ) : (
-              <div className="sidebarUserName" title={displayName}>
-                {displayName}
-              </div>
-            )
-          ) : null}
-
-          <button
-            className={collapsed ? "btn btnGhost logoutBtn logoutBtnCollapsed" : "btn btnGhost logoutBtn"}
-            onClick={logout}
-            type="button"
-            aria-label="Logout"
-            title={collapsed ? "Logout" : undefined}
-          >
-            <Icon name="logout" />
-            <span className="logoutLabel">Logout</span>
-          </button>
-        </div>
       </aside>
 
       <main className="content">
+        <div className="appTopUserBar" role="region" aria-label="User controls">
+          {displayName ? (
+            <div className="appTopUserName" title={displayName}>
+              {displayName}
+            </div>
+          ) : null}
+          <button
+            className="btn btnGhost btnSm"
+            onClick={logout}
+            type="button"
+            aria-label="Logout"
+          >
+            <Icon name="logout" />
+            <span>Logout</span>
+          </button>
+        </div>
+
         <div className="mobileTopBar">
           <button
             type="button"
