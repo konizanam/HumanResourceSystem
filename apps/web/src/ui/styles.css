@@ -1895,7 +1895,9 @@ a {
 
 .publicJobsPager {
   display: flex;
-  justify-content: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
   padding: 10px 10px;
@@ -1905,6 +1907,8 @@ a {
 }
 
 .publicJobsPagerInfo {
+  flex: 1 1 auto;
+  text-align: center;
   font-size: 12px;
   font-weight: 800;
   color: var(--heading);
