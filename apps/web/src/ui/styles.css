@@ -2107,6 +2107,14 @@ a {
   border-bottom: none;
 }
 
+.table tbody tr:nth-child(odd):not(.tableRowActive):not(.tableExpandRow) td {
+  background: color-mix(in srgb, var(--menu-icon) 6%, var(--card));
+}
+
+.table tbody tr:nth-child(even):not(.tableRowActive):not(.tableExpandRow) td {
+  background: color-mix(in srgb, var(--menu-icon) 1.5%, var(--card2));
+}
+
 .thRight {
   text-align: right;
 }

@@ -274,6 +274,36 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     return current.filter((item) => item !== value);
   }
 
+  const renderMessagesPager = useCallback(() => {
+    if (mode !== "messages" || pagination.pages <= 1) return null;
+
+    return (
+      <div className="publicJobsPager" role="navigation" aria-label="Messages pagination">
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => void load(page - 1)}
+          disabled={saving || loading || page <= 1}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">
+          Page {page} of {pagination.pages} ({pagination.total} messages)
+        </span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() => void load(page + 1)}
+          disabled={saving || loading || page >= pagination.pages}
+        >
+          Next {"->"}
+        </button>
+      </div>
+    );
+  }, [load, loading, mode, page, pagination.pages, pagination.total, saving]);
+
   if (loading && notifications.length === 0) {
     return (
       <div className="page">
@@ -331,6 +361,8 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
 
       {error ? <div className="errorBox">{error}</div> : null}
       {success ? <div className="successBox">{success}</div> : null}
+
+      {mode === "messages" ? <div style={{ marginBottom: 12 }}>{renderMessagesPager()}</div> : null}
 
       <div className="inboxList" role="region" aria-label={`${copy.title} list`}>
         {showPreferences && preferences ? (
@@ -642,31 +674,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         ) : null}
       </div>
 
-      {mode === "messages" && pagination.pages > 1 ? (
-        <div className="publicJobsPager" role="navigation" aria-label="Messages pagination" style={{ marginTop: 16 }}>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-            type="button"
-            onClick={() => void load(page - 1)}
-            disabled={saving || loading || page <= 1}
-          >
-            {"<-"} Previous
-          </button>
-          <span className="publicJobsPagerInfo">
-            Page {page} of {pagination.pages} ({pagination.total} messages)
-          </span>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-            type="button"
-            onClick={() => void load(page + 1)}
-            disabled={saving || loading || page >= pagination.pages}
-          >
-            Next {"->"}
-          </button>
-        </div>
-      ) : null}
+      {mode === "messages" ? <div style={{ marginTop: 16 }}>{renderMessagesPager()}</div> : null}
     </div>
   );
 }
