@@ -39,7 +39,7 @@ const menu = [
   { path: "messages", title: "Messages", icon: "message" },
   { path: "users", title: "Users", icon: "users" },
   { path: "roles", title: "Roles", icon: "shield" },
-  { path: "permission", title: "Permission", icon: "key" },
+  { path: "permission", title: "Permissions", icon: "key" },
   { path: "status", title: "Status", icon: "list" },
   { path: "job-categories", title: "Job Categories", icon: "tag" },
   { path: "audit", title: "Audit", icon: "file" },

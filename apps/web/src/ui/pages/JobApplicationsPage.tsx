@@ -508,6 +508,12 @@ export function JobApplicationsPage() {
         </div>
       </div>
 
+      <div className="dashCardHeader" style={{ marginBottom: 10 }}>
+        <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
+          All Applicants
+        </h2>
+      </div>
+
       <div className="jobCardsGrid" role="region" aria-label="Job applicants list">
         {visibleApplications.length === 0 ? (
           <div className="dashCard jobCardsGridItem jobCardToneA">
@@ -604,13 +610,22 @@ export function JobApplicationsPage() {
 
       {(Object.keys(grouped) as StageKey[]).map((stage) => (
         <section key={stage} style={{ marginTop: 18 }}>
-          <button
-            type="button"
-            className="btn btnGhost btnSm"
-            onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
+          <div
+            className="dashCardHeader"
+            style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
           >
-            {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
-          </button>
+            <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
+              {(STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage)} Applicants
+            </h2>
+            <button
+              type="button"
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+              onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
+            >
+              {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
+            </button>
+          </div>
 
           {openGroups[stage] ? (
             <div className="jobCardsGrid" role="region" aria-label={`${stage} applicants list`} style={{ marginTop: 10 }}>
