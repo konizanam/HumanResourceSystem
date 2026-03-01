@@ -281,7 +281,6 @@ export function PublicJobsPage() {
   }, [load]);
 
   const renderPager = useCallback(() => {
-    if (pagination.pages <= 1) return null;
     return (
       <div className="publicJobsPager" role="navigation" aria-label="Jobs pagination">
         <button
@@ -731,17 +730,20 @@ export function PublicJobsPage() {
                         Apply
                       </button>
 
-                      <button
-                        type="button"
-                        className="btn btnGhost btnSm"
-                        onClick={() => {
-                          setOpenJobId((prev) => (prev === String(job.id) ? null : String(job.id)));
-                          navigate(`/jobs/${job.id}`);
-                        }}
-                        disabled={saving}
-                      >
-                        {isOpen ? "Hide Details" : "View Details"}
-                      </button>
+                      {!isOpen ? (
+                        <button
+                          type="button"
+                          className="btn btnPrimary btnSm"
+                          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                          onClick={() => {
+                            setOpenJobId((prev) => (prev === String(job.id) ? null : String(job.id)));
+                            navigate(`/jobs/${job.id}`);
+                          }}
+                          disabled={saving}
+                        >
+                          View Details
+                        </button>
+                      ) : null}
                     </div>
 
                     {isOpen ? (
@@ -754,6 +756,20 @@ export function PublicJobsPage() {
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
                           <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                        </div>
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="btn btnPrimary btnSm"
+                            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                            onClick={() => {
+                              setOpenJobId((prev) => (prev === String(job.id) ? null : String(job.id)));
+                              navigate(`/jobs/${job.id}`);
+                            }}
+                            disabled={saving}
+                          >
+                            Hide Details
+                          </button>
                         </div>
                       </div>
                     ) : null}

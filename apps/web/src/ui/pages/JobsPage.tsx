@@ -1292,7 +1292,7 @@ export function JobsPage() {
           ) : null}
         </div>
 
-        <div style={{ width: "100%" }}>{renderSeekerPager()}</div>
+        {!isJobSeekerView ? <div style={{ width: "100%" }}>{renderSeekerPager()}</div> : null}
       </div>
 
       {companyIdFromUrl && (
@@ -1389,7 +1389,11 @@ export function JobsPage() {
               </div>
             ) : null}
 
-          <div className="jobCardsGrid" role="region" aria-label="Jobs cards" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ marginBottom: 12 }}>
+              {renderSeekerPager()}
+            </div>
+          <div className="jobCardsGrid" role="region" aria-label="Jobs cards" style={{ minWidth: 0 }}>
             {seekerVisibleJobs.length === 0 ? (
               <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No jobs found.</div></div>
             ) : (
@@ -1527,6 +1531,10 @@ export function JobsPage() {
               })
             )}
           </div>
+            <div style={{ marginTop: 16 }}>
+              {renderSeekerPager()}
+            </div>
+          </div>
           </div>
           </>
         ) : (
@@ -1641,9 +1649,11 @@ export function JobsPage() {
           </div>
         )}
 
-      <div style={{ marginTop: 16 }}>
-        {renderSeekerPager()}
-      </div>
+      {!isJobSeekerView ? (
+        <div style={{ marginTop: 16 }}>
+          {renderSeekerPager()}
+        </div>
+      ) : null}
 
       <ConfirmModal
         open={Boolean(confirmDeleteId)}
