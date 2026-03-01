@@ -467,7 +467,8 @@ export function DashboardPage() {
   }, [seekerFilteredApplications]);
 
   const renderSeekerJobsPager = useCallback(() => {
-    if (seekerJobsPagination.pages <= 1) return null;
+    const totalPages = Math.max(1, Number(seekerJobsPagination.pages ?? 1));
+    const currentPage = Math.min(Math.max(1, Number(seekerJobsPagination.page ?? 1)), totalPages);
     return (
       <div className="publicJobsPager" role="navigation" aria-label="Recently posted jobs pagination">
         <button
@@ -475,28 +476,29 @@ export function DashboardPage() {
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
           type="button"
           onClick={() => setSeekerJobsPage((p) => Math.max(1, p - 1))}
-          disabled={seekerJobsPage <= 1 || loading}
+          disabled={currentPage <= 1 || loading}
         >
           {"<-"} Previous
         </button>
         <span className="publicJobsPagerInfo">
-          Page {seekerJobsPagination.page} of {seekerJobsPagination.pages} ({seekerJobsPagination.total} jobs)
+          Page {currentPage} of {totalPages} ({seekerJobsPagination.total} jobs)
         </span>
         <button
           className="btn btnPrimary btnSm"
           style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
           type="button"
-          onClick={() => setSeekerJobsPage((p) => Math.min(seekerJobsPagination.pages, p + 1))}
-          disabled={seekerJobsPage >= seekerJobsPagination.pages || loading}
+          onClick={() => setSeekerJobsPage((p) => Math.min(totalPages, p + 1))}
+          disabled={currentPage >= totalPages || loading}
         >
           Next {"->"}
         </button>
       </div>
     );
-  }, [loading, seekerJobsPage, seekerJobsPagination.page, seekerJobsPagination.pages, seekerJobsPagination.total]);
+  }, [loading, seekerJobsPagination.page, seekerJobsPagination.pages, seekerJobsPagination.total]);
 
   const renderSeekerApplicationsPager = useCallback(() => {
-    if (seekerApplicationsPagination.pages <= 1) return null;
+    const totalPages = Math.max(1, Number(seekerApplicationsPagination.pages ?? 1));
+    const currentPage = Math.min(Math.max(1, Number(seekerApplicationsPagination.page ?? 1)), totalPages);
     return (
       <div className="publicJobsPager" role="navigation" aria-label="My applications pagination">
         <button
@@ -504,12 +506,12 @@ export function DashboardPage() {
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
           type="button"
           onClick={() => setSeekerApplicationsPage((p) => Math.max(1, p - 1))}
-          disabled={seekerApplicationsPage <= 1 || loading}
+          disabled={currentPage <= 1 || loading}
         >
           {"<-"} Previous
         </button>
         <span className="publicJobsPagerInfo">
-          Page {seekerApplicationsPagination.page} of {seekerApplicationsPagination.pages} ({seekerApplicationsPagination.total} applications)
+          Page {currentPage} of {totalPages} ({seekerApplicationsPagination.total} applications)
         </span>
         <button
           className="btn btnPrimary btnSm"
@@ -517,16 +519,16 @@ export function DashboardPage() {
           type="button"
           onClick={() =>
             setSeekerApplicationsPage((p) =>
-              Math.min(seekerApplicationsPagination.pages, p + 1),
+              Math.min(totalPages, p + 1),
             )
           }
-          disabled={seekerApplicationsPage >= seekerApplicationsPagination.pages || loading}
+          disabled={currentPage >= totalPages || loading}
         >
           Next {"->"}
         </button>
       </div>
     );
-  }, [loading, seekerApplicationsPage, seekerApplicationsPagination.page, seekerApplicationsPagination.pages, seekerApplicationsPagination.total]);
+  }, [loading, seekerApplicationsPagination.page, seekerApplicationsPagination.pages, seekerApplicationsPagination.total]);
 
   const onApplyFromDashboard = useCallback(async (job: JobListItem) => {
     if (!accessToken || !canApplyJob) return;
