@@ -381,7 +381,7 @@ input[type="radio"][required] {
 .nav {
   padding: 10px;
   display: grid;
-  gap: 4px;
+  gap: 1px;
   flex: 1 1 auto;
   overflow: visible;
 }
@@ -390,7 +390,7 @@ input[type="radio"][required] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 4px 10px;
   border-radius: 12px;
   border: 1px solid transparent;
   color: color-mix(in srgb, var(--text) 86%, var(--menu-icon-active));

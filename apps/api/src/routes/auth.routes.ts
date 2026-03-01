@@ -119,6 +119,54 @@ function signToken(payload: object) {
   return jwt.sign(payload, secret, { expiresIn: jwtExpiresIn() });
 }
 
+function getTokenExpiryDate(token: string): Date {
+  try {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    const exp = Number(decoded?.exp);
+    if (Number.isFinite(exp) && exp > 0) {
+      return new Date(exp * 1000);
+    }
+  } catch {
+    // Ignore decode errors and fallback below.
+  }
+  return new Date(Date.now() + 8 * 60 * 60 * 1000);
+}
+
+async function persistUserSession(params: {
+  userId: string;
+  token: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  previousToken?: string | null;
+}) {
+  const expiresAt = getTokenExpiryDate(params.token);
+  const previousToken = String(params.previousToken ?? "").trim();
+
+  if (previousToken) {
+    const updated = await query(
+      `UPDATE user_sessions
+          SET token = $1,
+              ip_address = $2,
+              user_agent = $3,
+              expires_at = $4,
+              last_activity = NOW()
+        WHERE token = $5
+          AND user_id = $6`,
+      [params.token, params.ipAddress, params.userAgent, expiresAt.toISOString(), previousToken, params.userId]
+    );
+
+    if (updated.rowCount && updated.rowCount > 0) {
+      return;
+    }
+  }
+
+  await query(
+    `INSERT INTO user_sessions (user_id, token, ip_address, user_agent, expires_at, created_at, last_activity)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+    [params.userId, params.token, params.ipAddress, params.userAgent, expiresAt.toISOString()]
+  );
+}
+
 function activationExpiresIn(): SignOptions["expiresIn"] {
   const raw = process.env.ACTIVATION_TOKEN_EXPIRES_IN;
   if (!raw) return "24h";
@@ -449,6 +497,13 @@ authRouter.post("/2fa/verify", async (req, res, next) => {
       roles: challenge.roles,
     });
 
+    await persistUserSession({
+      userId: challenge.userId,
+      token: accessToken,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+
     res.locals.auditUserId = challenge.userId;
     res.locals.auditAction = "AUTH_LOGIN_SUCCESS";
     res.locals.auditTargetType = "auth";
@@ -521,6 +576,19 @@ authRouter.post("/refresh", authenticate, async (req, res, next) => {
       email,
       name: fullName,
       roles,
+    });
+
+    const authHeader = String(req.headers.authorization ?? "");
+    const previousToken = authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
+
+    await persistUserSession({
+      userId,
+      token: accessToken,
+      previousToken,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
     });
 
     return res.json({
