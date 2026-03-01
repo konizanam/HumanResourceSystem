@@ -495,6 +495,39 @@ export function DashboardPage() {
     );
   }, [loading, seekerJobsPage, seekerJobsPagination.page, seekerJobsPagination.pages, seekerJobsPagination.total]);
 
+  const renderSeekerApplicationsPager = useCallback(() => {
+    if (seekerApplicationsPagination.pages <= 1) return null;
+    return (
+      <div className="publicJobsPager" role="navigation" aria-label="My applications pagination">
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => setSeekerApplicationsPage((p) => Math.max(1, p - 1))}
+          disabled={seekerApplicationsPage <= 1 || loading}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">
+          Page {seekerApplicationsPagination.page} of {seekerApplicationsPagination.pages} ({seekerApplicationsPagination.total} applications)
+        </span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() =>
+            setSeekerApplicationsPage((p) =>
+              Math.min(seekerApplicationsPagination.pages, p + 1),
+            )
+          }
+          disabled={seekerApplicationsPage >= seekerApplicationsPagination.pages || loading}
+        >
+          Next {"->"}
+        </button>
+      </div>
+    );
+  }, [loading, seekerApplicationsPage, seekerApplicationsPagination.page, seekerApplicationsPagination.pages, seekerApplicationsPagination.total]);
+
   const onApplyFromDashboard = useCallback(async (job: JobListItem) => {
     if (!accessToken || !canApplyJob) return;
     const jobId = String(job.id);
@@ -1095,6 +1128,11 @@ export function DashboardPage() {
                 ))}
               </div>
             ) : null}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              {renderSeekerApplicationsPager()}
+            </div>
+
             {seekerRecentApplications.length === 0 ? (
               <div className="emptyState">You have not applied to any jobs yet.</div>
             ) : (
@@ -1156,42 +1194,9 @@ export function DashboardPage() {
                   </table>
                 </div>
 
-                {seekerApplicationsPagination.pages > 1 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: 8,
-                      marginTop: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <button
-                      className="btn btnGhost btnSm"
-                      type="button"
-                      onClick={() => setSeekerApplicationsPage((p) => Math.max(1, p - 1))}
-                      disabled={seekerApplicationsPage <= 1}
-                    >
-                      {"<-"} Previous
-                    </button>
-                    <span className="readLabel">
-                      Page {seekerApplicationsPagination.page} of {seekerApplicationsPagination.pages}
-                    </span>
-                    <button
-                      className="btn btnGhost btnSm"
-                      type="button"
-                      onClick={() =>
-                        setSeekerApplicationsPage((p) =>
-                          Math.min(seekerApplicationsPagination.pages, p + 1),
-                        )
-                      }
-                      disabled={seekerApplicationsPage >= seekerApplicationsPagination.pages}
-                    >
-                      Next {"->"}
-                    </button>
-                  </div>
-                ) : null}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  {renderSeekerApplicationsPager()}
+                </div>
               </>
             )}
           </div>
@@ -1200,9 +1205,11 @@ export function DashboardPage() {
             <div className="dashCardHeader">
               <h2 className="dashCardTitle">Recently Posted Jobs</h2>
               <div className="dashCardActions">
-                {renderSeekerJobsPager()}
                 <Link className="btn btnGhost btnSm" to="/app/jobs?browse=1">Browse Jobs</Link>
               </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              {renderSeekerJobsPager()}
             </div>
             {seekerJobs.length === 0 ? (
               <div className="emptyState">No jobs found.</div>
@@ -1337,6 +1344,10 @@ export function DashboardPage() {
                 })}
               </div>
             )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              {renderSeekerJobsPager()}
+            </div>
 
           </div>
         </>
