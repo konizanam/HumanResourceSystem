@@ -41,7 +41,7 @@
 ## Page: Job Applications
 - View page: `VIEW_APPLICATIONS` or route access from Jobs action
 - View applicant profile panel: authenticated user on page
-- Update application status (Longlist/Shortlist/Rejected/Interview/Assessment/Hired): `UPDATE_APPLICATION_STATUS`
+- Update application status (Longlist/Shortlist/Rejected/Interview/Assessment/Hired): `CHANGE_JOBSEEKER_APP_STATUS`
 - View inline documents: authenticated user on page
 
 ## Page: Roles
@@ -88,9 +88,12 @@
 
 ## Page: Global Settings / Status (placeholder routes)
 - View page: authenticated user
-- Mutations: TBD (define dedicated permissions before enabling)
+- Change app color theme: `CHANGE_APP_COLOR`
+- Other mutations: `MANAGE_USERS`
 
 ## New Permissions
 - `APPROVE_COMPANY` — Can approve pending companies
 - `APPLY_JOB` — Can apply for jobs (job seekers)
+- `CHANGE_JOBSEEKER_APP_STATUS` — Can update job seeker application status transitions
+- `CHANGE_APP_COLOR` — Can change application color theme
 - `MANAGE_NOTIFICATIONS` — Can manage notification preferences

@@ -65,3 +65,9 @@ Monorepo (npm workspaces) with:
 
 - Email: `admin@example.com`
 - Password: `Admin@1234`
+
+## Permission notes
+
+- Job seeker application status changes require: `CHANGE_JOBSEEKER_APP_STATUS`
+- App color theme changes require: `CHANGE_APP_COLOR`
+- Full page-to-permission mapping is documented in `PERMISSIONS.md`

@@ -993,6 +993,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('DELETE_JOB', 'Delete job postings', 'Jobs', 'DELETE'),
   ('APPROVE_JOB', 'Approve pending jobs', 'Jobs', 'APPROVE'),
   ('VIEW_APPLICATIONS', 'View job applications', 'Applications', 'VIEW'),
+    ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
   ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
   ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
   ('VIEW_CV_DATABASE', 'Access CV search', 'Candidates', 'VIEW'),
@@ -1002,6 +1003,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('MANAGE_COMPANY_USERS', 'Add/remove company HR users', 'Company', 'UPDATE'),
   ('APPROVE_COMPANY', 'Can approve pending companies', 'Company', 'APPROVE'),
   ('APPLY_JOB', 'Can apply for jobs', 'Applications', 'CREATE'),
+    ('CHANGE_APP_COLOR', 'Can change application color theme', 'System', 'UPDATE'),
   ('MANAGE_NOTIFICATIONS', 'Can manage notification preferences', 'Notifications', 'MANAGE'),
   ('MANAGE_USERS', 'Create and manage users', 'Users', 'MANAGE'),
   ('VIEW_AUDIT_LOGS', 'Access audit logs', 'System', 'VIEW')

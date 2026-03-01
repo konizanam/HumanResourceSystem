@@ -609,8 +609,8 @@ router.get('/:id',
  */
 router.put('/:id/status',
   authenticate,
-  authorizePermission('UPDATE_APPLICATION_STATUS'),
-  logAdminAction('UPDATE_APPLICATION_STATUS', 'application'),
+  authorizePermission('CHANGE_JOBSEEKER_APP_STATUS'),
+  logAdminAction('CHANGE_JOBSEEKER_APP_STATUS', 'application'),
   param('id').isUUID().withMessage('Invalid application ID'),
   validateStatusUpdate,
   async (req: Request, res: Response) => {

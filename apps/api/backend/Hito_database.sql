@@ -719,6 +719,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     -- Application permissions
     ('VIEW_APPLICATIONS', 'View job applications', 'Applications', 'VIEW'),
     ('APPLY_JOB', 'Can apply for jobs', 'Applications', 'CREATE'),
+    ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
     ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
     ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
     
@@ -749,7 +750,7 @@ SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'HR_MANAGER' 
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB', 'APPROVE_JOB',
-               'VIEW_APPLICATIONS', 'UPDATE_APPLICATION_STATUS', 
+               'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS', 
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE',
                'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS',
                'APPROVE_COMPANY', 'MANAGE_NOTIFICATIONS');
@@ -760,7 +761,7 @@ SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'RECRUITER'
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB',
-               'VIEW_APPLICATIONS', 'UPDATE_APPLICATION_STATUS',
+               'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS',
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE');
 
 -- Approver permissions

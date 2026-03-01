@@ -1034,10 +1034,11 @@ router.get('/:id/applications',
   }
 );
 
-// PATCH /api/jobs/:id/applications/:applicationId/status - Update application status (Employer only)
+// PATCH /api/jobs/:id/applications/:applicationId/status - Update application status
 router.patch('/:id/applications/:applicationId/status',
   authenticate,
   authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CHANGE_JOBSEEKER_APP_STATUS'),
   param('id').isUUID().withMessage('Invalid job ID'),
   param('applicationId').isUUID().withMessage('Invalid application ID'),
   body('status').isString().withMessage('Invalid status'),

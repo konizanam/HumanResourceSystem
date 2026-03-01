@@ -121,7 +121,7 @@ export function JobApplicationsPage() {
   });
 
   const canUpdateStatus = hasPermission(
-    "UPDATE_APPLICATION_STATUS",
+    "CHANGE_JOBSEEKER_APP_STATUS",
     "APPLICATIONS_UPDATE_STATUS",
     "applications.update_status",
   );
