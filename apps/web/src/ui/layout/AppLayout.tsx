@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { getSystemSettings, getUnreadNotificationCount } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { applyAppThemeColor } from "../utils/themeColor";
 
 type IconName =
   | "home"
@@ -241,6 +242,7 @@ export function AppLayout({
   const isAdminView = hasPermission("MANAGE_USERS");
   const isEmployerView = hasPermission("CREATE_JOB") && !isAdminView;
   const isJobSeekerView = !isAdminView && !hasPermission("CREATE_JOB");
+  const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
 
   const visibleMenuItems = useMemo(
     () => {
@@ -256,12 +258,17 @@ export function AppLayout({
         allowedPaths = new Set(["dashboard", "notifications", "my-permissions", "messages"]);
       }
 
+      if (canChangeAppColor) {
+        allowedPaths.add("global-settings");
+      }
+
       return menuItems.filter((item) => allowedPaths.has(item.path));
     },
     [
       isAdminView,
       isEmployerView,
       isJobSeekerView,
+      canChangeAppColor,
       menuItems,
     ],
   );
@@ -305,10 +312,12 @@ export function AppLayout({
         if (cancelled) return;
         setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
         setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+        applyAppThemeColor(settings.app_color);
       } catch {
         if (cancelled) return;
         setSystemName("Human Resource System");
         setBrandingLogoUrl("");
+        applyAppThemeColor("#6366f1");
       }
     };
 

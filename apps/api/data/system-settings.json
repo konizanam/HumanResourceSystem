@@ -1,5 +1,7 @@
 {
   "version": 1,
   "company_approval_mode": "auto_approved",
-  "app_color": "#6366f1"
+  "system_name": "Human Resource System",
+  "branding_logo_url": "",
+  "app_color": "#dbb80a"
 }

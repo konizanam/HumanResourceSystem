@@ -122,7 +122,10 @@ export function App() {
         <Route
           path="global-settings"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")}>
+            <PermissionGate
+              allow={(hasPermission) => hasPermission("MANAGE_USERS", "CHANGE_APP_COLOR")}
+              requiredPermissions={["MANAGE_USERS", "CHANGE_APP_COLOR"]}
+            >
               <GlobalSettingsPage />
             </PermissionGate>
           }

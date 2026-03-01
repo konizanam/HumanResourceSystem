@@ -14,6 +14,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { applyAppThemeColor } from "../utils/themeColor";
 
 function ReadField({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -167,11 +168,13 @@ export function PublicJobsPage() {
         if (cancelled) return;
         setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
         setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+        applyAppThemeColor(settings.app_color);
         setBrandingLogoFailed(false);
       } catch {
         if (cancelled) return;
         setSystemName("Human Resource System");
         setBrandingLogoUrl("");
+        applyAppThemeColor("#6366f1");
         setBrandingLogoFailed(false);
       }
     };

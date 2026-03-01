@@ -141,6 +141,7 @@ export type SystemSettings = {
   company_approval_mode: CompanyApprovalMode;
   system_name: string;
   branding_logo_url: string;
+  app_color: string;
 };
 
 export type UserSearchResult = {
@@ -355,6 +356,7 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
+    app_color: String(data.app_color ?? "#6366f1"),
   };
 }
 
@@ -370,12 +372,13 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
+    app_color: String(data.app_color ?? "#6366f1"),
   };
 }
 
 export async function updateSystemSettings(
   token: string,
-  payload: { system_name: string; branding_logo_url: string },
+  payload: Partial<{ system_name: string; branding_logo_url: string; app_color: string }>,
 ): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/companies/settings`, {
     method: "PUT",
@@ -390,6 +393,7 @@ export async function updateSystemSettings(
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
+    app_color: String(data.app_color ?? "#6366f1"),
   };
 }
 

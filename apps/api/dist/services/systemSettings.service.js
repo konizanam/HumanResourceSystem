@@ -14,7 +14,23 @@ const DEFAULT_SETTINGS = {
     company_approval_mode: "auto_approved",
     system_name: "Human Resource System",
     branding_logo_url: "",
+    app_color: "#6366f1",
 };
+function normalizeHexColor(input) {
+    if (typeof input !== "string")
+        return null;
+    const raw = input.trim();
+    if (!raw)
+        return null;
+    const withHash = raw.startsWith("#") ? raw : `#${raw}`;
+    const match = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(withHash);
+    if (!match)
+        return null;
+    const hex = match[1].length === 3
+        ? match[1].split("").map((c) => c + c).join("")
+        : match[1];
+    return `#${hex.toLowerCase()}`;
+}
 function settingsFilePath() {
     // When compiled, __dirname is .../apps/api/dist/services.
     return path_1.default.resolve(__dirname, "..", "..", "data", "system-settings.json");
@@ -32,11 +48,13 @@ async function readSettings() {
         const brandingLogoRaw = typeof parsed.branding_logo_url === "string"
             ? parsed.branding_logo_url.trim()
             : "";
+        const appColor = normalizeHexColor(parsed.app_color) ?? DEFAULT_SETTINGS.app_color;
         return {
             version: 1,
             company_approval_mode: mode,
             system_name: systemNameRaw || DEFAULT_SETTINGS.system_name,
             branding_logo_url: brandingLogoRaw,
+            app_color: appColor,
         };
     }
     catch {
@@ -74,6 +92,9 @@ async function updateSystemSettings(changes) {
     }
     if (typeof changes.branding_logo_url === "string") {
         settings.branding_logo_url = changes.branding_logo_url.trim();
+    }
+    if (typeof changes.app_color === "string") {
+        settings.app_color = normalizeHexColor(changes.app_color) ?? settings.app_color;
     }
     await writeSettings(settings);
     return settings;

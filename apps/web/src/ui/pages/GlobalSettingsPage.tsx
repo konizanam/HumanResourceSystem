@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { applyAppThemeColor } from "../utils/themeColor";
 
 export function GlobalSettingsPage() {
   const { accessToken } = useAuth();
@@ -33,7 +34,10 @@ export function GlobalSettingsPage() {
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
   const [systemName, setSystemName] = useState("Human Resource System");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
+  const [appColor, setAppColor] = useState("#6366f1");
   const canEdit = hasPermission("MANAGE_USERS");
+  const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
+  const canEditSystemSettings = canEdit || canChangeAppColor;
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -48,12 +52,15 @@ export function GlobalSettingsPage() {
             company_approval_mode: fallbackMode,
             system_name: "Human Resource System",
             branding_logo_url: "",
+            app_color: "#6366f1",
           };
         }),
       ]);
       setMode(settings.company_approval_mode);
       setSystemName(settings.system_name);
       setBrandingLogoUrl(settings.branding_logo_url);
+      setAppColor(settings.app_color || "#6366f1");
+      applyAppThemeColor(settings.app_color || "#6366f1");
       const firstCompany = companies[0] ?? null;
       setPrimaryCompany(firstCompany);
       setCompanyForm({
@@ -78,19 +85,35 @@ export function GlobalSettingsPage() {
   }, [load]);
 
   async function onSaveSettings() {
-    if (!accessToken || !canEdit) return;
+    if (!accessToken || !canEditSystemSettings) return;
     try {
       setSaving(true);
       setError(null);
-      const [updatedMode, updatedSettings] = await Promise.all([
-        updateCompanyApprovalMode(accessToken, mode),
-        updateSystemSettings(accessToken, {
-          system_name: systemName,
-          branding_logo_url: brandingLogoUrl,
-        }),
-      ]);
+
+      const updates: Promise<any>[] = [];
+
+      if (canEdit) {
+        updates.push(updateCompanyApprovalMode(accessToken, mode));
+      }
+
+      const systemPayload: Partial<{ system_name: string; branding_logo_url: string; app_color: string }> = {};
+      if (canEdit) {
+        systemPayload.system_name = systemName;
+        systemPayload.branding_logo_url = brandingLogoUrl;
+      }
+      if (canChangeAppColor) {
+        systemPayload.app_color = appColor;
+      }
+
+      updates.push(updateSystemSettings(accessToken, systemPayload));
+
+      const results = await Promise.all(updates);
+      const updatedMode = canEdit ? (results[0] as CompanyApprovalMode) : mode;
+      const updatedSettings = results[results.length - 1] as Awaited<ReturnType<typeof updateSystemSettings>>;
       setSystemName(updatedSettings.system_name);
       setBrandingLogoUrl(updatedSettings.branding_logo_url);
+      setAppColor(updatedSettings.app_color || "#6366f1");
+      applyAppThemeColor(updatedSettings.app_color || "#6366f1");
       setMode(updatedMode);
       setSuccess("Global settings updated.");
     } catch (e) {
@@ -142,7 +165,9 @@ export function GlobalSettingsPage() {
 
       {error ? <div className="errorBox">{error}</div> : null}
       {success ? <div className="successBox">{success}</div> : null}
-      {!canEdit ? <div className="pageText">You can view settings, but only users with MANAGE_USERS can edit.</div> : null}
+      {!canEditSystemSettings ? (
+        <div className="pageText">You can view settings, but only users with MANAGE_USERS or CHANGE_APP_COLOR can edit.</div>
+      ) : null}
 
       <div className="dropPanel">
         <h2 className="editFormTitle">Main Company Information</h2>
@@ -204,6 +229,32 @@ export function GlobalSettingsPage() {
             <span className="fieldLabel">Branding Logo URL</span>
             <input className="input" value={brandingLogoUrl} onChange={(e) => setBrandingLogoUrl(e.target.value)} disabled={!canEdit || saving || loading} />
           </label>
+          <label className="field">
+            <span className="fieldLabel">App Color</span>
+            <input
+              className="input"
+              type="color"
+              value={appColor}
+              onChange={(e) => {
+                setAppColor(e.target.value);
+                applyAppThemeColor(e.target.value);
+              }}
+              disabled={!canChangeAppColor || saving || loading}
+            />
+          </label>
+          <label className="field">
+            <span className="fieldLabel">App Color Hex</span>
+            <input
+              className="input"
+              value={appColor}
+              onChange={(e) => {
+                setAppColor(e.target.value);
+                applyAppThemeColor(e.target.value);
+              }}
+              disabled={!canChangeAppColor || saving || loading}
+              placeholder="#6366f1"
+            />
+          </label>
           <div className="field fieldFull">
             <span className="fieldLabel">Company Approval Mode</span>
             <div style={{ display: "grid", gap: 10 }}>
@@ -235,7 +286,7 @@ export function GlobalSettingsPage() {
           </div>
         </div>
         <div className="stepperActions">
-          <button className="btn btnGhost btnSm stepperSaveBtn" type="button" disabled={saving || loading || !canEdit} onClick={onSaveSettings}>
+          <button className="btn btnGhost btnSm stepperSaveBtn" type="button" disabled={saving || loading || !canEditSystemSettings} onClick={onSaveSettings}>
             {saving ? "Saving..." : "Save Settings"}
           </button>
         </div>
