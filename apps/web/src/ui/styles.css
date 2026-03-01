@@ -175,10 +175,78 @@ a {
   color: var(--text);
   outline: none;
   font-size: 15px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
 .input:focus {
-  border-color: #a5b4fc;
+  border-color: var(--menu-icon);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-soft) 82%, var(--card));
+}
+
+.input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--stroke) 58%, var(--menu-icon));
+}
+
+.input::placeholder {
+  color: color-mix(in srgb, var(--muted) 88%, var(--card));
+}
+
+.input:disabled {
+  background: var(--card2);
+  color: color-mix(in srgb, var(--muted) 85%, var(--card));
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.field:has(.input[required]) .fieldLabel::after,
+.field:has(select.input[required]) .fieldLabel::after,
+.field:has(textarea.input[required]) .fieldLabel::after {
+  content: " *";
+  color: var(--danger);
+  font-weight: 800;
+}
+
+.input[required],
+select.input[required],
+textarea.input[required],
+.input[aria-required="true"],
+select.input[aria-required="true"],
+textarea.input[aria-required="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 62%, transparent);
+}
+
+.input[required]:focus,
+select.input[required]:focus,
+textarea.input[required]:focus,
+.input[aria-required="true"]:focus,
+select.input[aria-required="true"]:focus,
+textarea.input[aria-required="true"]:focus {
+  border-color: var(--danger);
+  box-shadow:
+    inset 0 0 0 1px var(--danger),
+    0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+input[type="checkbox"][required],
+input[type="radio"][required] {
+  outline: 1px solid color-mix(in srgb, var(--danger) 72%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .profileStepContent .input[required],
@@ -1009,6 +1077,7 @@ a {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .authModePill {
@@ -1100,6 +1169,19 @@ a {
   border: 1px solid color-mix(in srgb, var(--stroke) 72%, var(--accent-soft));
   background: color-mix(in srgb, var(--card2) 75%, var(--card));
   padding: 10px 12px;
+}
+
+.authCodeInput {
+  text-align: center;
+  letter-spacing: 0.26em;
+  font-size: 19px;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.authCodeInput::placeholder {
+  letter-spacing: 0.12em;
+  font-size: 15px;
 }
 
 .loginFooter {

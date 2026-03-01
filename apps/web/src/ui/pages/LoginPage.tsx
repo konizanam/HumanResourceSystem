@@ -7,8 +7,8 @@ export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("Admin@1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,9 +84,10 @@ export function LoginPage() {
 
     try {
       if (step === "credentials") {
-        const result = await authenticate(email, password);
+        const normalizedEmail = email.trim().toLowerCase();
+        const result = await authenticate(normalizedEmail, password);
         if ("requiresTwoFactor" in result) {
-          setPending({ challengeId: result.challengeId, userEmail: email });
+          setPending({ challengeId: result.challengeId, userEmail: normalizedEmail });
           setStep("twoFactor");
           setCode("");
           setTwoFactorExpiresAt(Date.now() + result.expiresInSeconds * 1000);
@@ -114,6 +115,11 @@ export function LoginPage() {
       const normalized = code.replace(/\s+/g, "").trim();
       if (!normalized) {
         setError("Enter your authentication code");
+        return;
+      }
+
+      if (!/^\d{6}$/.test(normalized)) {
+        setError("Enter a valid 6-digit authentication code");
         return;
       }
 
@@ -177,12 +183,13 @@ export function LoginPage() {
               {!showForgot ? (
                 <>
                   <label className="field">
-                    <span className="fieldLabel">Email</span>
+                    <span className="fieldLabel">Email address</span>
                     <input
                       className="input"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       type="email"
+                      placeholder="name@company.com"
                       autoComplete="username"
                       autoCapitalize="none"
                       autoCorrect="off"
@@ -198,6 +205,7 @@ export function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       type="password"
+                      placeholder="Enter your password"
                       autoComplete="current-password"
                       autoCapitalize="none"
                       autoCorrect="off"
@@ -212,6 +220,7 @@ export function LoginPage() {
                       className="linkBtn"
                       onClick={() => {
                         setShowForgot(true);
+                        setForgotEmail(email.trim());
                         setForgotMessage(null);
                       }}
                     >
@@ -233,6 +242,7 @@ export function LoginPage() {
                       autoCorrect="off"
                       spellCheck={false}
                       placeholder="name@company.com"
+                      required
                     />
                   </label>
 
@@ -296,11 +306,12 @@ export function LoginPage() {
               <label className="field">
                 <span className="fieldLabel">Authentication code</span>
                 <input
-                  className="input"
+                  className="input authCodeInput"
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={(e) => setCode(e.target.value.replace(/\D+/g, "").slice(0, 6))}
                   inputMode="numeric"
                   autoComplete="one-time-code"
+                  maxLength={6}
                   placeholder="123456"
                   required
                 />
@@ -329,7 +340,7 @@ export function LoginPage() {
                     setBusy(true);
                     try {
                       const nextChallenge = await requestTwoFactorChallenge(
-                        pending?.userEmail ?? email,
+                        (pending?.userEmail ?? email).trim().toLowerCase(),
                         password
                       );
 
@@ -348,9 +359,9 @@ export function LoginPage() {
                       setBusy(false);
                     }
                   }}
-                  disabled={busy}
+                  disabled={busy || countdownSeconds > 0}
                 >
-                  Resend code
+                  {countdownSeconds > 0 ? `Resend in ${countdownLabel}` : "Resend code"}
                 </button>
               </div>
             </>
