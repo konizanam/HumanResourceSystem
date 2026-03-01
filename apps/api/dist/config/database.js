@@ -9,21 +9,26 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 // Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../../.env') });
-// Validate required environment variables
-const requiredEnvVars = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
-for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-        console.error(`❌ Missing required environment variable: ${envVar}`);
-        process.exit(1);
-    }
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const hasDbParts = Boolean(process.env.DB_HOST) &&
+    Boolean(process.env.DB_PORT) &&
+    Boolean(process.env.DB_NAME) &&
+    Boolean(process.env.DB_USER) &&
+    Boolean(process.env.DB_PASSWORD);
+if (!hasDatabaseUrl && !hasDbParts) {
+    throw new Error('Database configuration missing in .env. Set DATABASE_URL or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.');
 }
 // Create pool configuration
 const poolConfig = {
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+    ...(hasDatabaseUrl
+        ? { connectionString: process.env.DATABASE_URL }
+        : {
+            host: process.env.DB_HOST,
+            port: Number(process.env.DB_PORT),
+            database: process.env.DB_NAME,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+        }),
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,

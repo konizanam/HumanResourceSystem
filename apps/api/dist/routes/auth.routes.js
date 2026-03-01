@@ -12,6 +12,7 @@ const zod_1 = require("zod");
 const db_1 = require("../db");
 const users_1 = require("../users");
 const emailSender_service_1 = require("../services/emailSender.service");
+const auth_1 = require("../middleware/auth");
 exports.authRouter = (0, express_1.Router)();
 /* ------------------------------------------------------------------ */
 /*  GET /api/v1/auth/email-available                                   */
@@ -76,15 +77,15 @@ async function sendTwoFactorCodeEmail(params) {
 function jwtExpiresIn() {
     const raw = process.env.JWT_EXPIRES_IN;
     if (!raw)
-        return "15m";
+        return "8h";
     const trimmed = raw.trim();
     if (!trimmed)
-        return "15m";
+        return "8h";
     if (/^\d+$/.test(trimmed))
         return Number(trimmed);
     if (/^\d+(ms|s|m|h|d|w|y)$/.test(trimmed))
         return trimmed;
-    return "15m";
+    return "8h";
 }
 function signToken(payload) {
     const secret = process.env.JWT_SECRET;
@@ -377,6 +378,56 @@ exports.authRouter.post("/2fa/verify", async (req, res, next) => {
                 email: challenge.email,
                 name: challenge.name,
                 roles: challenge.roles,
+            },
+        });
+    }
+    catch (err) {
+        return next(err);
+    }
+});
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/refresh                                            */
+/* ------------------------------------------------------------------ */
+exports.authRouter.post("/refresh", auth_1.authenticate, async (req, res, next) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({ error: { message: "Authentication required" } });
+        }
+        const { rows } = await (0, db_1.query)(`SELECT u.id,
+              u.email,
+              u.first_name,
+              u.last_name,
+              r.name AS role_name
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles r ON r.id = ur.role_id
+       WHERE u.id = $1 AND u.is_active = TRUE`, [userId]);
+        if (!rows.length) {
+            return res.status(401).json({ error: { message: "User not found or inactive" } });
+        }
+        const email = String(rows[0].email ?? "");
+        const firstName = String(rows[0].first_name ?? "").trim();
+        const lastName = String(rows[0].last_name ?? "").trim();
+        const fullName = `${firstName} ${lastName}`.trim() || email;
+        const roles = Array.from(new Set(rows
+            .map((row) => String(row.role_name ?? "").trim())
+            .filter((role) => role.length > 0)));
+        const accessToken = signToken({
+            sub: userId,
+            email,
+            name: fullName,
+            roles,
+        });
+        return res.json({
+            tokenType: "Bearer",
+            accessToken,
+            expiresIn: jwtExpiresIn(),
+            user: {
+                id: userId,
+                email,
+                name: fullName,
+                roles,
             },
         });
     }

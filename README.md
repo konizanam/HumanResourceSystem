@@ -18,6 +18,7 @@ Monorepo (npm workspaces) with:
 2) Create API env file:
 
 - Copy `apps/api/.env.example` to `apps/api/.env`
+- Set database credentials in `apps/api/.env` (`DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`)
 
 3) Run API + Web together:
 

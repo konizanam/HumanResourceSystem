@@ -11,12 +11,30 @@ dotenv.config();
 // DATABASE CONNECTION
 // =============================================
 
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const hasDbParts =
+  Boolean(process.env.DB_HOST) &&
+  Boolean(process.env.DB_PORT) &&
+  Boolean(process.env.DB_NAME) &&
+  Boolean(process.env.DB_USER) &&
+  Boolean(process.env.DB_PASSWORD);
+
+if (!hasDatabaseUrl && !hasDbParts) {
+  throw new Error(
+    'Database configuration missing in .env. Set DATABASE_URL or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.'
+  );
+}
+
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'hrs_database',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  ...(hasDatabaseUrl
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT),
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+      }),
 });
 
 // =============================================
@@ -724,7 +742,7 @@ async function seedDatabase() {
     await client.query('BEGIN');
     
     console.log('🌱 Starting database seed...');
-    console.log('📦 Connected to database:', process.env.DB_NAME || 'hrs_database');
+    console.log('📦 Connected to database:', process.env.DB_NAME ?? '(from DATABASE_URL)');
     
     // Ask if user wants to clear existing data
     const shouldClear = process.argv.includes('--clear');

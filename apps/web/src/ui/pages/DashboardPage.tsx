@@ -136,6 +136,13 @@ export function DashboardPage() {
     total: 0,
     pages: 1,
   });
+  const [platformJobsSnapshot, setPlatformJobsSnapshot] = useState<JobListItem[]>([]);
+  const [platformStats, setPlatformStats] = useState({
+    totalJobs: 0,
+    activeJobs: 0,
+    companies: 0,
+    jobsLast30Days: 0,
+  });
 
   const canViewAdminDashboard = hasPermission("MANAGE_USERS");
   const canViewEmployerDashboard =
@@ -197,6 +204,47 @@ export function DashboardPage() {
       setSeekerCompanies(Array.isArray(companies) ? companies : []);
     };
 
+    const loadUniversalDashboard = async () => {
+      const [jobsResult, activeJobsResult, companiesResult] = await Promise.allSettled([
+        listJobs(accessToken, { page: 1, limit: 100 }),
+        listJobs(accessToken, { page: 1, limit: 1, status: "active" }),
+        listCompanies(accessToken),
+      ]);
+
+      const jobsPayload = jobsResult.status === "fulfilled" ? jobsResult.value : null;
+      const jobs = Array.isArray(jobsPayload?.jobs) ? jobsPayload.jobs : [];
+      const totalJobs = Number(jobsPayload?.pagination?.total ?? jobs.length ?? 0);
+
+      const activeTotalFromApi =
+        activeJobsResult.status === "fulfilled"
+          ? Number(activeJobsResult.value?.pagination?.total ?? 0)
+          : null;
+
+      const activeJobsFallback = jobs.filter((job) => {
+        const status = String(job.status ?? "").toLowerCase();
+        return status === "active" || status === "approved";
+      }).length;
+
+      const companiesCount =
+        companiesResult.status === "fulfilled" && Array.isArray(companiesResult.value)
+          ? companiesResult.value.length
+          : 0;
+
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const jobsLast30Days = jobs.filter((job) => {
+        const createdAt = job.created_at ? new Date(String(job.created_at)).getTime() : NaN;
+        return Number.isFinite(createdAt) && createdAt >= thirtyDaysAgo;
+      }).length;
+
+      setPlatformJobsSnapshot(jobs);
+      setPlatformStats({
+        totalJobs,
+        activeJobs: activeTotalFromApi ?? activeJobsFallback,
+        companies: companiesCount,
+        jobsLast30Days,
+      });
+    };
+
     try {
       setLoading(true);
       setError(null);
@@ -209,6 +257,14 @@ export function DashboardPage() {
       setSeekerApplications([]);
       setSeekerProfile(null);
       setSeekerCompanies([]);
+      setPlatformJobsSnapshot([]);
+      setPlatformStats({ totalJobs: 0, activeJobs: 0, companies: 0, jobsLast30Days: 0 });
+
+      try {
+        await loadUniversalDashboard();
+      } catch {
+        // Keep dashboard visible even when summary widgets cannot be loaded.
+      }
 
       if (canViewAdminDashboard) {
         try {
@@ -641,6 +697,42 @@ export function DashboardPage() {
     ];
   }, [adminStats]);
 
+  const platformStatCards = useMemo(() => {
+    return [
+      { label: "Total Jobs", value: platformStats.totalJobs },
+      { label: "Active Jobs", value: platformStats.activeJobs },
+      { label: "Total Companies", value: platformStats.companies },
+      { label: "Jobs Posted (30 days)", value: platformStats.jobsLast30Days },
+    ];
+  }, [platformStats.activeJobs, platformStats.companies, platformStats.jobsLast30Days, platformStats.totalJobs]);
+
+  const platformJobsStatusChart = useMemo(() => {
+    const breakdown = (platformJobsSnapshot ?? []).reduce<Record<string, number>>((acc, job) => {
+      const key = String(job.status ?? "unknown").trim().toLowerCase() || "unknown";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    return toChartData(breakdown, 6);
+  }, [platformJobsSnapshot]);
+
+  const platformEmploymentTypeChart = useMemo(() => {
+    const breakdown = (platformJobsSnapshot ?? []).reduce<Record<string, number>>((acc, job) => {
+      const key = String(job.employment_type ?? "unspecified").trim().toLowerCase() || "unspecified";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    return toChartData(breakdown, 6);
+  }, [platformJobsSnapshot]);
+
+  const platformPostingTrend = useMemo(() => {
+    return toDailySeries(
+      platformJobsSnapshot.map((job) => ({
+        created_at: job.created_at ?? undefined,
+      })),
+      14,
+    );
+  }, [platformJobsSnapshot]);
+
   if (loading || permissionsLoading) {
     return <div className="page"><h1 className="pageTitle">Dashboard</h1><p className="pageText">Loading...</p></div>;
   }
@@ -650,6 +742,50 @@ export function DashboardPage() {
       <div className="companiesHeader"><h1 className="pageTitle">Dashboard</h1></div>
       {success && <div className="successBox">{success}</div>}
       {error && <div className="errorBox">{error}</div>}
+
+      <div className="dashCard" style={{ marginBottom: 12 }}>
+        <div className="dashCardHeader">
+          <h2 className="dashCardTitle">Platform Overview</h2>
+          <span className="dashCardMeta">Visible to all users</span>
+        </div>
+        <div className="statsCardsGrid" role="region" aria-label="Universal dashboard statistics">
+          {platformStatCards.map((card, idx) => {
+            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+            return (
+              <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+                <div className="readLabel">{card.label}</div>
+                <div className="statsCardValue">{card.value}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="dashGraphs" style={{ marginBottom: 12 }}>
+        <div className="dashCard">
+          <div className="dashCardHeader">
+            <h2 className="dashCardTitle">New Job Posts Trend</h2>
+            <span className="dashCardMeta">Last 14 days</span>
+          </div>
+          <Sparkline values={platformPostingTrend} />
+        </div>
+
+        <div className="dashCard">
+          <div className="dashCardHeader">
+            <h2 className="dashCardTitle">Job Status Distribution</h2>
+            <span className="dashCardMeta">Current snapshot</span>
+          </div>
+          <BarChart data={platformJobsStatusChart} emptyText="No job status data yet." />
+        </div>
+
+        <div className="dashCard">
+          <div className="dashCardHeader">
+            <h2 className="dashCardTitle">Employment Types</h2>
+            <span className="dashCardMeta">Current snapshot</span>
+          </div>
+          <BarChart data={platformEmploymentTypeChart} emptyText="No employment type data yet." />
+        </div>
+      </div>
 
       {isStandardDashboardUser && (
         <>

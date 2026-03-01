@@ -705,6 +705,20 @@ export async function verifyTwoFactor(
   return (await res.json()) as LoginResponse;
 }
 
+export async function refreshAccessToken(token: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Session refresh failed");
+  }
+
+  return body as LoginResponse;
+}
+
 export async function requestTwoFactorChallenge(
   email: string,
   password: string
