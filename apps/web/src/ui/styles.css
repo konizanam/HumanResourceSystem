@@ -315,7 +315,8 @@ input[type="radio"][required] {
   top: 0;
   align-self: flex-start;
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebarCollapsed {
@@ -382,8 +383,7 @@ input[type="radio"][required] {
   display: grid;
   gap: 4px;
   flex: 1 1 auto;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
 }
 
 .navItem {
@@ -2147,6 +2147,21 @@ input[type="radio"][required] {
   width: 100%;
   border-collapse: collapse;
   min-width: 920px;
+}
+
+.auditTableWrap {
+  overflow-x: visible;
+}
+
+.auditTable {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.auditTable th,
+.auditTable td {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Companies table: show fewer columns on small screens */

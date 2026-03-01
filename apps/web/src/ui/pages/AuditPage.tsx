@@ -177,6 +177,40 @@ export function AuditPage() {
     );
   }
 
+  function renderPaginationBar(ariaLabel: string, marginTop = 0) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 10,
+          flexWrap: "wrap",
+          marginTop,
+        }}
+      >
+        <div style={{ minWidth: 170 }}>
+          <label className="fieldLabel">Rows per page</label>
+          <select
+            className="input"
+            value={String(pagination.limit)}
+            onChange={(e) => {
+              const nextLimit = Number(e.target.value);
+              if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
+              setPagination((prev) => ({ ...prev, limit: nextLimit, page: 1 }));
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+          {renderPager(ariaLabel)}
+        </div>
+      </div>
+    );
+  }
+
   if (loading && logs.length === 0) {
     return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div><p className="pageText">Loading…</p></div>);
   }
@@ -438,31 +472,15 @@ export function AuditPage() {
             <input className="input" placeholder="Filter by target id…" value={targetIdFilter} onChange={(e) => setTargetIdFilter(e.target.value)} />
           </div>
         ) : null}
-        <div style={{ minWidth: 170 }}>
-          <label className="fieldLabel">Rows per page</label>
-          <select
-            className="input"
-            value={String(pagination.limit)}
-            onChange={(e) => {
-              const nextLimit = Number(e.target.value);
-              if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
-              setPagination((prev) => ({ ...prev, limit: nextLimit, page: 1 }));
-            }}
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        {renderPager("Audit logs pagination top")}
+        {renderPaginationBar("Audit logs pagination top")}
       </div>
 
       {/* Table */}
-      <div className="tableWrap" role="region" aria-label="Audit logs table">
-        <table className="table companiesTable">
+      <div className="tableWrap auditTableWrap" role="region" aria-label="Audit logs table">
+        <table className="table auditTable">
           <thead>
             <tr>
               <th>Date</th>
@@ -570,7 +588,7 @@ export function AuditPage() {
 
       {/* Pagination */}
       <div style={{ marginTop: 16 }}>
-        {renderPager("Audit logs pagination")}
+        {renderPaginationBar("Audit logs pagination", 0)}
       </div>
     </div>
   );

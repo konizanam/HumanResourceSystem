@@ -1084,9 +1084,8 @@ router.get('/statistics',
       // Activity statistics
       const activityStats = await dbQuery(
         `SELECT 
-          0 as api_requests_today,
-          COUNT(DISTINCT user_id) as active_sessions
-         FROM user_sessions`
+          (SELECT COUNT(*) FROM audit_logs WHERE created_at >= CURRENT_DATE) as api_requests_today,
+          (SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE expires_at > NOW()) as active_sessions`
       );
 
       // Date range specific statistics
