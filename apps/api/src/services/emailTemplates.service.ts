@@ -67,8 +67,8 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
     body_text:
       'Dear {{user_full_name}},\n\n'
       + 'We have received your application for {{job_title}} at {{company_name}}.\n\n'
-      + 'You can review the job details here:\n'
-      + '{{job_link}}\n\n'
+      + 'You can review the job details using the View Job button below.\n'
+      + 'Job link: {{job_link}}\n\n'
       + 'Thank you for using {{app_name}}.\n\n'
       + 'Regards,\n'
       + '{{app_name}} Team',
@@ -83,8 +83,8 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
     body_text:
       'Dear {{user_full_name}},\n\n'
       + '{{applicant_name}} has applied for {{job_title}}.\n\n'
-      + 'Open applications:\n'
-      + '{{job_link}}\n\n'
+      + 'Open applications using the View Job button below.\n'
+      + 'Job link: {{job_link}}\n\n'
       + 'Regards,\n'
       + '{{app_name}} Team',
     body_html: '',
@@ -139,8 +139,8 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
       'Hi {{user_full_name}},\n\n'
       + 'A new job was posted that may match your preferences:\n'
       + '{{job_title}} at {{company_name}}\n\n'
-      + 'View job:\n'
-      + '{{job_link}}\n\n'
+      + 'Use the View Job button below to open this opportunity.\n'
+      + 'Job link: {{job_link}}\n\n'
       + 'If you no longer want to receive these alerts, you can unsubscribe here:\n'
       + '{{unsubscribe_link}}\n\n'
       + 'Regards,\n'

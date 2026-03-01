@@ -1110,7 +1110,13 @@ export async function createNotification(
 
         if (templateKey) {
           const fullName = `${String(userRow?.first_name ?? '').trim()} ${String(userRow?.last_name ?? '').trim()}`.trim() || 'User';
-          const link = String(action_url ?? (webOrigin() ? `${webOrigin()}/app/notifications` : ''));
+          const rawAction = String(action_url ?? '').trim();
+          const origin = webOrigin();
+          const link = rawAction
+            ? (/^https?:\/\//i.test(rawAction)
+                ? rawAction
+                : (origin ? `${origin}${rawAction.startsWith('/') ? rawAction : `/${rawAction}`}` : rawAction))
+            : (origin ? `${origin}/app/notifications` : '');
           await sendTemplatedEmail({
             templateKey,
             to: toEmail,

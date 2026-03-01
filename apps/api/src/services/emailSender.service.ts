@@ -76,11 +76,23 @@ function textToHtmlContent(bodyText: string): string {
       // Linkify http(s) URLs.
       const linked = withBreaks.replace(
         /(https?:\/\/[\w\-._~:/?#\[\]@!$&'()*+,;=%]+)/g,
-        (url) => `<a href="${url}" style="color:#2563eb; text-decoration:underline;">${url}</a>`
+        (url) => `<a href="${url}" style="color:#1d4ed8; text-decoration:underline; font-weight:600;">${url}</a>`
       );
-      return `<p style="margin:0 0 14px 0;">${linked}</p>`;
+      return `<p style="margin:0 0 14px 0; font-size:14px; line-height:1.65; color:#1e293b;">${linked}</p>`;
     })
     .join('');
+}
+
+function toDisplayDate(): string {
+  try {
+    return new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
 }
 
 function wrapBrandedEmailHtml(params: {
@@ -93,6 +105,7 @@ function wrapBrandedEmailHtml(params: {
   const support = supportEmail();
   const brand = appName();
   const preheader = params.preheader ? escapeHtml(params.preheader) : '';
+  const nowText = toDisplayDate();
 
   return (
     `<!doctype html>`
@@ -103,12 +116,12 @@ function wrapBrandedEmailHtml(params: {
     + `<meta name="x-apple-disable-message-reformatting"/>`
     + `<title>${escapeHtml(params.title)}</title>`
     + `</head>`
-    + `<body style="margin:0; padding:0; background:#f6f7fb;">`
+    + `<body style="margin:0; padding:0; background:#f2f5fb;">`
     + `<div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent;">${preheader}</div>`
-    + `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background:#f6f7fb;">`
-    + `<tr><td align="center" style="padding:28px 12px;">`
+    + `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background:#f2f5fb;">`
+    + `<tr><td align="center" style="padding:30px 12px;">`
     + `<table role="presentation" width="600" cellspacing="0" cellpadding="0" style="border-collapse:collapse; max-width:600px; width:100%;">`
-    + `<tr><td style="padding:0 0 14px 0;">`
+    + `<tr><td style="padding:0 0 12px 0;">`
     + `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">`
     + `<tr>`
     + `<td style="vertical-align:middle;">`
@@ -116,18 +129,24 @@ function wrapBrandedEmailHtml(params: {
       ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(brand)}" height="36" style="display:block; height:36px; width:auto;"/>`
       : `<div style="font-family:Arial, sans-serif; font-size:18px; font-weight:700; color:#0f172a;">${escapeHtml(brand)}</div>`)
     + `</td>`
-    + `<td align="right" style="vertical-align:middle; font-family:Arial, sans-serif; font-size:12px; color:#475569;">${escapeHtml(brand)}</td>`
+    + `<td align="right" style="vertical-align:middle; font-family:Arial, sans-serif; font-size:12px; color:#64748b;">${escapeHtml(nowText)}</td>`
     + `</tr>`
     + `</table>`
     + `</td></tr>`
-    + `<tr><td style="background:#ffffff; border-radius:14px; padding:22px 22px 18px 22px; border:1px solid #e6e8f0;">`
-    + `<div style="font-family:Arial, sans-serif; font-size:18px; font-weight:700; color:#0f172a; margin:0 0 10px 0;">${escapeHtml(params.title)}</div>`
-    + `<div style="font-family:Arial, sans-serif; font-size:14px; line-height:1.55; color:#0f172a;">${params.contentHtml}</div>`
+    + `<tr><td style="background:#ffffff; border-radius:16px; border:1px solid #e6e8f0; box-shadow:0 10px 30px rgba(15,23,42,0.06); overflow:hidden;">`
+    + `<div style="height:6px; background:linear-gradient(90deg, #6366f1 0%, #4338ca 100%);"></div>`
+    + `<div style="padding:22px 22px 10px 22px;">`
+    + `<div style="display:inline-block; margin:0 0 10px 0; font-family:Arial, sans-serif; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#4338ca; background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; padding:5px 10px;">Notification</div>`
+    + `<div style="font-family:Arial, sans-serif; font-size:20px; font-weight:800; color:#0f172a; margin:0 0 12px 0; line-height:1.25;">${escapeHtml(params.title)}</div>`
+    + `<div style="font-family:Arial, sans-serif; font-size:14px; line-height:1.65; color:#1e293b;">${params.contentHtml}</div>`
+    + `</div>`
     + `</td></tr>`
-    + `<tr><td style="padding:14px 4px 0 4px; font-family:Arial, sans-serif; font-size:12px; line-height:1.4; color:#64748b;">`
-    + `<div style="margin:0 0 6px 0;">This is an automated message from ${escapeHtml(brand)}.</div>`
-    + (support ? `<div style="margin:0;">Need help? Contact <a href="mailto:${escapeHtml(support)}" style="color:#2563eb; text-decoration:underline;">${escapeHtml(support)}</a>.</div>` : '')
-    + `<div style="margin:10px 0 0 0;">© ${year} ${escapeHtml(brand)}</div>`
+    + `<tr><td style="padding:14px 6px 0 6px;">`
+    + `<div style="font-family:Arial, sans-serif; font-size:12px; line-height:1.55; color:#64748b; background:#ffffff; border:1px solid #e6e8f0; border-radius:12px; padding:12px 14px;">`
+    + `<div style="margin:0 0 6px 0;">This is an automated message from <strong style="color:#334155;">${escapeHtml(brand)}</strong>.</div>`
+    + (support ? `<div style="margin:0;">Need help? Contact <a href="mailto:${escapeHtml(support)}" style="color:#1d4ed8; text-decoration:underline; font-weight:600;">${escapeHtml(support)}</a>.</div>` : '')
+    + `<div style="margin:8px 0 0 0;">© ${year} ${escapeHtml(brand)}</div>`
+    + `</div>`
     + `</td></tr>`
     + `</table>`
     + `</td></tr>`
@@ -145,7 +164,13 @@ function renderTokens(input: string, data: Record<string, string>, opts?: { html
     if (opts?.html && key === 'activation_link') {
       const url = String(rawValue ?? '');
       const safe = escapeHtml(url);
-      out = out.split(token).join(`<a href="${safe}">${safe}</a>`);
+      const activationHtml = url
+        ? `<div style="margin:8px 0 12px 0;">`
+          + `<a href="${safe}" style="display:inline-block; background:#4338ca; color:#ffffff; text-decoration:none; font-weight:700; font-size:14px; line-height:1; padding:12px 18px; border-radius:10px;">Activate Account</a>`
+          + `</div>`
+          + `<div style="font-size:12px; color:#64748b; word-break:break-all;">${safe}</div>`
+        : '';
+      out = out.split(token).join(activationHtml);
       continue;
     }
 
@@ -154,6 +179,19 @@ function renderTokens(input: string, data: Record<string, string>, opts?: { html
       out = out
         .split(token)
         .join(`<span style="display:inline-block; padding:6px 10px; border-radius:10px; background:#eef2ff; border:1px solid #e0e7ff; font-weight:700; letter-spacing:2px;">${code}</span>`);
+      continue;
+    }
+
+    if (opts?.html && key === 'job_link') {
+      const url = String(rawValue ?? '').trim();
+      const safe = escapeHtml(url);
+      const buttonHtml = url
+        ? `<div style="margin:8px 0 12px 0;">`
+          + `<a href="${safe}" style="display:inline-block; background:#4338ca; color:#ffffff; text-decoration:none; font-weight:700; font-size:14px; line-height:1; padding:12px 18px; border-radius:10px;">View Job</a>`
+          + `</div>`
+          + `<div style="font-size:12px; color:#64748b; word-break:break-all;">${safe}</div>`
+        : '';
+      out = out.split(token).join(buttonHtml);
       continue;
     }
 

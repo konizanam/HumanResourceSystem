@@ -643,20 +643,22 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
       </div>
 
       {mode === "messages" && pagination.pages > 1 ? (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 16 }}>
+        <div className="publicJobsPager" role="navigation" aria-label="Messages pagination" style={{ marginTop: 16 }}>
           <button
-            className="btn btnGhost btnSm"
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
             type="button"
             onClick={() => void load(page - 1)}
             disabled={saving || loading || page <= 1}
           >
             {"<-"} Previous
           </button>
-          <span className="readLabel">
+          <span className="publicJobsPagerInfo">
             Page {page} of {pagination.pages} ({pagination.total} messages)
           </span>
           <button
-            className="btn btnGhost btnSm"
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
             type="button"
             onClick={() => void load(page + 1)}
             disabled={saving || loading || page >= pagination.pages}
