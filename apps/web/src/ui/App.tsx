@@ -30,7 +30,7 @@ import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
   { path: "global-settings", title: "Global Settings", icon: "settings" },
-  { path: "job-seekers", title: "Job Seeker", icon: "users" },
+  { path: "job-seekers", title: "Job Seeker Profiles", icon: "users" },
   { path: "jobs", title: "Jobs", icon: "briefcase" },
   { path: "applications", title: "Applications", icon: "list" },
   { path: "companies", title: "Companies", icon: "building" },

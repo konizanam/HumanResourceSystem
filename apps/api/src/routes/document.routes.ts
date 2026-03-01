@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { DocumentController } from '../controllers/document.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { upload } from '../config/upload';
 
 const router = Router();
@@ -23,6 +23,11 @@ router.post(
 );
 
 router.get('/my-documents', documentController.getUserDocuments);
+router.get(
+  '/user/:userId/documents',
+  authorizePermission('view_users', 'manage_users', 'view_applications', 'manage_applications'),
+  documentController.getDocumentsForUser,
+);
 router.get('/:documentId', documentController.getDocument);
 router.delete('/:documentId', documentController.deleteDocument);
 router.patch('/:documentId', documentController.updateDocument);

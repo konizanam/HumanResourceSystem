@@ -189,6 +189,23 @@ export class DocumentController {
     }
   }
 
+  // Get documents for a specific user (admin/HR view)
+  async getDocumentsForUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = getStringParam(req, 'userId');
+      const documentType = getQueryString(req, 'type');
+
+      const documents = await documentService.getUserDocuments(userId, documentType);
+
+      res.json({
+        status: 'success',
+        data: documents,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // Get company documents
   async getCompanyDocuments(req: Request, res: Response, next: NextFunction) {
     try {

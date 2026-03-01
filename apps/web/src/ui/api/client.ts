@@ -1056,6 +1056,24 @@ export async function listMyDocuments(
   return Array.isArray(data) ? (data as UserDocument[]) : [];
 }
 
+export async function listUserDocuments(
+  token: string,
+  userId: string,
+  type?: string,
+): Promise<UserDocument[]> {
+  const url = new URL(`${API_BASE}/documents/user/${encodeURIComponent(userId)}/documents`);
+  if (type) url.searchParams.set("type", type);
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load documents");
+
+  const data = (body as any)?.data;
+  return Array.isArray(data) ? (data as UserDocument[]) : [];
+}
+
 export type JobSeekerResume = {
   id: string;
   file_name?: string;
@@ -1461,6 +1479,9 @@ export type JobSeekerListItem = {
   last_name?: string | null;
   phone?: string | null;
   is_active?: boolean;
+  is_blocked?: boolean;
+  blocked_at?: string | null;
+  block_reason?: string | null;
   created_at?: string;
 };
 
@@ -1470,12 +1491,14 @@ export async function listJobSeekers(
     page?: number;
     limit?: number;
     search?: string;
+    status?: string;
   },
 ): Promise<{ job_seekers: JobSeekerListItem[]; pagination: Pagination }> {
   const url = new URL(`${API_BASE}/job-seeker/list`);
   if (params?.page) url.searchParams.set("page", String(params.page));
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.status) url.searchParams.set("status", params.status);
 
   const res = await fetch(url, { headers: authHeaders(token) });
   const body = await safeJson(res);

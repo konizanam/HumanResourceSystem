@@ -15,6 +15,7 @@ const listJobSeekersQuerySchema = zod_1.z.object({
     page: zod_1.z.coerce.number().int().min(1).optional().default(1),
     limit: zod_1.z.coerce.number().int().min(1).max(200).optional().default(60),
     search: zod_1.z.string().optional().default(""),
+    status: zod_1.z.string().optional().default(""),
 });
 exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users", "manage_users", "view_applications", "manage_applications"), async (req, res, next) => {
     try {
@@ -23,9 +24,19 @@ exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users
         const limit = parsed.limit;
         const offset = (page - 1) * limit;
         const search = parsed.search.trim();
+        const status = parsed.status.trim().toLowerCase();
         const params = [];
         let paramIndex = 1;
         let where = "WHERE UPPER(r.name) = 'JOB_SEEKER'";
+        if (status === 'active') {
+            where += ' AND u.is_active = true AND COALESCE(u.is_blocked, false) = false';
+        }
+        else if (status === 'inactive') {
+            where += ' AND u.is_active = false';
+        }
+        else if (status === 'blocked') {
+            where += ' AND COALESCE(u.is_blocked, false) = true';
+        }
         if (search) {
             where += ` AND (
           u.email ILIKE $${paramIndex} OR
@@ -44,7 +55,10 @@ exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users
         const total = Number(countResult.rows?.[0]?.count ?? 0);
         const pages = Math.max(1, Math.ceil(total / limit));
         const listResult = await (0, db_1.query)(`SELECT DISTINCT
-           u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active, u.created_at
+           u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active,
+           COALESCE(u.is_blocked, false) as is_blocked,
+           u.blocked_at, u.block_reason,
+           u.created_at
          FROM users u
          JOIN user_roles ur ON ur.user_id = u.id
          JOIN roles r ON r.id = ur.role_id

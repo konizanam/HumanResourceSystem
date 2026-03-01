@@ -1,14 +1,17 @@
-import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
   applyToJob,
+  blockUser,
   listJobSeekerResumes,
   listMyDocuments,
   getFullProfile,
+  getJobSeekerFullProfile,
   listJobSeekers,
+  listUserDocuments,
   getIpLocation,
   me,
   uploadJobSeekerDocument,
@@ -26,6 +29,8 @@ import {
   type FullProfile,
   type JobListItem,
   type JobSeekerListItem,
+  type JobSeekerFullProfile,
+  type UserDocument,
 } from "../api/client";
 
 /* ================================================================== */
@@ -271,6 +276,8 @@ function StepIcon({ step }: { step: number }) {
 /*  Main component                                                     */
 /* ================================================================== */
 
+const DIRECTORY_PAGE_LIMIT = 5;
+
 export function JobSeekerProfilePage() {
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -278,6 +285,31 @@ export function JobSeekerProfilePage() {
   const [data, setData] = useState<FullProfile | null>(null);
   const [mode, setMode] = useState<"self" | "directory" | "forbidden">("self");
   const [jobSeekers, setJobSeekers] = useState<JobSeekerListItem[]>([]);
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const [directoryPagination, setDirectoryPagination] = useState({
+    page: 1,
+    limit: DIRECTORY_PAGE_LIMIT,
+    total: 0,
+    pages: 1,
+  });
+  const [directorySearch, setDirectorySearch] = useState("");
+  const [directoryStatus, setDirectoryStatus] = useState("");
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryCanManageUsers, setDirectoryCanManageUsers] = useState(false);
+
+  const [openDirectoryProfileId, setOpenDirectoryProfileId] = useState<string | null>(null);
+  const [directoryProfileByUserId, setDirectoryProfileByUserId] = useState<
+    Record<string, JobSeekerFullProfile | null | undefined>
+  >({});
+
+  const [directoryDocumentsByUserId, setDirectoryDocumentsByUserId] = useState<
+    Record<string, UserDocument[] | null | undefined>
+  >({});
+
+  const [blockModalUser, setBlockModalUser] = useState<JobSeekerListItem | null>(null);
+  const [blockAction, setBlockAction] = useState<"block" | "unblock">("block");
+  const [blockReason, setBlockReason] = useState("");
+  const [blocking, setBlocking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeStep, setActiveStep] = useState(0);
   const [editingStep, setEditingStep] = useState<number | null>(null);
@@ -312,6 +344,7 @@ export function JobSeekerProfilePage() {
       const canViewJobSeekerProfiles = normalizedPerms.some((p) =>
         ["view_users", "manage_users", "view_applications", "manage_applications"].includes(p),
       );
+      setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
 
       if (!isJobSeeker && canViewJobSeekerProfiles) {
         setMode("directory");
@@ -320,8 +353,8 @@ export function JobSeekerProfilePage() {
         setPendingJob(null);
         setData(null);
 
-        const list = await listJobSeekers(accessToken, { page: 1, limit: 200 });
-        setJobSeekers(Array.isArray((list as any)?.job_seekers) ? (list as any).job_seekers : []);
+        // Directory list is loaded via the dedicated paginated loader (page/filters).
+        setJobSeekers([]);
         return;
       }
 
@@ -395,12 +428,348 @@ export function JobSeekerProfilePage() {
     setSuccess(null);
   }
 
+  const loadDirectory = useCallback(
+    async (pageToLoad: number) => {
+      if (!accessToken) return;
+      try {
+        setDirectoryLoading(true);
+        setError(null);
+
+        const res = await listJobSeekers(accessToken, {
+          page: pageToLoad,
+          limit: DIRECTORY_PAGE_LIMIT,
+          search: directorySearch.trim() || undefined,
+          status: directoryStatus || undefined,
+        });
+
+        const seekers = Array.isArray((res as any)?.job_seekers) ? (res as any).job_seekers : [];
+        const pag = (res as any)?.pagination ?? {};
+        setJobSeekers(seekers);
+        setDirectoryPagination({
+          page: Number(pag.page ?? pageToLoad),
+          limit: Number(pag.limit ?? DIRECTORY_PAGE_LIMIT),
+          total: Number(pag.total ?? seekers.length ?? 0),
+          pages: Number(pag.pages ?? 1),
+        });
+      } catch (e) {
+        setJobSeekers([]);
+        setDirectoryPagination({ page: 1, limit: DIRECTORY_PAGE_LIMIT, total: 0, pages: 1 });
+        setError((e as any)?.message ?? "Failed to load job seeker profiles");
+      } finally {
+        setDirectoryLoading(false);
+      }
+    },
+    [accessToken, directorySearch, directoryStatus],
+  );
+
+  useEffect(() => {
+    if (mode !== "directory") return;
+    loadDirectory(directoryPage);
+  }, [directoryPage, loadDirectory, mode]);
+
+  useEffect(() => {
+    if (mode !== "directory") return;
+    if (directoryPage > directoryPagination.pages) {
+      setDirectoryPage(directoryPagination.pages);
+    }
+  }, [directoryPage, directoryPagination.pages, mode]);
+
+  function readValue(obj: Record<string, unknown> | null | undefined, ...keys: string[]) {
+    if (!obj) return null;
+    for (const k of keys) {
+      const v = (obj as any)[k];
+      if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+    }
+    return null;
+  }
+
+  async function onToggleDirectoryProfile(seeker: JobSeekerListItem) {
+    const id = String(seeker.id ?? "").trim();
+    if (!id) return;
+    const nextOpen = openDirectoryProfileId === id ? null : id;
+    setOpenDirectoryProfileId(nextOpen);
+    if (!nextOpen || !accessToken) return;
+
+    const hasProfile = Object.prototype.hasOwnProperty.call(directoryProfileByUserId, id);
+    const hasDocs = Object.prototype.hasOwnProperty.call(directoryDocumentsByUserId, id);
+    if (hasProfile && hasDocs) return;
+
+    if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: undefined }));
+    if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: undefined }));
+
+    try {
+      const [profile, docs] = await Promise.all([
+        hasProfile ? Promise.resolve(directoryProfileByUserId[id] as any) : getJobSeekerFullProfile(accessToken, id),
+        hasDocs ? Promise.resolve(directoryDocumentsByUserId[id] as any) : listUserDocuments(accessToken, id),
+      ]);
+      if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: profile }));
+      if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: Array.isArray(docs) ? docs : [] }));
+    } catch {
+      if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
+      if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
+    }
+  }
+
+  function startBlock(seeker: JobSeekerListItem) {
+    if (!directoryCanManageUsers) return;
+    clearMessages();
+    const action = seeker.is_blocked ? "unblock" : "block";
+    setBlockAction(action);
+    setBlockModalUser(seeker);
+    setBlockReason("");
+  }
+
+  async function onConfirmBlock() {
+    if (!accessToken || !blockModalUser || !directoryCanManageUsers) return;
+    try {
+      clearMessages();
+      setBlocking(true);
+      const result = await blockUser(accessToken, blockModalUser.id, {
+        block: blockAction === "block",
+        reason: blockAction === "block" ? blockReason.trim() || undefined : undefined,
+      });
+      setSuccess(
+        result.message ?? `User ${blockAction === "block" ? "blocked" : "unblocked"} successfully`,
+      );
+      setJobSeekers((prev) =>
+        prev.map((u) =>
+          u.id === blockModalUser.id
+            ? {
+                ...u,
+                is_blocked: blockAction === "block",
+                blocked_at: blockAction === "block" ? new Date().toISOString() : null,
+                block_reason: blockAction === "block" ? blockReason.trim() || null : null,
+              }
+            : u,
+        ),
+      );
+      setBlockModalUser(null);
+      setBlockReason("");
+    } catch (e) {
+      setError((e as any)?.message ?? `Failed to ${blockAction} user`);
+    } finally {
+      setBlocking(false);
+    }
+  }
+
+  function renderDirectoryProfilePanel(seeker: JobSeekerListItem) {
+    const userId = String(seeker.id ?? "").trim();
+    const profile = userId ? directoryProfileByUserId[userId] : null;
+    const docs = userId ? directoryDocumentsByUserId[userId] : null;
+
+    if (!userId) {
+      return (
+        <div className="dropPanel">
+          <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
+          <p className="pageText">Profile details are not available for this job seeker.</p>
+        </div>
+      );
+    }
+
+    const personal = (profile as any)?.personalDetails ?? null;
+    const mainProfile = (profile as any)?.profile ?? null;
+    const addresses = Array.isArray((profile as any)?.addresses) ? ((profile as any).addresses as any[]) : [];
+    const education = Array.isArray((profile as any)?.education) ? ((profile as any).education as any[]) : [];
+    const experience = Array.isArray((profile as any)?.experience) ? ((profile as any).experience as any[]) : [];
+
+    const firstName = String(readValue(personal, "first_name", "firstName") ?? seeker.first_name ?? "").trim();
+    const lastName = String(readValue(personal, "last_name", "lastName") ?? seeker.last_name ?? "").trim();
+    const computedFullName = `${firstName} ${lastName}`.trim();
+    const resolvedFullName = computedFullName || String(seeker.email ?? "—").trim() || "—";
+
+    return (
+      <div className="dropPanel">
+        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
+        {profile === undefined ? (
+          <p className="pageText">Loading profile...</p>
+        ) : profile === null ? (
+          <p className="pageText">Profile details are not available for this job seeker.</p>
+        ) : (
+          <>
+            <div style={{ marginTop: 10 }}>
+              <div className="readLabel">Personal Details</div>
+              <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                <ReadField label="Full Name" value={resolvedFullName} />
+                <ReadField label="Email" value={seeker.email} />
+                <ReadField label="Phone" value={seeker.phone} />
+                <ReadField label="Gender" value={readValue(personal, "gender")} />
+                <ReadField label="Nationality" value={readValue(personal, "nationality")} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">Professional Summary</div>
+              <div style={{ marginTop: 6 }}>
+                <div className="readValue" style={{ whiteSpace: "pre-wrap" }}>
+                  {String(
+                    readValue(mainProfile, "professional_summary", "professionalSummary") ??
+                      "—",
+                  )}
+                </div>
+                <div className="profileReadGrid" style={{ marginTop: 8 }}>
+                  <ReadField
+                    label="Field of Expertise"
+                    value={readValue(mainProfile, "field_of_expertise", "fieldOfExpertise")}
+                  />
+                  <ReadField
+                    label="Qualification Level"
+                    value={readValue(mainProfile, "qualification_level", "qualificationLevel")}
+                  />
+                  <ReadField
+                    label="Years Experience"
+                    value={readValue(mainProfile, "years_experience", "yearsExperience")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">Address</div>
+              <div style={{ marginTop: 6 }}>
+                {addresses.length === 0 ? (
+                  <p className="pageText">No address records.</p>
+                ) : (
+                  addresses.map((address, idx) => (
+                    <div key={`${userId}-addr-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
+                      {[
+                        readValue(address, "address_line1", "addressLine1"),
+                        readValue(address, "address_line2", "addressLine2"),
+                        readValue(address, "city"),
+                        readValue(address, "state"),
+                        readValue(address, "country"),
+                      ]
+                        .filter(Boolean)
+                        .map(String)
+                        .join(", ") || "—"}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">Education</div>
+              <div style={{ marginTop: 6 }}>
+                {education.length === 0 ? (
+                  <p className="pageText">No education records.</p>
+                ) : (
+                  education.map((edu, idx) => (
+                    <div key={`${userId}-edu-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
+                      {[
+                        readValue(edu, "institution"),
+                        readValue(edu, "qualification"),
+                        readValue(edu, "field_of_study", "fieldOfStudy"),
+                        readValue(edu, "start_year", "startYear"),
+                        readValue(edu, "end_year", "endYear"),
+                      ]
+                        .filter(Boolean)
+                        .map(String)
+                        .join(" • ") || "—"}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">Experience</div>
+              <div style={{ marginTop: 6 }}>
+                {experience.length === 0 ? (
+                  <p className="pageText">No experience records.</p>
+                ) : (
+                  experience.map((exp, idx) => (
+                    <div key={`${userId}-exp-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
+                      {[
+                        readValue(exp, "company"),
+                        readValue(exp, "position"),
+                        readValue(exp, "start_date", "startDate"),
+                        readValue(exp, "end_date", "endDate"),
+                      ]
+                        .filter(Boolean)
+                        .map(String)
+                        .join(" • ") || "—"}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">Documents</div>
+              <div style={{ marginTop: 8 }}>
+                {(() => {
+                  const cards: { title: string; url: string; hint?: string }[] = [];
+
+                  const idDoc = String(readValue(personal, "id_document_url", "idDocumentUrl") ?? "").trim();
+                  if (idDoc) cards.push({ title: "ID Document", url: idDoc });
+
+                  const profileCert = String(readValue(mainProfile, "certificate_url", "certificateUrl") ?? "").trim();
+                  if (profileCert) cards.push({ title: "Certificate", url: profileCert, hint: "From profile" });
+
+                  for (const edu of education) {
+                    const cert = String(readValue(edu as any, "certificate_url", "certificateUrl") ?? "").trim();
+                    if (!cert) continue;
+                    const inst = String(readValue(edu as any, "institution", "institution_name", "institutionName") ?? "").trim();
+                    cards.push({ title: "Certificate", url: cert, hint: inst || undefined });
+                  }
+
+                  const uploadedDocs: UserDocument[] = Array.isArray(docs) ? docs : [];
+                  for (const d of uploadedDocs) {
+                    const url = String(d.file_url ?? "").trim();
+                    if (!url) continue;
+                    const title = String(d.document_type ?? "Document").trim() || "Document";
+                    const hint = String(d.description ?? d.original_name ?? "").trim() || undefined;
+                    cards.push({ title, url, hint });
+                  }
+
+                  const seen = new Set<string>();
+                  const unique = cards.filter((c) => {
+                    const key = `${c.title}::${c.url}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+
+                  if (docs === undefined) {
+                    return <p className="pageText">Loading documents...</p>;
+                  }
+
+                  if (docs === null) {
+                    return <p className="pageText">Documents are not available for this job seeker.</p>;
+                  }
+
+                  if (unique.length === 0) {
+                    return <p className="pageText">No documents uploaded.</p>;
+                  }
+
+                  return (
+                    <div className="recordList" style={{ marginTop: 0 }}>
+                      {unique.map((c, idx) => (
+                        <UploadedDocumentCard
+                          key={`${userId}-doc-${idx}`}
+                          title={c.title}
+                          url={c.url}
+                          fallbackText="—"
+                          hint={c.hint}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   const isEditingThisStep = editingStep === activeStep;
 
   if (loading) {
     return (
       <div className="page">
-        <h1 className="pageTitle">Job Seeker Profile</h1>
+        <h1 className="pageTitle">Job Seeker Profiles</h1>
         <p className="pageText">Loading…</p>
       </div>
     );
@@ -410,15 +779,83 @@ export function JobSeekerProfilePage() {
     return (
       <div className="page">
         <div className="profileHeader">
-          <h1 className="pageTitle">Job Seeker Profile</h1>
-          <p className="pageText">All Job Seekers</p>
+          <h1 className="pageTitle">Job Seeker Profiles</h1>
+          <p className="pageText">Browse job seeker profiles</p>
         </div>
 
         {error && <div className="errorBox">{error}</div>}
+        {success && <div className="successBox">{success}</div>}
+
+        {/* Filters + Pagination */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 260, flex: "1 1 340px" }}>
+            <label className="fieldLabel">Search</label>
+            <input
+              className="input"
+              value={directorySearch}
+              onChange={(e) => {
+                setDirectorySearch(e.target.value);
+                setDirectoryPage(1);
+              }}
+              placeholder="Search name/email/phone…"
+            />
+          </div>
+
+          <div style={{ minWidth: 180 }}>
+            <label className="fieldLabel">Status</label>
+            <select
+              className="input"
+              value={directoryStatus}
+              onChange={(e) => {
+                setDirectoryStatus(e.target.value);
+                setDirectoryPage(1);
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="blocked">Blocked</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          {directoryPagination.pages > 1 ? (
+            <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination top">
+              <button
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+                type="button"
+                onClick={() => setDirectoryPage((p) => Math.max(1, p - 1))}
+                disabled={directoryPagination.page <= 1 || directoryLoading}
+              >
+                {"<-"} Previous
+              </button>
+              <span className="publicJobsPagerInfo">
+                Page {directoryPagination.page} of {directoryPagination.pages} ({directoryPagination.total} profiles)
+              </span>
+              <button
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                type="button"
+                onClick={() => setDirectoryPage((p) => Math.min(directoryPagination.pages, p + 1))}
+                disabled={directoryPagination.page >= directoryPagination.pages || directoryLoading}
+              >
+                Next {"->"}
+              </button>
+            </div>
+          ) : null}
+        </div>
 
         <div className="jobCardsGrid" role="region" aria-label="Job seeker cards">
           {jobSeekers.length === 0 ? (
-            <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No job seekers found.</div></div>
+            <div className="dashCard jobCardsGridItem jobCardToneA">
+              <div className="emptyState">
+                {directoryLoading
+                  ? "Loading job seeker profiles…"
+                  : directorySearch.trim() || directoryStatus
+                    ? "No job seeker profiles match your filters."
+                    : "No job seeker profiles found."}
+              </div>
+            </div>
           ) : (
             jobSeekers.map((seeker, idx) => {
               const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
@@ -427,6 +864,9 @@ export function JobSeekerProfilePage() {
               const createdLabel = seeker.created_at
                 ? new Date(seeker.created_at).toLocaleDateString("en-GB")
                 : "—";
+              const statusLabel = seeker.is_blocked ? "Blocked" : seeker.is_active ? "Active" : "Inactive";
+              const canBlock = directoryCanManageUsers;
+              const isOpen = openDirectoryProfileId === seeker.id;
 
               return (
                 <article key={seeker.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
@@ -437,14 +877,99 @@ export function JobSeekerProfilePage() {
                   <div className="profileReadGrid" style={{ marginTop: 6 }}>
                     <ReadField label="Email" value={seeker.email} />
                     <ReadField label="Phone" value={seeker.phone} />
-                    <ReadField label="Status" value={seeker.is_active ? "Active" : "Inactive"} />
+                    <ReadField label="Status" value={statusLabel} />
                     <ReadField label="Created" value={createdLabel} />
                   </div>
+
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btnPrimary btnSm"
+                      onClick={() => void onToggleDirectoryProfile(seeker)}
+                      disabled={directoryLoading}
+                    >
+                      {isOpen ? "Hide Profile" : "View Profile"}
+                    </button>
+
+                    {canBlock ? (
+                      <button
+                        type="button"
+                        className={seeker.is_blocked ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnDanger btnSm"}
+                        onClick={() => startBlock(seeker)}
+                        disabled={blocking}
+                      >
+                        {seeker.is_blocked ? "Unblock User" : "Block User"}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {isOpen ? <div style={{ marginTop: 12 }}>{renderDirectoryProfilePanel(seeker)}</div> : null}
                 </article>
               );
             })
           )}
         </div>
+
+        {directoryPagination.pages > 1 ? (
+          <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination" style={{ marginTop: 16 }}>
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+              type="button"
+              onClick={() => setDirectoryPage((p) => Math.max(1, p - 1))}
+              disabled={directoryPagination.page <= 1 || directoryLoading}
+            >
+              {"<-"} Previous
+            </button>
+            <span className="publicJobsPagerInfo">
+              Page {directoryPagination.page} of {directoryPagination.pages} ({directoryPagination.total} profiles)
+            </span>
+            <button
+              className="btn btnPrimary btnSm"
+              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+              type="button"
+              onClick={() => setDirectoryPage((p) => Math.min(directoryPagination.pages, p + 1))}
+              disabled={directoryPagination.page >= directoryPagination.pages || directoryLoading}
+            >
+              Next {"->"}
+            </button>
+          </div>
+        ) : null}
+
+        {/* Block / Unblock modal */}
+        <ConfirmModal
+          open={Boolean(blockModalUser)}
+          title={blockAction === "block" ? "Block User" : "Unblock User"}
+          message={
+            blockAction === "block"
+              ? `Are you sure you want to block ${blockModalUser?.first_name ?? ""} ${blockModalUser?.last_name ?? ""} (${blockModalUser?.email ?? ""})? They will not be able to log in.`
+              : `Are you sure you want to unblock ${blockModalUser?.first_name ?? ""} ${blockModalUser?.last_name ?? ""} (${blockModalUser?.email ?? ""})? They will be able to log in again.`
+          }
+          confirmLabel={
+            blocking
+              ? (blockAction === "block" ? "Blocking…" : "Unblocking…")
+              : (blockAction === "block" ? "Block" : "Unblock")
+          }
+          busy={blocking}
+          onCancel={() => {
+            setBlockModalUser(null);
+            setBlockReason("");
+          }}
+          onConfirm={onConfirmBlock}
+        >
+          {blockAction === "block" ? (
+            <div style={{ padding: "0 24px", marginBottom: 8 }}>
+              <label className="fieldLabel">Reason (optional)</label>
+              <textarea
+                className="input textarea"
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                placeholder="Provide a reason for blocking this user…"
+                rows={3}
+              />
+            </div>
+          ) : null}
+        </ConfirmModal>
       </div>
     );
   }
@@ -452,7 +977,7 @@ export function JobSeekerProfilePage() {
   if (mode === "forbidden") {
     return (
       <div className="page">
-        <h1 className="pageTitle">Job Seeker Profile</h1>
+        <h1 className="pageTitle">Job Seeker Profiles</h1>
         <p className="pageText">{error ?? "Access denied."}</p>
       </div>
     );
@@ -2716,6 +3241,7 @@ function ConfirmModal({
   busy,
   onConfirm,
   onCancel,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -2724,6 +3250,7 @@ function ConfirmModal({
   busy: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
+  children?: ReactNode;
 }) {
   if (!open) return null;
 
@@ -2744,6 +3271,7 @@ function ConfirmModal({
       >
         <div className="modalTitle">{title}</div>
         <div className="modalMessage">{message}</div>
+        {children ? <div>{children}</div> : null}
         <div className="modalActions">
           <button className="btn btnGhost btnSm" type="button" onClick={onCancel} disabled={busy}>
             Cancel
