@@ -121,7 +121,28 @@ export class DatabaseService {
   }
 
   async getCompanyById(companyId: string) {
-    const result = await query('SELECT * FROM companies WHERE id = $1', [companyId]);
+    const result = await query(
+      `SELECT
+         c.id,
+         c.name,
+         c.industry,
+         c.description,
+         c.website,
+         c.logo_url,
+         c.contact_email,
+         c.contact_phone,
+         c.address_line1,
+         c.address_line2,
+         c.city,
+         c.country,
+         c.created_by,
+         c.created_at,
+         COALESCE(c.status, 'active') as status,
+         (c.logo_data IS NOT NULL) as has_logo
+       FROM companies c
+       WHERE c.id = $1`,
+      [companyId]
+    );
     return result.rows[0];
   }
 
@@ -153,7 +174,23 @@ export class DatabaseService {
 
   async getUserCompanies(userId: string) {
     const result = await query(
-      `SELECT c.* 
+      `SELECT
+         c.id,
+         c.name,
+         c.industry,
+         c.description,
+         c.website,
+         c.logo_url,
+         c.contact_email,
+         c.contact_phone,
+         c.address_line1,
+         c.address_line2,
+         c.city,
+         c.country,
+         c.created_by,
+         c.created_at,
+         COALESCE(c.status, 'active') as status,
+         (c.logo_data IS NOT NULL) as has_logo
        FROM companies c
        JOIN company_users cu ON c.id = cu.company_id
        WHERE cu.user_id = $1

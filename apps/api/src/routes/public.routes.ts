@@ -28,6 +28,7 @@ router.get('/jobs/:jobId/company', async (req, res) => {
          c.description,
          c.website,
          c.logo_url,
+         (c.logo_data IS NOT NULL) as has_logo,
          c.contact_email,
          c.contact_phone,
          c.address_line1,
@@ -48,6 +49,38 @@ router.get('/jobs/:jobId/company', async (req, res) => {
     return res.json({ status: 'success', data: rows[0] });
   } catch {
     return res.status(500).json({ status: 'error', message: 'Failed to load company information' });
+  }
+});
+
+router.get('/companies/:companyId/logo', async (req, res) => {
+  try {
+    const companyId = String(req.params.companyId ?? '').trim();
+    if (!companyId) {
+      return res.status(400).json({ status: 'error', message: 'Missing company id' });
+    }
+
+    const { rows } = await query(
+      `SELECT logo_data, logo_mime
+         FROM companies
+        WHERE id = $1
+        LIMIT 1`,
+      [companyId],
+    );
+
+    const row = rows[0];
+    const data = row?.logo_data as Buffer | null | undefined;
+    if (!data || !(data instanceof Buffer) || data.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Logo not found' });
+    }
+
+    const mimeRaw = typeof row?.logo_mime === 'string' ? row.logo_mime.trim() : '';
+    const mime = mimeRaw || 'application/octet-stream';
+
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.status(200).send(data);
+  } catch {
+    return res.status(500).json({ status: 'error', message: 'Failed to load logo' });
   }
 });
 

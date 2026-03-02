@@ -4,9 +4,25 @@ import { authenticate } from '../middleware/auth';
 import { logAdminAction } from '../middleware/adminLogger';
 import { body } from 'express-validator';
 import { validateRequest } from '../utils/validation';
+import multer from 'multer';
 
 const router = Router();
 const companyController = new CompanyController();
+
+const companyLogoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Invalid logo file type. Please upload an image.') as any);
+  },
+});
 
 // All company routes require authentication
 router.use(authenticate);
@@ -18,7 +34,7 @@ const companyCreateValidation = [
   body('industry').notEmpty().withMessage('Industry is required'),
   body('description').notEmpty().withMessage('Description is required'),
   body('website').optional({ checkFalsy: true }).isURL().withMessage('Invalid website URL'),
-  body('logo_url').notEmpty().isURL().withMessage('Invalid logo URL'),
+  body('logo_url').optional({ checkFalsy: true }).isURL().withMessage('Invalid logo URL'),
   body('contact_email').notEmpty().isEmail().withMessage('Invalid email'),
   body('contact_phone')
     .notEmpty()
@@ -46,7 +62,7 @@ const companyCreateValidation = [
 
 // Update: keep permissive (frontend may send partial payload)
 const companyUpdateValidation = [
-  body('name').notEmpty().withMessage('Company name is required'),
+  body('name').optional().notEmpty().withMessage('Company name is required'),
   body('industry').optional({ checkFalsy: true }),
   body('description').optional({ checkFalsy: true }),
   body('website').optional({ checkFalsy: true }).isURL().withMessage('Invalid website URL'),
@@ -81,8 +97,8 @@ router.get('/settings', companyController.getSystemSettings);
 router.put('/settings', companyController.updateSystemSettings);
 router.get('/', companyController.getAllCompanies);
 router.get('/:id', companyController.getCompanyById);
-router.post('/', companyCreateValidation, validateRequest, logAdminAction('CREATE_COMPANY', 'company'), companyController.createCompany);
-router.put('/:id', companyUpdateValidation, validateRequest, logAdminAction('UPDATE_COMPANY', 'company'), companyController.updateCompany);
+router.post('/', companyLogoUpload.single('logo'), companyCreateValidation, validateRequest, logAdminAction('CREATE_COMPANY', 'company'), companyController.createCompany);
+router.put('/:id', companyLogoUpload.single('logo'), companyUpdateValidation, validateRequest, logAdminAction('UPDATE_COMPANY', 'company'), companyController.updateCompany);
 router.patch('/:id/approve', logAdminAction('APPROVE_COMPANY', 'company'), companyController.approveCompany);
 router.patch('/:id/deactivate', logAdminAction('DEACTIVATE_COMPANY', 'company'), companyController.deactivateCompany);
 router.patch('/:id/reactivate', companyController.reactivateCompany);

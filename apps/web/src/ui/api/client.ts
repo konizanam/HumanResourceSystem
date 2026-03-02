@@ -206,7 +206,30 @@ export type CompanyUpsertPayload = {
   address_line2?: string;
   city?: string;
   country?: string;
+  logoFile?: File | null;
 };
+
+function authMultipartHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+function normalizeCompanyLogoUrl(company: any): any {
+  if (!company || typeof company !== "object") return company;
+
+  const id = String((company as any)?.id ?? "").trim();
+  const hasLogo = Boolean((company as any)?.has_logo ?? (company as any)?.hasLogo);
+  const current = String((company as any)?.logo_url ?? "").trim();
+
+  if (id && hasLogo) {
+    const apiBase = String(API_BASE ?? "").replace(/\/$/, "");
+    const logoUrl = `${apiBase}/public/companies/${encodeURIComponent(id)}/logo`;
+    return { ...company, logo_url: current || logoUrl };
+  }
+
+  return company;
+}
 
 export async function listCompanies(token: string): Promise<Company[]> {
   const res = await fetch(`${API_BASE}/companies`, {
@@ -219,18 +242,40 @@ export async function listCompanies(token: string): Promise<Company[]> {
   }
 
   const envelope = body as ApiEnvelope<Company[]>;
-  return Array.isArray(envelope?.data) ? envelope.data : [];
+  const data = Array.isArray(envelope?.data) ? envelope.data : [];
+  return data.map((c) => normalizeCompanyLogoUrl(c));
 }
 
 export async function createCompany(
   token: string,
   payload: CompanyUpsertPayload,
 ): Promise<Company> {
-  const res = await fetch(`${API_BASE}/companies`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(payload),
-  });
+  const logoFile = payload.logoFile ?? null;
+
+  const needsMultipart = Boolean(logoFile);
+
+  const res = await fetch(`${API_BASE}/companies`,
+    needsMultipart
+      ? {
+          method: "POST",
+          headers: authMultipartHeaders(token),
+          body: (() => {
+            const fd = new FormData();
+            for (const [key, value] of Object.entries(payload)) {
+              if (key === "logoFile") continue;
+              if (value === undefined || value === null) continue;
+              fd.append(key, String(value));
+            }
+            if (logoFile) fd.append("logo", logoFile);
+            return fd;
+          })(),
+        }
+      : {
+          method: "POST",
+          headers: authHeaders(token),
+          body: JSON.stringify(payload),
+        },
+  );
 
   const body = await safeJson(res);
   if (!res.ok) {
@@ -238,7 +283,7 @@ export async function createCompany(
   }
 
   const envelope = body as ApiEnvelope<Company>;
-  return envelope.data;
+  return normalizeCompanyLogoUrl(envelope.data);
 }
 
 export async function updateCompany(
@@ -246,11 +291,31 @@ export async function updateCompany(
   id: string,
   payload: CompanyUpsertPayload,
 ): Promise<Company> {
-  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    headers: authHeaders(token),
-    body: JSON.stringify(payload),
-  });
+  const logoFile = payload.logoFile ?? null;
+  const needsMultipart = Boolean(logoFile);
+
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}`,
+    needsMultipart
+      ? {
+          method: "PUT",
+          headers: authMultipartHeaders(token),
+          body: (() => {
+            const fd = new FormData();
+            for (const [key, value] of Object.entries(payload)) {
+              if (key === "logoFile") continue;
+              if (value === undefined || value === null) continue;
+              fd.append(key, String(value));
+            }
+            if (logoFile) fd.append("logo", logoFile);
+            return fd;
+          })(),
+        }
+      : {
+          method: "PUT",
+          headers: authHeaders(token),
+          body: JSON.stringify(payload),
+        },
+  );
 
   const body = await safeJson(res);
   if (!res.ok) {
@@ -258,7 +323,7 @@ export async function updateCompany(
   }
 
   const envelope = body as ApiEnvelope<Company>;
-  return envelope.data;
+  return normalizeCompanyLogoUrl(envelope.data);
 }
 
 export async function getCompany(token: string, id: string): Promise<Company> {
@@ -270,7 +335,7 @@ export async function getCompany(token: string, id: string): Promise<Company> {
     throw apiError(res, body, "Failed to load company");
   }
   const envelope = body as ApiEnvelope<Company>;
-  return envelope.data;
+  return normalizeCompanyLogoUrl(envelope.data);
 }
 
 export async function getPublicCompany(jobId: string): Promise<Company> {
@@ -280,7 +345,7 @@ export async function getPublicCompany(jobId: string): Promise<Company> {
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load company");
   const envelope = body as ApiEnvelope<Company>;
-  return envelope.data;
+  return normalizeCompanyLogoUrl(envelope.data);
 }
 
 export async function deactivateCompany(token: string, id: string): Promise<Company> {

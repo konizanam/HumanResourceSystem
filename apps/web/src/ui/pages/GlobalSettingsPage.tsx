@@ -37,7 +37,7 @@ export function GlobalSettingsPage() {
   const [primaryCompany, setPrimaryCompany] = useState<Company | null>(null);
   const [companyForm, setCompanyForm] = useState({
     name: "",
-    logo_url: "",
+    logoFile: null as File | null,
     contact_email: "",
     contact_phone: "",
     address_line1: "",
@@ -85,7 +85,7 @@ export function GlobalSettingsPage() {
       setPrimaryCompany(firstCompany);
       setCompanyForm({
         name: firstCompany?.name ?? "",
-        logo_url: firstCompany?.logo_url ?? "",
+        logoFile: null,
         contact_email: firstCompany?.contact_email ?? "",
         contact_phone: firstCompany?.contact_phone ?? "",
         address_line1: firstCompany?.address_line1 ?? "",
@@ -160,7 +160,7 @@ export function GlobalSettingsPage() {
       setSuccess(null);
       const updated = await updateCompany(accessToken, primaryCompany.id, {
         name: companyForm.name.trim(),
-        logo_url: companyForm.logo_url.trim(),
+        logoFile: companyForm.logoFile,
         contact_email: companyForm.contact_email.trim(),
         contact_phone: companyForm.contact_phone.trim(),
         address_line1: companyForm.address_line1.trim(),
@@ -171,7 +171,7 @@ export function GlobalSettingsPage() {
       setPrimaryCompany(updated);
       setCompanyForm({
         name: updated.name ?? "",
-        logo_url: updated.logo_url ?? "",
+        logoFile: null,
         contact_email: updated.contact_email ?? "",
         contact_phone: updated.contact_phone ?? "",
         address_line1: updated.address_line1 ?? "",
@@ -211,8 +211,18 @@ export function GlobalSettingsPage() {
                 <input className="input" value={companyForm.name} onChange={(e) => setCompanyForm((p) => ({ ...p, name: e.target.value }))} disabled={!canEdit || saving} />
               </label>
               <label className="field">
-                <span className="fieldLabel">Logo URL</span>
-                <input className="input" value={companyForm.logo_url} onChange={(e) => setCompanyForm((p) => ({ ...p, logo_url: e.target.value }))} disabled={!canEdit || saving} />
+                <span className="fieldLabel">Company Logo</span>
+                <input
+                  className="input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
+                    setCompanyForm((p) => ({ ...p, logoFile: file }));
+                  }}
+                  disabled={!canEdit || saving}
+                />
+                <p className="pageText">Leave empty to keep the current logo.</p>
               </label>
               <label className="field">
                 <span className="fieldLabel">Contact Email</span>

@@ -71,7 +71,7 @@ const EMPTY_COMPANY: CompanyUpsertPayload = {
   industry: "",
   description: "",
   website: "",
-  logo_url: "",
+  logoFile: null,
   contact_email: "",
   contact_phone: "",
   address_line1: "",
@@ -104,11 +104,10 @@ function normalizePayload(form: CompanyUpsertPayload): CompanyUpsertPayload {
     name: form.name.trim(),
   };
 
-  const optionalKeys: (keyof Omit<CompanyUpsertPayload, "name">)[] = [
+  const optionalKeys: (keyof Omit<CompanyUpsertPayload, "name" | "logoFile">)[] = [
     "industry",
     "description",
     "website",
-    "logo_url",
     "contact_email",
     "contact_phone",
     "address_line1",
@@ -121,6 +120,8 @@ function normalizePayload(form: CompanyUpsertPayload): CompanyUpsertPayload {
     const raw = (form[key] ?? "").trim();
     if (raw) (cleaned as any)[key] = raw;
   }
+
+  if (form.logoFile) cleaned.logoFile = form.logoFile;
 
   return cleaned;
 }
@@ -496,7 +497,7 @@ export function CompaniesPage() {
       industry: toText(company.industry),
       description: toText(company.description),
       website: toText(company.website),
-      logo_url: toText(company.logo_url),
+      logoFile: null,
       contact_email: toText(company.contact_email),
       contact_phone: toText(company.contact_phone),
       address_line1: toText(company.address_line1),
@@ -517,7 +518,7 @@ export function CompaniesPage() {
       industry: toText(company.industry),
       description: toText(company.description),
       website: toText(company.website),
-      logo_url: toText(company.logo_url),
+      logoFile: null,
       contact_email: toText(company.contact_email),
       contact_phone: toText(company.contact_phone),
       address_line1: toText(company.address_line1),
@@ -537,7 +538,7 @@ export function CompaniesPage() {
       if (!addForm.name.trim()) errs.name = "Company name is required";
       if (!(addForm.industry ?? "").trim()) errs.industry = "Industry is required";
       if (!(addForm.description ?? "").trim()) errs.description = "Description is required";
-      if (!(addForm.logo_url ?? "").trim()) errs.logo_url = "Logo URL is required";
+      if (!addForm.logoFile) errs.logo = "Company logo is required";
       if (!(addForm.contact_email ?? "").trim()) errs.contact_email = "Contact email is required";
       const phoneErr = validateNamibiaPhone(addForm.contact_phone ?? "");
       if (phoneErr) errs.contact_phone = phoneErr;
@@ -800,18 +801,19 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Logo URL *</label>
+                <label className="fieldLabel">Company Logo *</label>
                 <input
                   className="input"
-                  value={addForm.logo_url}
+                  type="file"
+                  accept="image/*"
                   onChange={(e) => {
-                    clearAddFieldError("logo_url");
-                    setAddForm((p) => ({ ...p, logo_url: e.target.value }));
+                    clearAddFieldError("logo");
+                    const file = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
+                    setAddForm((p) => ({ ...p, logoFile: file }));
                   }}
-                  placeholder="https://..."
                   required
                 />
-                {addFieldErrors.logo_url && <span className="fieldError">{addFieldErrors.logo_url}</span>}
+                {addFieldErrors.logo && <span className="fieldError">{addFieldErrors.logo}</span>}
               </div>
 
               <div className="field">
@@ -1438,7 +1440,7 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
         <ReadField label="Company Name" value={company.name} />
         <ReadField label="Industry" value={company.industry} />
         <ReadField label="Website" value={company.website} />
-        <ReadField label="Logo URL" value={company.logo_url} />
+        <ReadField label="Logo" value={(company as any)?.has_logo ? "Uploaded" : "Not uploaded"} />
         <ReadField label="Contact Email" value={company.contact_email} />
         <ReadField label="Contact Phone" value={company.contact_phone} />
         <ReadField label="Address Line 1" value={company.address_line1} />
@@ -1510,12 +1512,18 @@ function CompanyEditPanel({
         </div>
 
         <div className="field">
-          <label className="fieldLabel">Logo URL</label>
+          <label className="fieldLabel">Company Logo</label>
           <input
             className="input"
-            value={form.logo_url ?? ""}
-            onChange={(e) => onChange({ ...form, logo_url: e.target.value })}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files && e.target.files.length > 0 ? e.target.files[0] : null;
+              onChange({ ...form, logoFile: file });
+            }}
+            disabled={saving}
           />
+          <p className="pageText">Leave empty to keep the current logo.</p>
         </div>
 
         <div className="field">

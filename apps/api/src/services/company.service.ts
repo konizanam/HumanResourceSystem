@@ -32,19 +32,37 @@ export class CompanyService {
     const userRoles = await this.db.getUserRoles(userId);
     const isJobSeeker = userRoles.includes('JOB_SEEKER');
 
+    const safeCompanySelect = `
+      c.id,
+      c.name,
+      c.industry,
+      c.description,
+      c.website,
+      c.logo_url,
+      c.contact_email,
+      c.contact_phone,
+      c.address_line1,
+      c.address_line2,
+      c.city,
+      c.country,
+      c.created_by,
+      c.created_at,
+      COALESCE(c.status, 'active') as status,
+      (c.logo_data IS NOT NULL) as has_logo
+    `;
+
     // Get companies based on role / association
     let companies;
     if (isSystemManager) {
       // Admin sees all companies - use query directly
       companies = await query(
-        `SELECT c.*, 
+        `SELECT ${safeCompanySelect},
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
           (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
              FROM company_users cu2
              JOIN users u2 ON u2.id = cu2.user_id
             WHERE cu2.company_id = c.id) as user_names,
-          u.first_name || ' ' || u.last_name as created_by_name,
-           COALESCE(c.status, 'active') as status
+          u.first_name || ' ' || u.last_name as created_by_name
          FROM companies c
          LEFT JOIN users u ON c.created_by = u.id
          ORDER BY c.created_at DESC`
@@ -58,6 +76,7 @@ export class CompanyService {
            c.name,
            c.industry,
            c.logo_url,
+           (c.logo_data IS NOT NULL) as has_logo,
            COALESCE(c.status, 'active') as status,
            c.created_at
          FROM companies c
@@ -67,14 +86,13 @@ export class CompanyService {
     } else {
       // Regular users see only companies they're associated with
       companies = await query(
-        `SELECT c.*, 
+        `SELECT ${safeCompanySelect},
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
           (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
              FROM company_users cu2
              JOIN users u2 ON u2.id = cu2.user_id
             WHERE cu2.company_id = c.id) as user_names,
-          u.first_name || ' ' || u.last_name as created_by_name,
-          COALESCE(c.status, 'active') as status
+          u.first_name || ' ' || u.last_name as created_by_name
          FROM companies c
          LEFT JOIN users u ON c.created_by = u.id
          WHERE c.id IN (
@@ -98,14 +116,29 @@ export class CompanyService {
     }
 
     const result = await query(
-      `SELECT c.*, 
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo,
         (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
         (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
            FROM company_users cu2
            JOIN users u2 ON u2.id = cu2.user_id
           WHERE cu2.company_id = c.id) as user_names,
-        u.first_name || ' ' || u.last_name as created_by_name,
-        COALESCE(c.status, 'active') as status
+        u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -119,22 +152,43 @@ export class CompanyService {
     return result.rows[0];
   }
 
-  async createCompany(userId: string, companyData: any) {
-    const { name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
+  async createCompany(userId: string, companyData: any, logoFile?: Express.Multer.File) {
+    const { name, industry, description, website, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
     const approvalMode = await getCompanyApprovalMode();
     const initialStatus = approvalMode === 'pending' ? 'pending' : 'active';
+
+    const logoData = logoFile?.buffer ?? null;
+    const logoMime = logoFile?.mimetype ?? null;
+    const logoFilename = logoFile?.originalname ?? null;
 
     // Create company
     const result = await query(
       `INSERT INTO companies (
-        name, industry, description, website, logo_url, contact_email, contact_phone,
-        address_line1, address_line2, city, country, created_by, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING *`,
-      [name, industry, description, website, logo_url, contact_email, contact_phone, address_line1, address_line2, city, country, userId, initialStatus]
+        name, industry, description, website, logo_url, logo_data, logo_mime, logo_filename, logo_updated_at,
+        contact_email, contact_phone, address_line1, address_line2, city, country, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING id`,
+      [
+        name,
+        industry,
+        description,
+        website,
+        null,
+        logoData,
+        logoMime,
+        logoFilename,
+        contact_email,
+        contact_phone,
+        address_line1,
+        address_line2,
+        city,
+        country,
+        userId,
+        initialStatus,
+      ]
     );
 
-    const company = result.rows[0];
+    const company = { id: result.rows[0]?.id };
 
     // Automatically add creator to company users
     await query(
@@ -144,14 +198,29 @@ export class CompanyService {
 
     // Return enriched company (created_by_name, user_names, user_count, status)
     const enriched = await query(
-      `SELECT c.*,
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo,
         (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
         (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
            FROM company_users cu2
            JOIN users u2 ON u2.id = cu2.user_id
           WHERE cu2.company_id = c.id) as user_names,
-        u.first_name || ' ' || u.last_name as created_by_name,
-        COALESCE(c.status, 'active') as status
+        u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -161,7 +230,7 @@ export class CompanyService {
     return enriched.rows[0] ?? company;
   }
 
-  async updateCompany(companyId: string, userId: string, updates: any) {
+  async updateCompany(companyId: string, userId: string, updates: any, logoFile?: Express.Multer.File) {
     // Check if user has edit permission
     const hasEditPermission = await this.checkCompanyPermission(companyId, userId, 'MANAGE_COMPANY');
     if (!hasEditPermission) {
@@ -169,7 +238,7 @@ export class CompanyService {
     }
 
     // Build dynamic update query
-    const allowedFields = ['name', 'industry', 'description', 'website', 'contact_email', 'contact_phone', 'address_line1', 'address_line2', 'city', 'country', 'logo_url'];
+    const allowedFields = ['name', 'industry', 'description', 'website', 'contact_email', 'contact_phone', 'address_line1', 'address_line2', 'city', 'country'];
     const updateFields = [];
     const values = [];
     let paramIndex = 1;
@@ -182,6 +251,22 @@ export class CompanyService {
       }
     }
 
+    if (logoFile?.buffer) {
+      updateFields.push(`logo_data = $${paramIndex}`);
+      values.push(logoFile.buffer);
+      paramIndex++;
+
+      updateFields.push(`logo_mime = $${paramIndex}`);
+      values.push(logoFile.mimetype);
+      paramIndex++;
+
+      updateFields.push(`logo_filename = $${paramIndex}`);
+      values.push(logoFile.originalname);
+      paramIndex++;
+
+      updateFields.push(`logo_updated_at = NOW()`);
+    }
+
     if (updateFields.length === 0) {
       throw new Error('No valid fields to update');
     }
@@ -191,7 +276,7 @@ export class CompanyService {
       UPDATE companies 
       SET ${updateFields.join(', ')}
       WHERE id = $${paramIndex}
-      RETURNING *
+      RETURNING id
     `;
 
     const result = await query(updateQuery, values);
@@ -200,7 +285,30 @@ export class CompanyService {
       throw new NotFoundError('Company not found');
     }
 
-    return result.rows[0];
+    const enriched = await query(
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo
+       FROM companies c
+       WHERE c.id = $1`,
+      [companyId]
+    );
+
+    return enriched.rows[0];
   }
 
   async deactivateCompany(companyId: string, userId: string) {
@@ -223,14 +331,29 @@ export class CompanyService {
     }
 
     const enriched = await query(
-      `SELECT c.*,
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo,
         (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
         (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
            FROM company_users cu2
            JOIN users u2 ON u2.id = cu2.user_id
           WHERE cu2.company_id = c.id) as user_names,
-        u.first_name || ' ' || u.last_name as created_by_name,
-        COALESCE(c.status, 'active') as status
+        u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -260,14 +383,29 @@ export class CompanyService {
     }
 
     const enriched = await query(
-      `SELECT c.*,
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo,
         (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
         (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
            FROM company_users cu2
            JOIN users u2 ON u2.id = cu2.user_id
           WHERE cu2.company_id = c.id) as user_names,
-        u.first_name || ' ' || u.last_name as created_by_name,
-        COALESCE(c.status, 'active') as status
+        u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -296,14 +434,29 @@ export class CompanyService {
     }
 
     const enriched = await query(
-      `SELECT c.*,
+      `SELECT
+        c.id,
+        c.name,
+        c.industry,
+        c.description,
+        c.website,
+        c.logo_url,
+        c.contact_email,
+        c.contact_phone,
+        c.address_line1,
+        c.address_line2,
+        c.city,
+        c.country,
+        c.created_by,
+        c.created_at,
+        COALESCE(c.status, 'active') as status,
+        (c.logo_data IS NOT NULL) as has_logo,
         (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
         (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
            FROM company_users cu2
            JOIN users u2 ON u2.id = cu2.user_id
           WHERE cu2.company_id = c.id) as user_names,
-        u.first_name || ' ' || u.last_name as created_by_name,
-        COALESCE(c.status, 'active') as status
+        u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
@@ -346,7 +499,7 @@ export class CompanyService {
     }
 
     // Check if company exists
-    const company = await query('SELECT * FROM companies WHERE id = $1', [companyId]);
+    const company = await query('SELECT id FROM companies WHERE id = $1', [companyId]);
     if (company.rows.length === 0) {
       throw new NotFoundError('Company not found');
     }

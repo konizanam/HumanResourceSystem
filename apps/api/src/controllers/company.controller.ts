@@ -94,7 +94,12 @@ export class CompanyController {
         throw new ForbiddenError('You do not have permission to create companies');
       }
 
-      const company = await this.companyService.createCompany(userId, req.body);
+      const logoFile = (req as any).file as Express.Multer.File | undefined;
+      if (!logoFile) {
+        throw new BadRequestError('Company logo file is required');
+      }
+
+      const company = await this.companyService.createCompany(userId, req.body, logoFile);
       await logAudit({
         userId,
         action: 'COMPANY_CREATED',
@@ -122,7 +127,8 @@ export class CompanyController {
       }
 
       const beforeCompany = await this.companyService.getCompanyById(id, userId);
-      const company = await this.companyService.updateCompany(id, userId, req.body);
+      const logoFile = (req as any).file as Express.Multer.File | undefined;
+      const company = await this.companyService.updateCompany(id, userId, req.body, logoFile);
       await logAudit({
         userId,
         action: 'COMPANY_UPDATED',
