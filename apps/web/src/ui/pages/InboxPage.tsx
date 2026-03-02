@@ -64,6 +64,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<NotificationItem | null>(null);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [categories, setCategories] = useState<JobCategory[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -238,15 +239,18 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
       setSaving(true);
       setError(null);
       await deleteNotification(accessToken, item.id);
-      setNotifications((prev) => prev.filter((n) => n.id !== item.id));
-      if (!item.is_read) {
-        setUnreadTotal((prev) => Math.max(0, (Number(prev) || 0) - 1));
-      }
+      setConfirmDeleteItem(null);
+      await load(page);
     } catch (e) {
       setError((e as Error)?.message ?? copy.deleteError);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onConfirmDelete() {
+    if (!confirmDeleteItem) return;
+    await onDelete(confirmDeleteItem);
   }
 
   async function onSavePreferences() {
@@ -670,7 +674,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                     className="btn btnDanger btnSm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      void onDelete(item);
+                      setConfirmDeleteItem(item);
                     }}
                     disabled={saving}
                   >
@@ -685,6 +689,62 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
       </div>
 
       {mode === "messages" ? <div style={{ marginTop: 16 }}>{renderMessagesPager()}</div> : null}
+
+      <ConfirmModal
+        open={Boolean(confirmDeleteItem)}
+        title="Delete message"
+        message="Are you sure you want to delete this message? This action cannot be undone."
+        confirmLabel={saving ? "Deleting…" : "Delete"}
+        busy={saving}
+        onCancel={() => {
+          if (saving) return;
+          setConfirmDeleteItem(null);
+        }}
+        onConfirm={() => void onConfirmDelete()}
+      />
+    </div>
+  );
+}
+
+function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="modalOverlay" role="presentation" onMouseDown={onCancel}>
+      <div
+        className="modalCard"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="modalTitle">{title}</div>
+        <div className="modalMessage">{message}</div>
+        <div className="modalActions">
+          <button className="btn btnGhost" type="button" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btnDanger" type="button" onClick={onConfirm} disabled={busy}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

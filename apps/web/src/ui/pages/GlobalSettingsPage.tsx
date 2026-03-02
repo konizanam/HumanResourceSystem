@@ -50,7 +50,9 @@ function resolveCompanyLogoUrl(company: Company): string {
   const legacy = String((company as any)?.logo_url ?? "").trim();
 
   if (id && hasLogo) {
-    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+    const apiUrl =
+      import.meta.env.VITE_API_URL ??
+      (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000");
     const apiBase = `${String(apiUrl).replace(/\/$/, "")}/api/v1`;
     return `${apiBase}/public/companies/${encodeURIComponent(id)}/logo`;
   }
@@ -70,6 +72,7 @@ export function GlobalSettingsPage() {
   const [mainCompanyId, setMainCompanyId] = useState("");
   const [loadedMainCompanyId, setLoadedMainCompanyId] = useState<string | null>(null);
   const [existingLogoFailed, setExistingLogoFailed] = useState(false);
+  const [logoCacheBuster, setLogoCacheBuster] = useState(1);
   const [companyForm, setCompanyForm] = useState({
     name: "",
     logoFile: null as File | null,
@@ -91,6 +94,9 @@ export function GlobalSettingsPage() {
   const canEditSystemSettings = canEdit || canChangeAppColor;
   const currentAppColor = normalizeHexColor(appColor);
   const existingLogoUrl = primaryCompany ? resolveCompanyLogoUrl(primaryCompany) : "";
+  const existingLogoSrc = existingLogoUrl
+    ? `${existingLogoUrl}${existingLogoUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(String(logoCacheBuster))}`
+    : "";
 
   const applySelectedColor = (nextColor: string) => {
     setAppColor(nextColor);
@@ -137,6 +143,7 @@ export function GlobalSettingsPage() {
       setMainCompanyId(selectedCompany?.id ?? "");
       setPrimaryCompany(selectedCompany);
       setExistingLogoFailed(false);
+      setLogoCacheBuster(Date.now());
       setCompanyForm({
         name: selectedCompany?.name ?? "",
         logoFile: null,
@@ -247,6 +254,7 @@ export function GlobalSettingsPage() {
       setCompanies((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       setPrimaryCompany(updated);
       setExistingLogoFailed(false);
+      setLogoCacheBuster(Date.now());
       setCompanyForm({
         name: updated.name ?? "",
         logoFile: null,
@@ -266,7 +274,7 @@ export function GlobalSettingsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page globalSettingsPage">
       <div className="companiesHeader">
         <h1 className="pageTitle">Global Settings</h1>
       </div>
@@ -295,6 +303,7 @@ export function GlobalSettingsPage() {
                     const next = companies.find((c) => String(c.id) === nextId) ?? null;
                     setPrimaryCompany(next);
                     setExistingLogoFailed(false);
+                    setLogoCacheBuster(Date.now());
                     setCompanyForm({
                       name: next?.name ?? "",
                       logoFile: null,
@@ -322,10 +331,11 @@ export function GlobalSettingsPage() {
               </label>
               <label className="field">
                 <span className="fieldLabel">Company Logo</span>
-                {existingLogoUrl && !existingLogoFailed ? (
+                {existingLogoSrc && !existingLogoFailed ? (
                   <div style={{ marginBottom: 10 }}>
                     <img
-                      src={existingLogoUrl}
+                      key={existingLogoSrc}
+                      src={existingLogoSrc}
                       alt="Current company logo"
                       style={{ maxWidth: "100%", height: 56, objectFit: "contain", display: "block" }}
                       onError={() => setExistingLogoFailed(true)}

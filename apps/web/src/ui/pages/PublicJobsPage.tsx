@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
+import { RichTextView } from "../components/RichText";
 
 function ReadField({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -769,7 +770,7 @@ export function PublicJobsPage() {
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
-                          <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                          <RichTextView value={job.description} className="readValue" />
                         </div>
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                           <button

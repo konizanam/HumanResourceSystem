@@ -23,6 +23,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { ActionMenu } from "../components/ActionMenu";
+import { RichTextView } from "../components/RichText";
 
 function ShareIconBase({ children }: { children: ReactNode }) {
   return (
@@ -1381,7 +1382,7 @@ export function DashboardPage() {
                           </div>
                           <div style={{ marginTop: 8 }}>
                             <span className="readLabel">Description</span>
-                            <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                            <RichTextView value={job.description} className="readValue" />
                           </div>
                         </div>
                       )}

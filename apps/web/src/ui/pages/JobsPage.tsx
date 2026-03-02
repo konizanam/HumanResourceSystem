@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   applyToJob,
@@ -19,6 +19,7 @@ import {
   type JobUpsertPayload,
   updateJob,
 } from "../api/client";
+import { RichTextEditor, RichTextView, normalizeRichTextForSave, richTextToPlainText } from "../components/RichText";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
@@ -183,7 +184,7 @@ function mapJobToForm(job: JobListItem): JobFormState {
 function mapFormToPayload(form: JobFormState): JobUpsertPayload {
   return {
     title: form.title.trim(),
-    description: form.description.trim(),
+    description: normalizeRichTextForSave(form.description),
     company: form.company.trim(),
     category: form.category.trim(),
     employment_type: form.employment_type,
@@ -257,8 +258,6 @@ export function JobsPage() {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState("");
-  const [descriptionHtml, setDescriptionHtml] = useState("");
-  const descriptionRef = useRef<HTMLDivElement | null>(null);
   const [showSeekerFilters, setShowSeekerFilters] = useState(searchParams.get("browse") !== "0");
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
@@ -648,7 +647,7 @@ export function JobsPage() {
   function validateForm() {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "Title is required";
-    if (!form.description.trim()) next.description = "Description is required";
+    if (!richTextToPlainText(form.description).trim()) next.description = "Description is required";
     if (!selectedCompany?.id) next.company = "Company is required";
     if (!selectedCategory?.id) next.category = "Category is required";
     if (!selectedSubcategory.trim()) next.subcategory = "Subcategory is required";
@@ -670,7 +669,6 @@ export function JobsPage() {
     setSelectedSubcategory("");
     setCompanyQuery("");
     setCategoryQuery("");
-    setDescriptionHtml("");
     setModalMode(null);
   }
 
@@ -756,7 +754,7 @@ export function JobsPage() {
 
   async function onCreateInlineJob() {
     if (!accessToken || !canCreate) return;
-    const plainDescription = (descriptionRef.current?.innerText ?? "").trim();
+    const plainDescription = richTextToPlainText(form.description).trim();
     const errs: Record<string, string> = {};
     if (!form.title.trim()) errs.title = "Title is required";
     if (!selectedCompany?.id) errs.company = "Company is required";
@@ -779,7 +777,7 @@ export function JobsPage() {
       setError(null);
       await createJob(accessToken, {
         title: form.title.trim(),
-        description: descriptionHtml || plainDescription,
+        description: normalizeRichTextForSave(form.description) || plainDescription,
         company: company.name,
         company_id: company.id,
         category: category.name,
@@ -807,19 +805,12 @@ export function JobsPage() {
       setSelectedSubcategory("");
       setCompanyQuery("");
       setCategoryQuery("");
-      setDescriptionHtml("");
       await load(1);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to create job");
     } finally {
       setSaving(false);
     }
-  }
-
-  function formatCommand(command: string) {
-    document.execCommand(command);
-    const html = descriptionRef.current?.innerHTML ?? "";
-    setDescriptionHtml(html);
   }
 
   async function onConfirmDelete() {
@@ -919,7 +910,12 @@ export function JobsPage() {
             </label>
             <div className="field fieldFull">
               <label className="fieldLabel">Description</label>
-              <textarea className={`input textarea${formErrors.description ? " inputError" : ""}`} rows={4} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+              <RichTextEditor
+                value={form.description}
+                onChange={(html) => setForm((p) => ({ ...p, description: html }))}
+                disabled={saving}
+                placeholder="Type job description…"
+              />
               {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
             </div>
           </div>
@@ -1205,19 +1201,11 @@ export function JobsPage() {
               </label>
               <div className="field fieldFull">
                 <label className="fieldLabel">Description</label>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("bold")}>Bold</button>
-                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("italic")}>Italic</button>
-                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("insertUnorderedList")}>Bullets</button>
-                  <button className="btn btnGhost btnSm" type="button" onClick={() => formatCommand("insertOrderedList")}>Numbered</button>
-                </div>
-                <div
-                  ref={descriptionRef}
-                  className="input textarea"
-                  contentEditable
-                  role="textbox"
-                  onInput={() => setDescriptionHtml(descriptionRef.current?.innerHTML ?? "")}
-                  style={{ minHeight: 120 }}
+                <RichTextEditor
+                  value={form.description}
+                  onChange={(html) => setForm((p) => ({ ...p, description: html }))}
+                  disabled={saving}
+                  placeholder="Type job description…"
                 />
                 {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
               </div>
@@ -1524,7 +1512,7 @@ export function JobsPage() {
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
-                          <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                          <RichTextView value={job.description} className="readValue" />
                         </div>
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                           <button
@@ -1651,7 +1639,7 @@ export function JobsPage() {
                         </div>
                         <div style={{ marginTop: 12 }}>
                           <span className="readLabel">Description</span>
-                          <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{job.description ?? "—"}</p>
+                          <RichTextView value={job.description} className="readValue" />
                         </div>
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                           <button

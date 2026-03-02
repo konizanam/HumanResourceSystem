@@ -1973,6 +1973,16 @@ input[type="radio"][required] {
   margin-bottom: 12px;
 }
 
+/* Global Settings: keep Main Company form controls visually aligned */
+.globalSettingsPage .editGrid .input {
+  min-height: 42px;
+}
+
+.globalSettingsPage .editGrid input[type="file"].input {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
 @media (min-width: 600px) {
   .editGrid {
     grid-template-columns: 1fr 1fr;
@@ -1998,6 +2008,49 @@ input[type="radio"][required] {
   resize: vertical;
   min-height: 60px;
   font-family: inherit;
+}
+
+/* ── Rich text (job descriptions) ─────────────── */
+
+.richTextToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.richTextEditor {
+  min-height: 120px;
+}
+
+.richTextEditor:empty:before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+.richTextContent {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.richTextContent p,
+.richTextContent div {
+  margin: 0 0 6px;
+}
+
+.richTextContent ul,
+.richTextContent ol {
+  margin: 6px 0 6px 18px;
+  padding-left: 18px;
+}
+
+.richTextContent li {
+  margin: 2px 0;
+}
+
+.richTextContent a {
+  color: var(--menu-icon-active);
+  text-decoration: underline;
 }
 
 /* ── Record cards (education, experience, etc.) ── */

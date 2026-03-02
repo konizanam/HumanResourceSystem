@@ -163,6 +163,35 @@ export type UserSearchResult = {
   last_name?: string;
 };
 
+export async function getCompanyUsers(token: string, companyId: string): Promise<UserSearchResult[]> {
+  const id = String(companyId ?? "").trim();
+  if (!id) return [];
+
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}/users`, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load company users");
+
+  const envelope = body as ApiEnvelope<any[]>;
+  const rows = Array.isArray(envelope?.data) ? envelope.data : [];
+  return rows
+    .map((u: any) => {
+      const first = String(u?.first_name ?? "").trim();
+      const last = String(u?.last_name ?? "").trim();
+      const name = [first, last].filter(Boolean).join(" ").trim();
+      const email = String(u?.email ?? "").trim();
+      return {
+        id: String(u?.id ?? "").trim(),
+        name: name || email || "User",
+        email,
+        first_name: first || undefined,
+        last_name: last || undefined,
+      } satisfies UserSearchResult;
+    })
+    .filter((u) => Boolean(u.id));
+}
+
 export type EmailTemplateKey =
   | "registration_activation"
   | "application_received"

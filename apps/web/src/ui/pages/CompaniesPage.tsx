@@ -10,12 +10,14 @@ import {
   createJob,
   createCompany,
   deactivateCompany,
+  getCompanyUsers,
   listJobCategories,
   listCompanies,
   reactivateCompany,
   searchUsers,
   updateCompany,
 } from "../api/client";
+import { RichTextEditor, normalizeRichTextForSave, richTextToPlainText } from "../components/RichText";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { useNavigate } from "react-router-dom";
@@ -212,6 +214,12 @@ function resolveCompanyCreatedBy(company: Company): string {
   return "—";
 }
 
+function displayUser(u: UserSearchResult): string {
+  const name = (u.name ?? "").trim();
+  if (name) return name;
+  return (u.email ?? "").trim() || "User";
+}
+
 export function CompaniesPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -237,6 +245,13 @@ export function CompaniesPage() {
   const [assignResults, setAssignResults] = useState<UserSearchResult[]>([]);
   const [assignSelected, setAssignSelected] = useState<UserSearchResult[]>([]);
   const [assignSearching, setAssignSearching] = useState(false);
+
+  const [editAssignQuery, setEditAssignQuery] = useState("");
+  const [editAssignResults, setEditAssignResults] = useState<UserSearchResult[]>([]);
+  const [editAssignSelected, setEditAssignSelected] = useState<UserSearchResult[]>([]);
+  const [editAssignSearching, setEditAssignSearching] = useState(false);
+  const [editAssignedUsers, setEditAssignedUsers] = useState<UserSearchResult[]>([]);
+  const [editAssignedLoading, setEditAssignedLoading] = useState(false);
 
   const [openCompanyId, setOpenCompanyId] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelModeExtended>("view");
@@ -405,6 +420,66 @@ export function CompaniesPage() {
     };
   }, [accessToken, assignQuery, assignSelected]);
 
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const q = (editAssignQuery.split(",").pop() ?? "").trim();
+    if (q.length < 2) {
+      setEditAssignResults([]);
+      setEditAssignSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setEditAssignSearching(true);
+
+    const handle = window.setTimeout(async () => {
+      try {
+        const results = await searchUsers(accessToken, q);
+        if (cancelled) return;
+        const excludedIds = new Set([...editAssignSelected, ...editAssignedUsers].map((u) => u.id));
+        setEditAssignResults(results.filter((u) => !excludedIds.has(u.id)));
+      } catch {
+        if (cancelled) return;
+        setEditAssignResults([]);
+      } finally {
+        if (cancelled) return;
+        setEditAssignSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [accessToken, editAssignQuery, editAssignSelected, editAssignedUsers]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    if (panelMode !== "edit") return;
+    if (!openCompanyId) return;
+
+    let cancelled = false;
+    setEditAssignedLoading(true);
+    void getCompanyUsers(accessToken, openCompanyId)
+      .then((users) => {
+        if (cancelled) return;
+        setEditAssignedUsers(users);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEditAssignedUsers([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEditAssignedLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, openCompanyId, panelMode]);
+
   function clearMessages() {
     setError(null);
     setSuccess(null);
@@ -435,7 +510,8 @@ export function CompaniesPage() {
     if (!accessToken || !postJobCompany) return;
     const errs: Record<string, string> = {};
     if (!postJobForm.title.trim()) errs.title = "Job title is required";
-    if (!postJobForm.description.trim()) errs.description = "Description is required";
+    const plainDescription = richTextToPlainText(postJobForm.description).trim();
+    if (!plainDescription) errs.description = "Description is required";
     if (!postJobForm.category_id) errs.category_id = "Category is required";
     if (!postJobForm.subcategory) errs.subcategory = "Subcategory is required";
     if (!postJobForm.salary_min.trim()) errs.salary_min = "Minimum salary is required";
@@ -451,7 +527,7 @@ export function CompaniesPage() {
       clearMessages();
       await createJob(accessToken, {
         title: postJobForm.title.trim(),
-        description: postJobForm.description.trim(),
+        description: normalizeRichTextForSave(postJobForm.description) || plainDescription,
         company: postJobCompany.name,
         company_id: postJobCompany.id,
         category: categoryName,
@@ -487,12 +563,6 @@ export function CompaniesPage() {
     });
   }
 
-  function displayUser(u: UserSearchResult): string {
-    const name = (u.name ?? "").trim();
-    if (name) return name;
-    return (u.email ?? "").trim() || "User";
-  }
-
   function startView(company: Company) {
     clearMessages();
     setAddOpen(false);
@@ -523,6 +593,13 @@ export function CompaniesPage() {
     setPanelMode("edit");
     setPostJobCompany(null);
     setPostJobErrors({});
+
+    setEditAssignQuery("");
+    setEditAssignResults([]);
+    setEditAssignSelected([]);
+    setEditAssignSearching(false);
+    setEditAssignedUsers([]);
+    setEditAssignedLoading(false);
 
     setEditForm({
       name: toText(company.name),
@@ -613,7 +690,26 @@ export function CompaniesPage() {
       }
 
       const updated = await updateCompany(accessToken, openCompanyId, payload);
-      setSuccess("Company updated successfully");
+
+      const assignedIdSet = new Set(editAssignedUsers.map((u) => u.id));
+      const idsToAssign = editAssignSelected.map((u) => u.id).filter((id) => !assignedIdSet.has(id));
+      if (idsToAssign.length > 0) {
+        const results = await Promise.allSettled(
+          idsToAssign.map((id) => addUserToCompany(accessToken, openCompanyId, id)),
+        );
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          setSuccess(`Company updated. ${failed} user assignment${failed === 1 ? "" : "s"} failed.`);
+        } else {
+          setSuccess("Company updated successfully");
+        }
+      } else {
+        setSuccess("Company updated successfully");
+      }
+
+      setEditAssignQuery("");
+      setEditAssignResults([]);
+      setEditAssignSelected([]);
 
       setCompanies((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
       setPanelMode("view");
@@ -1217,6 +1313,21 @@ export function CompaniesPage() {
                         company={openCompany}
                         form={editForm}
                         onChange={setEditForm}
+                        assignedUsers={editAssignedUsers}
+                        assignedUsersLoading={editAssignedLoading}
+                        assignQuery={editAssignQuery}
+                        assignResults={editAssignResults}
+                        assignSelected={editAssignSelected}
+                        assignSearching={editAssignSearching}
+                        onAssignQueryChange={setEditAssignQuery}
+                        onAssignPick={(u) => {
+                          setEditAssignSelected((prev) => (prev.some((x) => x.id === u.id) ? prev : [...prev, u]));
+                          setEditAssignQuery("");
+                          setEditAssignResults([]);
+                        }}
+                        onAssignRemove={(id) => {
+                          setEditAssignSelected((prev) => prev.filter((x) => x.id !== id));
+                        }}
                         onCancel={() => {
                           setPanelMode("view");
                         }}
@@ -1460,11 +1571,11 @@ function CompanyPostJobPanel({
 
           <div className="field fieldFull">
             <label className="fieldLabel">Description *</label>
-            <textarea
-              className="input textarea"
-              rows={4}
+            <RichTextEditor
               value={form.description}
-              onChange={(e) => onChange((prev) => ({ ...prev, description: e.target.value }))}
+              onChange={(html) => onChange((prev) => ({ ...prev, description: html }))}
+              disabled={saving}
+              placeholder="Type job description…"
             />
             {errors.description && <span className="fieldError">{errors.description}</span>}
           </div>
@@ -1541,6 +1652,15 @@ function CompanyEditPanel({
   company,
   form,
   onChange,
+  assignedUsers,
+  assignedUsersLoading,
+  assignQuery,
+  assignResults,
+  assignSelected,
+  assignSearching,
+  onAssignQueryChange,
+  onAssignPick,
+  onAssignRemove,
   onCancel,
   onSave,
   saving,
@@ -1548,6 +1668,15 @@ function CompanyEditPanel({
   company: Company | null;
   form: CompanyUpsertPayload;
   onChange: (v: CompanyUpsertPayload) => void;
+  assignedUsers: UserSearchResult[];
+  assignedUsersLoading: boolean;
+  assignQuery: string;
+  assignResults: UserSearchResult[];
+  assignSelected: UserSearchResult[];
+  assignSearching: boolean;
+  onAssignQueryChange: (v: string) => void;
+  onAssignPick: (u: UserSearchResult) => void;
+  onAssignRemove: (id: string) => void;
   onCancel: () => void;
   onSave: () => void;
   saving: boolean;
@@ -1633,6 +1762,92 @@ function CompanyEditPanel({
             value={form.contact_email ?? ""}
             onChange={(e) => onChange({ ...form, contact_email: e.target.value })}
           />
+        </div>
+
+        <div className="field fieldFull">
+          <label className="fieldLabel">Assign Users (comma separated) *</label>
+
+          {assignedUsersLoading ? (
+            <div className="confirmLabel" style={{ marginBottom: 8 }}>
+              Loading assigned users…
+            </div>
+          ) : assignedUsers.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+              {assignedUsers.map((u) => (
+                <span key={u.id} className="chip" title={u.email || undefined}>
+                  {displayUser(u)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <input
+            className="input"
+            value={assignSelected.length > 0 ? `${assignSelected.map(displayUser).join(", ")}, ${assignQuery}` : assignQuery}
+            onChange={(e) => {
+              const selectedPrefix = assignSelected.length > 0 ? `${assignSelected.map(displayUser).join(", ")}, ` : "";
+              const next = e.target.value;
+              if (selectedPrefix && next.startsWith(selectedPrefix)) {
+                onAssignQueryChange(next.slice(selectedPrefix.length));
+              } else {
+                const parts = next.split(",");
+                onAssignQueryChange((parts[parts.length - 1] ?? "").trimStart());
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "," && e.key !== "Enter") return;
+              if (assignResults.length !== 1) return;
+              e.preventDefault();
+              onAssignPick(assignResults[0]);
+            }}
+            placeholder="Type a name or email…"
+            autoComplete="off"
+            disabled={saving}
+          />
+
+          {assignSearching && (
+            <div className="confirmLabel" style={{ marginTop: 6 }}>
+              Searching…
+            </div>
+          )}
+
+          {assignResults.length > 0 && (
+            <div className="typeaheadList" role="listbox" aria-label="User suggestions">
+              {assignResults.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className="typeaheadItem"
+                  onClick={() => onAssignPick(u)}
+                  disabled={saving}
+                >
+                  <span style={{ fontWeight: 700 }}>{displayUser(u)}</span>
+                  {u.email ? <span className="pageText" style={{ margin: 0 }}>{u.email}</span> : null}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {assignSelected.length > 0 && (
+            <div className="selectedUserChips" style={{ marginTop: 8 }}>
+              {assignSelected.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className="chip"
+                  onClick={() => onAssignRemove(u.id)}
+                  disabled={saving}
+                  title="Remove"
+                >
+                  {displayUser(u)} ×
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="pageText">
+            Adds additional users to this company.
+          </p>
         </div>
 
         <div className="field">
