@@ -354,100 +354,133 @@ export function GlobalSettingsPage() {
       </div>
 
       <div className="dropPanel">
-        <h2 className="editFormTitle">System & Approval Settings</h2>
-        <div className="editGrid">
-          <label className="field">
-            <span className="fieldLabel">System Name / Branding</span>
-            <input className="input" value={systemName} onChange={(e) => setSystemName(e.target.value)} disabled={!canEdit || saving || loading} />
-          </label>
-          <label className="field">
-            <span className="fieldLabel">Branding Logo URL</span>
-            <input className="input" value={brandingLogoUrl} onChange={(e) => setBrandingLogoUrl(e.target.value)} disabled={!canEdit || saving || loading} />
-          </label>
-          <div className="field fieldFull">
-            <span className="fieldLabel">App Color (Current: {currentAppColor})</span>
-            <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
-              <input
-                className="input"
-                type="color"
-                value={currentAppColor}
-                onChange={(e) => {
-                  applySelectedColor(e.target.value);
-                }}
-                disabled={!canChangeAppColor || saving || loading}
-                aria-label="Select app color"
-              />
-              <input
-                className="input"
-                value={appColor}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setAppColor(raw);
-                  if (/^#?[0-9a-fA-F]{3}$/.test(raw) || /^#?[0-9a-fA-F]{6}$/.test(raw)) {
-                    applyAppThemeColor(raw);
-                  }
-                }}
-                disabled={!canChangeAppColor || saving || loading}
-                placeholder="#6366f1"
-                aria-label="App color hex code"
-              />
-            </div>
-            <p className="pageText">Use the picker or a valid hex value (for example, #6366f1).</p>
-          </div>
-          <div className="field fieldFull">
-            <span className="fieldLabel">Company Approval Mode</span>
-            <div style={{ display: "grid", gap: 10 }}>
-              <label className="fieldCheckbox">
-                <input
-                  type="radio"
-                  name="company-approval-mode"
-                  checked={mode === "auto_approved"}
-                  onChange={() => setMode("auto_approved")}
-                  disabled={!canEdit || saving || loading}
-                />
-                <span className="fieldLabel">auto_approved</span>
+        <h2 className="editFormTitle">System Settings</h2>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+            gap: 16,
+            alignItems: "start",
+            marginTop: 12,
+          }}
+        >
+          <section>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Branding</h3>
+            <div className="editGrid">
+              <label className="field">
+                <span className="fieldLabel">System Name</span>
+                <input className="input" value={systemName} onChange={(e) => setSystemName(e.target.value)} disabled={!canEdit || saving || loading} />
               </label>
-              <label className="fieldCheckbox">
-                <input
-                  type="radio"
-                  name="company-approval-mode"
-                  checked={mode === "pending"}
-                  onChange={() => setMode("pending")}
-                  disabled={!canEdit || saving || loading}
-                />
-                <span className="fieldLabel">pending</span>
+              <label className="field">
+                <span className="fieldLabel">Branding Logo URL</span>
+                <input className="input" value={brandingLogoUrl} onChange={(e) => setBrandingLogoUrl(e.target.value)} disabled={!canEdit || saving || loading} />
               </label>
             </div>
-          </div>
-          <div className="field fieldFull">
-            <span className="fieldLabel">Application Status Notifications</span>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 6 }}>
-              {APPLICATION_STATUS_NOTIFICATION_OPTIONS.map((option) => (
-                <label key={option.key} className="fieldCheckbox">
+          </section>
+
+          <section>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>App Color</h3>
+            <div className="editGrid">
+              <div className="field fieldFull">
+                <span className="fieldLabel">Current: {currentAppColor}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
                   <input
-                    type="checkbox"
-                    checked={applicationStatusNotifications[option.key] !== false}
+                    className="input"
+                    type="color"
+                    value={currentAppColor}
                     onChange={(e) => {
-                      const enabled = Boolean(e.target.checked);
-                      setApplicationStatusNotifications((prev) => ({
-                        ...prev,
-                        [option.key]: enabled,
-                      }));
+                      applySelectedColor(e.target.value);
                     }}
-                    disabled={!canEdit || saving || loading}
+                    disabled={!canChangeAppColor || saving || loading}
+                    aria-label="Select app color"
                   />
-                  <span className="fieldLabel">{option.label}</span>
-                </label>
-              ))}
+                  <input
+                    className="input"
+                    value={appColor}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setAppColor(raw);
+                      if (/^#?[0-9a-fA-F]{3}$/.test(raw) || /^#?[0-9a-fA-F]{6}$/.test(raw)) {
+                        applyAppThemeColor(raw);
+                      }
+                    }}
+                    disabled={!canChangeAppColor || saving || loading}
+                    placeholder="#6366f1"
+                    aria-label="App color hex code"
+                  />
+                </div>
+                <p className="pageText">Use the picker or a valid hex value (for example, #6366f1).</p>
+              </div>
             </div>
-            <p className="pageText">
-              Controls whether job seekers receive in-app notifications when their application status changes.
-            </p>
-          </div>
-          <div className="field fieldFull">
-            <span className="fieldLabel">Other Global Settings</span>
-            <p className="pageText">Email templates are managed from the Email Templates page.</p>
-          </div>
+          </section>
+
+          <section>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Company Approval Mode</h3>
+            <div className="editGrid">
+              <div className="field fieldFull">
+                <div style={{ display: "grid", gap: 10 }}>
+                  <label className="fieldCheckbox">
+                    <input
+                      type="radio"
+                      name="company-approval-mode"
+                      checked={mode === "auto_approved"}
+                      onChange={() => setMode("auto_approved")}
+                      disabled={!canEdit || saving || loading}
+                    />
+                    <span className="fieldLabel">auto_approved</span>
+                  </label>
+                  <label className="fieldCheckbox">
+                    <input
+                      type="radio"
+                      name="company-approval-mode"
+                      checked={mode === "pending"}
+                      onChange={() => setMode("pending")}
+                      disabled={!canEdit || saving || loading}
+                    />
+                    <span className="fieldLabel">pending</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Application Status Notifications</h3>
+            <div className="editGrid">
+              <div className="field fieldFull">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                  {APPLICATION_STATUS_NOTIFICATION_OPTIONS.map((option) => (
+                    <label key={option.key} className="fieldCheckbox">
+                      <input
+                        type="checkbox"
+                        checked={applicationStatusNotifications[option.key] !== false}
+                        onChange={(e) => {
+                          const enabled = Boolean(e.target.checked);
+                          setApplicationStatusNotifications((prev) => ({
+                            ...prev,
+                            [option.key]: enabled,
+                          }));
+                        }}
+                        disabled={!canEdit || saving || loading}
+                      />
+                      <span className="fieldLabel">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="pageText">Controls whether job seekers receive application update notifications per status.</p>
+              </div>
+            </div>
+          </section>
+
+          <section style={{ gridColumn: "1 / -1" }}>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Other Global Settings</h3>
+            <div className="editGrid">
+              <div className="field fieldFull">
+                <p className="pageText">Email templates are managed from the Email Templates page.</p>
+              </div>
+            </div>
+          </section>
         </div>
         <div className="stepperActions">
           <button className="btn btnGhost btnSm stepperSaveBtn" type="button" disabled={saving || loading || !canEditSystemSettings} onClick={onSaveSettings}>

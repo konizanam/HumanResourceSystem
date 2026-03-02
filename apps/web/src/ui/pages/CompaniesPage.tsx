@@ -1492,8 +1492,12 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
   if (!company) return null;
 
   const users = formatCompanyUsers(company);
-  const logoUrl = String((company as any)?.logo_url ?? "").trim();
+  const logoUrl = resolveCompanyLogoUrl(company);
   const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [company.id, logoUrl]);
 
   return (
     <div className="editForm">
@@ -1548,8 +1552,12 @@ function CompanyEditPanel({
   onSave: () => void;
   saving: boolean;
 }) {
-  const existingLogoUrl = String((company as any)?.logo_url ?? "").trim();
+  const existingLogoUrl = company ? resolveCompanyLogoUrl(company) : "";
   const [existingLogoFailed, setExistingLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setExistingLogoFailed(false);
+  }, [company?.id, existingLogoUrl]);
 
   return (
     <div className="editForm">
@@ -1690,6 +1698,20 @@ function CompanyEditPanel({
       </div>
     </div>
   );
+}
+
+function resolveCompanyLogoUrl(company: Company): string {
+  const id = String((company as any)?.id ?? "").trim();
+  const hasLogo = Boolean((company as any)?.has_logo ?? (company as any)?.hasLogo);
+  const legacy = String((company as any)?.logo_url ?? "").trim();
+
+  if (id && hasLogo) {
+    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+    const apiBase = `${String(apiUrl).replace(/\/$/, "")}/api/v1`;
+    return `${apiBase}/public/companies/${encodeURIComponent(id)}/logo`;
+  }
+
+  return legacy;
 }
 
 function ReadField({ label, value }: { label: string; value: unknown }) {
