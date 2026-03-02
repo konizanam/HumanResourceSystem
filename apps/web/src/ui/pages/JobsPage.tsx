@@ -213,7 +213,7 @@ export function JobsPage() {
   const canViewApplications = hasPermission("VIEW_APPLICATIONS");
   const canManageCompany = hasPermission("MANAGE_COMPANY");
   const canViewJob = hasPermission("VIEW_JOB");
-  const canApplyJob = hasPermission("APPLY_JOB") && !canCreate && !canManageAllJobs;
+  const canApplyJob = hasPermission("APPLY_JOB");
   const isJobSeekerView = !canCreate && !canManageAllJobs;
   const shouldRestrictToAssignedCompanies =
     !canManageCompany && !canViewJob && (canCreate || canViewApplications);

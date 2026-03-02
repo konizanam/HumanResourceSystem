@@ -641,8 +641,12 @@ input[type="radio"][required] {
 .appTopUserName {
   color: var(--heading);
   font-weight: 700;
-  font-size: 14px;
-  max-width: 280px;
+  font-size: 15px;
+  max-width: 360px;
+  padding: 6px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--card2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

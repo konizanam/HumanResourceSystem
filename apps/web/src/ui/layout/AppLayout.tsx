@@ -568,7 +568,7 @@ export function AppLayout({
         <div className="appTopUserBar" role="region" aria-label="User controls">
           {displayName ? (
             <div className="appTopUserName" title={displayName}>
-              {displayName}
+              Hello, {displayName}
             </div>
           ) : null}
           <button
@@ -581,7 +581,7 @@ export function AppLayout({
             <Icon name={theme === "dark" ? "sun" : "moon"} />
           </button>
           <button
-            className="btn btnGhost btnSm"
+            className="btn btnPrimary btnSm"
             onClick={logout}
             type="button"
             aria-label="Logout"
