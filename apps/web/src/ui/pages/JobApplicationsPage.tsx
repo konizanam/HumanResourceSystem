@@ -129,25 +129,14 @@ export function JobApplicationsPage() {
     hired: true,
   });
 
-  const canUpdateStatus = hasPermission(
-    "CHANGE_JOBSEEKER_APP_STATUS",
-    "UPDATE_APPLICATION_STATUS",
-    "APPLICATIONS_UPDATE_STATUS",
-    "applications.update_status",
-  );
-  const canMoveBackToAll = hasPermission(
-    "MOVE_BACK_TO_ALL_APPLICANTS",
-    "SET_APPLICATION_STATUS_APPLIED",
-    "move_back_to_all_applicants",
-  );
+  const canMoveBackToAll = hasPermission("MOVE_BACK_TO_ALL_APPLICANTS", "SET_APPLICATION_STATUS_APPLIED");
 
   const canSetStage = useCallback(
     (stage: StageKey) => {
-      if (canUpdateStatus) return true;
       const required = STAGE_PERMISSION_MAP[stage];
       return hasPermission(required);
     },
-    [canUpdateStatus, hasPermission],
+    [hasPermission],
   );
 
   const loadAll = useCallback(async () => {

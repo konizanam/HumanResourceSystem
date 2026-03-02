@@ -389,6 +389,17 @@ export async function getPublicCompany(jobId: string): Promise<Company> {
   return normalizeCompanyLogoUrl(envelope.data);
 }
 
+export async function getPublicCompanyById(companyId: string): Promise<Company> {
+  const id = String(companyId ?? "").trim();
+  const res = await fetch(`${API_BASE}/public/companies/${encodeURIComponent(id)}`, {
+    headers: publicHeaders(),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load company");
+  const envelope = body as ApiEnvelope<Company>;
+  return normalizeCompanyLogoUrl(envelope.data);
+}
+
 export async function deactivateCompany(token: string, id: string): Promise<Company> {
   const res = await fetch(
     `${API_BASE}/companies/${encodeURIComponent(id)}/deactivate`,

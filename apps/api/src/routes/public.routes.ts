@@ -79,6 +79,44 @@ router.get('/jobs/:jobId/company', async (req, res) => {
   }
 });
 
+router.get('/companies/:companyId', async (req, res) => {
+  try {
+    const companyId = String(req.params.companyId ?? '').trim();
+    if (!companyId) {
+      return res.status(400).json({ status: 'error', message: 'Missing company id' });
+    }
+
+    const { rows } = await query(
+      `SELECT
+         id,
+         name,
+         industry,
+         description,
+         website,
+         logo_url,
+         (logo_data IS NOT NULL) as has_logo,
+         contact_email,
+         contact_phone,
+         address_line1,
+         address_line2,
+         city,
+         country
+       FROM companies
+       WHERE id = $1
+       LIMIT 1`,
+      [companyId],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ status: 'error', message: 'Company not found' });
+    }
+
+    return res.json({ status: 'success', data: rows[0] });
+  } catch {
+    return res.status(500).json({ status: 'error', message: 'Failed to load company information' });
+  }
+});
+
 router.get('/companies/:companyId/logo', async (req, res) => {
   try {
     const companyId = String(req.params.companyId ?? '').trim();

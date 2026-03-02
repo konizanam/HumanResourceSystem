@@ -4,6 +4,7 @@ import {
   applyToJob,
   type Company,
   getPublicCompany,
+  getPublicCompanyById,
   getJobSeekerFullProfile,
   listJobSeekerResumes,
   getPublicSystemSettings,
@@ -191,7 +192,22 @@ export function PublicJobsPage() {
       try {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
-        setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+        const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        if (mainCompanyId) {
+          try {
+            const company = await getPublicCompanyById(mainCompanyId);
+            if (!cancelled) {
+              const companyName = String(company?.name ?? "").trim();
+              setSystemName(companyName || String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+            }
+          } catch {
+            if (!cancelled) {
+              setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+            }
+          }
+        } else {
+          setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+        }
         setBrandingLogoUrl(
           mainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
         );

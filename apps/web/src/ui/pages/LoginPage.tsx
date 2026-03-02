@@ -1,7 +1,14 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { forgotPassword, getPublicSystemSettings, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+import {
+  forgotPassword,
+  getPublicCompanyById,
+  getPublicSystemSettings,
+  me,
+  requestTwoFactorChallenge,
+  verifyTwoFactor,
+} from "../api/client";
 
 const THEME_KEY = "hrs-theme";
 
@@ -58,8 +65,25 @@ export function LoginPage() {
       try {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
-        const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
-        setSystemName(name);
+        const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        if (mainCompanyId) {
+          try {
+            const company = await getPublicCompanyById(mainCompanyId);
+            if (!cancelled) {
+              const companyName = String(company?.name ?? "").trim();
+              const fallback = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
+              setSystemName(companyName || fallback);
+            }
+          } catch {
+            if (!cancelled) {
+              const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
+              setSystemName(name);
+            }
+          }
+        } else {
+          const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
+          setSystemName(name);
+        }
       } catch {
         if (cancelled) return;
         setSystemName("Human Resource System");

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { getSystemSettings, getUnreadNotificationCount } from "../api/client";
+import { getCompany, getSystemSettings, getUnreadNotificationCount } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
@@ -367,7 +367,22 @@ export function AppLayout({
       try {
         const settings = await getSystemSettings(accessToken);
         if (cancelled) return;
-        setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+        const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        if (mainCompanyId) {
+          try {
+            const company = await getCompany(accessToken, mainCompanyId);
+            if (!cancelled) {
+              const companyName = String(company?.name ?? "").trim();
+              setSystemName(companyName || String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+            }
+          } catch {
+            if (!cancelled) {
+              setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+            }
+          }
+        } else {
+          setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+        }
         setBrandingLogoUrl(
           getMainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
         );
