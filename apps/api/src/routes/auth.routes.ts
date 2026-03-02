@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { query, getClient } from "../db";
 import { findUserByEmail, publicUser } from "../users";
-import { sendTemplatedEmail, apiOrigin, appName, webOrigin } from "../services/emailSender.service";
+import { sendTemplatedEmail, apiOrigin, appName, webOrigin, formatLoginDateTime, describeIpLocation } from "../services/emailSender.service";
 import { authenticate } from "../middleware/auth";
 
 export const authRouter = Router();
@@ -94,6 +94,39 @@ async function sendTwoFactorCodeEmail(params: {
   } catch (e) {
     console.error(
       "[Email] Failed to send 2FA code email:",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+async function sendLoginNotificationEmail(params: {
+  to: string;
+  userFullName: string;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  try {
+    const dateTime = formatLoginDateTime(new Date());
+    const location = describeIpLocation(params.ip);
+
+    await sendTemplatedEmail({
+      templateKey: "login_notification",
+      to: params.to,
+      accent: "security",
+      data: {
+        app_name: appName(),
+        user_full_name: params.userFullName,
+        login_info_block: "",          // sentinel — rendered specially by token engine
+        login_date_time: dateTime,
+        login_ip: params.ip ?? "Unknown",
+        login_location: location,
+        login_device: params.userAgent ?? "Unknown",
+        support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+      },
+    });
+  } catch (e) {
+    console.error(
+      "[Email] Failed to send login notification email:",
       e instanceof Error ? e.message : e
     );
   }
@@ -512,17 +545,28 @@ authRouter.post("/2fa/verify", async (req, res, next) => {
       roles: challenge.roles,
     });
 
+    const ipAddress = req.ip ?? null;
+    const userAgent = req.get("user-agent") ?? null;
+
     await persistUserSession({
       userId: challenge.userId,
       token: accessToken,
-      ipAddress: req.ip ?? null,
-      userAgent: req.get("user-agent") ?? null,
+      ipAddress,
+      userAgent,
     });
 
     res.locals.auditUserId = challenge.userId;
     res.locals.auditAction = "AUTH_LOGIN_SUCCESS";
     res.locals.auditTargetType = "auth";
     res.locals.auditTargetId = challenge.userId;
+
+    // Best-effort: notify user of the new sign-in.
+    void sendLoginNotificationEmail({
+      to: challenge.email,
+      userFullName: challenge.name,
+      ip: ipAddress,
+      userAgent,
+    });
 
     return res.json({
       tokenType: "Bearer",
