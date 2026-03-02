@@ -1498,6 +1498,17 @@ console.log('📝 Continuing with permissions...');
       { name: 'apply_jobs', description: 'Can apply to jobs', module: 'applications', action: 'create' },
       { name: 'view_applications', description: 'Can view applications', module: 'applications', action: 'view' },
       { name: 'manage_applications', description: 'Can manage applications', module: 'applications', action: 'manage' },
+      { name: 'set_application_status_applied', description: 'Can set application status to APPLIED', module: 'applications', action: 'update' },
+      { name: 'set_application_status_screening', description: 'Can set application status to SCREENING', module: 'applications', action: 'update' },
+      { name: 'set_application_status_long_listed', description: 'Can set application status to LONG_LISTED', module: 'applications', action: 'update' },
+      { name: 'set_application_status_shortlisted', description: 'Can set application status to SHORTLISTED', module: 'applications', action: 'update' },
+      { name: 'set_application_status_oral_interview', description: 'Can set application status to ORAL_INTERVIEW', module: 'applications', action: 'update' },
+      { name: 'set_application_status_practical_interview', description: 'Can set application status to PRACTICAL_INTERVIEW', module: 'applications', action: 'update' },
+      { name: 'set_application_status_final_interview', description: 'Can set application status to FINAL_INTERVIEW', module: 'applications', action: 'update' },
+      { name: 'set_application_status_offer_made', description: 'Can set application status to OFFER_MADE', module: 'applications', action: 'update' },
+      { name: 'set_application_status_hired', description: 'Can set application status to HIRED', module: 'applications', action: 'update' },
+      { name: 'set_application_status_rejected', description: 'Can set application status to REJECTED', module: 'applications', action: 'update' },
+      { name: 'set_application_status_withdrawn', description: 'Can set application status to WITHDRAWN', module: 'applications', action: 'update' },
       { name: 'move_back_to_all_applicants', description: 'Can move applicants back to All Applicants list', module: 'applications', action: 'update' },
       { name: 'admin_dashboard', description: 'Can access admin dashboard widgets', module: 'dashboard', action: 'view' },
       { name: 'employer_dashboard', description: 'Can access employer dashboard widgets', module: 'dashboard', action: 'view' },
@@ -1549,6 +1560,26 @@ console.log('📝 Continuing with permissions...');
         permissionIds.employer_dashboard,
       ]
     );
+
+    for (const permId of [
+      permissionIds.set_application_status_applied,
+      permissionIds.set_application_status_screening,
+      permissionIds.set_application_status_long_listed,
+      permissionIds.set_application_status_shortlisted,
+      permissionIds.set_application_status_oral_interview,
+      permissionIds.set_application_status_practical_interview,
+      permissionIds.set_application_status_final_interview,
+      permissionIds.set_application_status_offer_made,
+      permissionIds.set_application_status_hired,
+      permissionIds.set_application_status_rejected,
+      permissionIds.set_application_status_withdrawn,
+      permissionIds.move_back_to_all_applicants,
+    ]) {
+      await client.query(
+        'INSERT INTO role_permissions (role_id, permission_id) VALUES ($1, $2)',
+        [roleIds.EMPLOYER, permId]
+      );
+    }
     
     // Admin permissions (all permissions)
     for (const permId of Object.values(permissionIds)) {

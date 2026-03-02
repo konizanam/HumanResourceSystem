@@ -24,9 +24,9 @@ const authenticate = async (req, res, next) => {
         if (!userId) {
             throw new errors_1.UnauthorizedError('Invalid token');
         }
-        const roles = Array.isArray(decoded?.roles)
-            ? decoded.roles
-            : [];
+        const roles = (Array.isArray(decoded?.roles) ? decoded.roles : [])
+            .map((role) => String(role).trim().toUpperCase())
+            .filter((role) => role.length > 0);
         const preActivation = Boolean(decoded?.preActivation);
         // Check if user still exists and is active
         const result = await (0, database_1.query)('SELECT id, email, is_active FROM users WHERE id = $1', [userId]);
@@ -54,7 +54,9 @@ const authenticate = async (req, res, next) => {
          JOIN role_permissions rp ON p.id = rp.permission_id
          JOIN user_roles ur ON rp.role_id = ur.role_id
          WHERE ur.user_id = $1`, [userId]);
-            permissions = permissionsResult.rows.map((row) => row.name);
+            permissions = permissionsResult.rows
+                .map((row) => String(row.name ?? '').trim().toUpperCase())
+                .filter((permission) => permission.length > 0);
         }
         catch {
             // Best-effort: if permissions schema isn't present or query fails,
@@ -104,11 +106,12 @@ const authorizePermission = (...allowedPermissions) => {
             return next(new errors_1.UnauthorizedError('Authentication required'));
         }
         // Admin always has all permissions
-        const normalizedRoles = req.user.roles.map((role) => String(role).toUpperCase());
+        const normalizedRoles = req.user.roles.map((role) => String(role).trim().toUpperCase());
         if (normalizedRoles.includes('ADMIN')) {
             return next();
         }
-        const hasPermission = req.user.permissions?.some(permission => allowedPermissions.includes(permission));
+        const normalizedAllowed = new Set(allowedPermissions.map((p) => String(p).trim().toUpperCase()).filter((p) => p.length > 0));
+        const hasPermission = (req.user.permissions ?? []).some((permission) => normalizedAllowed.has(String(permission).trim().toUpperCase()));
         if (!hasPermission) {
             return next(new errors_1.ForbiddenError(`Insufficient permissions. Required permission: ${allowedPermissions.join(' or ')}`));
         }

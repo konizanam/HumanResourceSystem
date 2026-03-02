@@ -38,6 +38,14 @@ function hasPermission(user: any, permission: string): boolean {
   return normalized.has(String(permission).trim().toUpperCase());
 }
 
+async function userHasCompanyAccess(userId: string, companyId: string): Promise<boolean> {
+  const result = await dbQuery(
+    `SELECT 1 FROM company_users WHERE user_id = $1 AND company_id = $2 LIMIT 1`,
+    [userId, companyId]
+  );
+  return result.rows.length > 0;
+}
+
 /**
  * @swagger
  * components:
@@ -619,7 +627,6 @@ router.get('/:id',
  */
 router.put('/:id/status',
   authenticate,
-  authorizePermission('CHANGE_JOBSEEKER_APP_STATUS'),
   logAdminAction('CHANGE_JOBSEEKER_APP_STATUS', 'application'),
   param('id').isUUID().withMessage('Invalid application ID'),
   validateStatusUpdate,
@@ -636,7 +643,7 @@ router.put('/:id/status',
 
       // Check if application exists and get job details
       const appCheck = await dbQuery(
-        `SELECT a.*, a.user_id as applicant_id, j.employer_id, j.title as job_title
+        `SELECT a.*, a.user_id as applicant_id, j.employer_id, j.company_id, j.title as job_title
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
          WHERE a.id = $1`,
@@ -649,25 +656,56 @@ router.put('/:id/status',
 
       const application = appCheck.rows[0];
 
+      const isSystemManager = isAdmin(req.user) || hasPermission(req.user, 'MANAGE_USERS');
+
       const normalizedRequestedStatus = String(status ?? '').trim().toUpperCase();
       const normalizedCurrentStatus = String(application.status ?? '').trim().toUpperCase();
       const movingBackToAllApplicants =
         ['APPLIED', 'PENDING'].includes(normalizedRequestedStatus) &&
         !['APPLIED', 'PENDING'].includes(normalizedCurrentStatus);
 
+      // Map legacy status values used by this endpoint to the canonical workflow statuses.
+      const legacyToCanonical: Record<string, string> = {
+        PENDING: 'APPLIED',
+        REVIEWED: 'SCREENING',
+        ACCEPTED: 'HIRED',
+        REJECTED: 'REJECTED',
+        APPLIED: 'APPLIED',
+      };
+      const canonicalRequestedStatus = legacyToCanonical[normalizedRequestedStatus] ?? normalizedRequestedStatus;
+
       if (movingBackToAllApplicants) {
-        const hasMoveBackPermission = (req.user?.permissions ?? []).some(
-          (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
-        );
+        const canChangeAny = hasPermission(req.user, 'CHANGE_JOBSEEKER_APP_STATUS') || hasPermission(req.user, 'UPDATE_APPLICATION_STATUS');
+        const hasMoveBackPermission =
+          isSystemManager ||
+          canChangeAny ||
+          hasPermission(req.user, 'MOVE_BACK_TO_ALL_APPLICANTS') ||
+          hasPermission(req.user, 'SET_APPLICATION_STATUS_APPLIED');
         if (!hasMoveBackPermission) {
-          return res.status(403).json({ error: 'Insufficient permissions. Required permission: MOVE_BACK_TO_ALL_APPLICANTS' });
+          return res.status(403).json({
+            error: 'Insufficient permissions. Required permission: SET_APPLICATION_STATUS_APPLIED',
+          });
         }
       }
 
-      const hasManageUsers = req.user!.permissions?.includes('MANAGE_USERS');
-      // Check if user is authorized (employer who posted the job, or permissioned admin)
-      if (application.employer_id !== userId && !hasManageUsers) {
-        return res.status(403).json({ error: 'Not authorized to update this application' });
+      // Job-specific scope: allow job owner, company members, or system managers.
+      if (!isSystemManager) {
+        const isOwner = String(application.employer_id ?? '').trim() === userId;
+        const companyId = String(application.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(userId, companyId) : false;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to update this application' });
+        }
+      }
+
+      // Permission: require the specific permission for the target status.
+      // For backward compatibility, CHANGE_JOBSEEKER_APP_STATUS/UPDATE_APPLICATION_STATUS also grants all transitions.
+      const statusSpecificPermission = `SET_APPLICATION_STATUS_${canonicalRequestedStatus}`;
+      const canChangeAny = hasPermission(req.user, 'CHANGE_JOBSEEKER_APP_STATUS') || hasPermission(req.user, 'UPDATE_APPLICATION_STATUS');
+      if (!isSystemManager && !canChangeAny && !hasPermission(req.user, statusSpecificPermission)) {
+        return res.status(403).json({
+          error: `Insufficient permissions. Required permission: ${statusSpecificPermission}`,
+        });
       }
 
       // Check if application is already withdrawn

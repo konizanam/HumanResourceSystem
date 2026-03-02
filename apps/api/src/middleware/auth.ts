@@ -29,9 +29,9 @@ export const authenticate = async (
       throw new UnauthorizedError('Invalid token');
     }
 
-    const roles: string[] = Array.isArray(decoded?.roles)
-      ? decoded.roles
-      : [];
+    const roles: string[] = (Array.isArray(decoded?.roles) ? decoded.roles : [])
+      .map((role: unknown) => String(role).trim().toUpperCase())
+      .filter((role: string) => role.length > 0);
 
     const preActivation = Boolean(decoded?.preActivation);
 
@@ -72,7 +72,9 @@ export const authenticate = async (
          WHERE ur.user_id = $1`,
         [userId]
       );
-      permissions = permissionsResult.rows.map((row) => row.name);
+      permissions = permissionsResult.rows
+        .map((row) => String(row.name ?? '').trim().toUpperCase())
+        .filter((permission) => permission.length > 0);
     } catch {
       // Best-effort: if permissions schema isn't present or query fails,
       // default to an empty permission set instead of failing auth.
@@ -127,13 +129,16 @@ export const authorizePermission = (...allowedPermissions: string[]) => {
     }
 
     // Admin always has all permissions
-    const normalizedRoles = req.user.roles.map((role) => String(role).toUpperCase());
+    const normalizedRoles = req.user.roles.map((role) => String(role).trim().toUpperCase());
     if (normalizedRoles.includes('ADMIN')) {
       return next();
     }
 
-    const hasPermission = req.user.permissions?.some(permission => 
-      allowedPermissions.includes(permission)
+    const normalizedAllowed = new Set(
+      allowedPermissions.map((p) => String(p).trim().toUpperCase()).filter((p) => p.length > 0)
+    );
+    const hasPermission = (req.user.permissions ?? []).some((permission) =>
+      normalizedAllowed.has(String(permission).trim().toUpperCase())
     );
 
     if (!hasPermission) {

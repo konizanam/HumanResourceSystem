@@ -1140,7 +1140,6 @@ router.get('/:id/applications',
 // PATCH /api/jobs/:id/applications/:applicationId/status - Update application status
 router.patch('/:id/applications/:applicationId/status',
   authenticate,
-  authorizePermission('CHANGE_JOBSEEKER_APP_STATUS'),
   param('id').isUUID().withMessage('Invalid job ID'),
   param('applicationId').isUUID().withMessage('Invalid application ID'),
   body('status').isString().withMessage('Invalid status'),
@@ -1195,7 +1194,7 @@ router.patch('/:id/applications/:applicationId/status',
 
       // Check if job exists and user owns it
       const jobCheck = await dbQuery(
-        'SELECT employer_id, title FROM jobs WHERE id = $1',
+        'SELECT employer_id, company_id, title FROM jobs WHERE id = $1',
         [req.params.id]
       );
 
@@ -1206,9 +1205,17 @@ router.patch('/:id/applications/:applicationId/status',
       const job = jobCheck.rows[0];
       const jobTitle = String((job as any)?.title ?? '').trim();
 
-      // Check if user is the employer who created the job or an admin
-      if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
-        return res.status(403).json({ error: 'Not authorized to update applications for this job' });
+      const currentUserId = req.user!.userId;
+      const isSystemManager = isAdmin(req.user) || hasPermission(req.user, 'MANAGE_USERS');
+
+      // Job-specific scope: allow job owner, company members, or system managers.
+      if (!isSystemManager) {
+        const isOwner = String((job as any)?.employer_id ?? '').trim() === currentUserId;
+        const companyId = String((job as any)?.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(currentUserId, companyId) : false;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to update applications for this job' });
+        }
       }
 
       // Update application status
@@ -1226,12 +1233,27 @@ router.patch('/:id/applications/:applicationId/status',
         normalizedStatus === 'APPLIED' &&
         !['APPLIED', 'PENDING'].includes(currentStatus);
 
+      // Permission: require the specific permission for the target status.
+      // For backward compatibility, CHANGE_JOBSEEKER_APP_STATUS also grants all transitions.
+      const statusSpecificPermission = `SET_APPLICATION_STATUS_${normalizedStatus}`;
+      const canChangeAny = hasPermission(req.user, 'CHANGE_JOBSEEKER_APP_STATUS') || hasPermission(req.user, 'UPDATE_APPLICATION_STATUS');
+
+      if (!isSystemManager && !canChangeAny && !hasPermission(req.user, statusSpecificPermission)) {
+        return res.status(403).json({
+          error: `Insufficient permissions. Required permission: ${statusSpecificPermission}`,
+        });
+      }
+
       if (movingBackToAllApplicants) {
-        const hasMoveBackPermission = (req.user?.permissions ?? []).some(
-          (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
-        );
+        const hasMoveBackPermission =
+          isSystemManager ||
+          canChangeAny ||
+          hasPermission(req.user, 'MOVE_BACK_TO_ALL_APPLICANTS') ||
+          hasPermission(req.user, 'SET_APPLICATION_STATUS_APPLIED');
         if (!hasMoveBackPermission) {
-          return res.status(403).json({ error: 'Insufficient permissions. Required permission: MOVE_BACK_TO_ALL_APPLICANTS' });
+          return res.status(403).json({
+            error: 'Insufficient permissions. Required permission: SET_APPLICATION_STATUS_APPLIED',
+          });
         }
       }
 

@@ -36,6 +36,15 @@ const LEGACY_STATUS_MAP: Record<StageKey, string> = {
   hired: "accepted",
 };
 
+const STAGE_PERMISSION_MAP: Record<StageKey, string> = {
+  longlisted: "SET_APPLICATION_STATUS_LONG_LISTED",
+  shortlisted: "SET_APPLICATION_STATUS_SHORTLISTED",
+  rejected: "SET_APPLICATION_STATUS_REJECTED",
+  interview: "SET_APPLICATION_STATUS_ORAL_INTERVIEW",
+  assessment: "SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW",
+  hired: "SET_APPLICATION_STATUS_HIRED",
+};
+
 function detectStage(app: JobApplication, overrides: Record<string, StageKey>): StageKey {
   if (overrides[app.id]) return overrides[app.id];
 
@@ -122,12 +131,23 @@ export function JobApplicationsPage() {
 
   const canUpdateStatus = hasPermission(
     "CHANGE_JOBSEEKER_APP_STATUS",
+    "UPDATE_APPLICATION_STATUS",
     "APPLICATIONS_UPDATE_STATUS",
     "applications.update_status",
   );
   const canMoveBackToAll = hasPermission(
     "MOVE_BACK_TO_ALL_APPLICANTS",
+    "SET_APPLICATION_STATUS_APPLIED",
     "move_back_to_all_applicants",
+  );
+
+  const canSetStage = useCallback(
+    (stage: StageKey) => {
+      if (canUpdateStatus) return true;
+      const required = STAGE_PERMISSION_MAP[stage];
+      return hasPermission(required);
+    },
+    [canUpdateStatus, hasPermission],
   );
 
   const loadAll = useCallback(async () => {
@@ -599,8 +619,9 @@ export function JobApplicationsPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
-                  {canUpdateStatus &&
-                    STATUS_ACTIONS.filter((s) => s.key !== current).map((action) => (
+                  {STATUS_ACTIONS.filter((s) => s.key !== current)
+                    .filter((action) => canSetStage(action.key))
+                    .map((action) => (
                       <button
                         key={`${app.id}-${action.key}`}
                         type="button"
@@ -706,7 +727,7 @@ export function JobApplicationsPage() {
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
-                        {canUpdateStatus && canMoveBackToAll && (
+                        {canMoveBackToAll && (
                           <button
                             type="button"
                             className="btn btnPrimary btnSm"
@@ -717,8 +738,9 @@ export function JobApplicationsPage() {
                             Move Back to All Applicants
                           </button>
                         )}
-                        {canUpdateStatus &&
-                          STATUS_ACTIONS.filter((s) => s.key !== current).map((action) => (
+                        {STATUS_ACTIONS.filter((s) => s.key !== current)
+                          .filter((action) => canSetStage(action.key))
+                          .map((action) => (
                             <button
                               key={`${stage}-${app.id}-${action.key}`}
                               type="button"

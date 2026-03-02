@@ -726,6 +726,17 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
     ('MOVE_BACK_TO_ALL_APPLICANTS', 'Move applicant back to All Applicants list', 'Applications', 'UPDATE'),
     ('UPDATE_APPLICATION_STATUS', 'Change application status', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_APPLIED', 'Set application status to APPLIED', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_SCREENING', 'Set application status to SCREENING', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_LONG_LISTED', 'Set application status to LONG_LISTED', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_SHORTLISTED', 'Set application status to SHORTLISTED', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_ORAL_INTERVIEW', 'Set application status to ORAL_INTERVIEW', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW', 'Set application status to PRACTICAL_INTERVIEW', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_FINAL_INTERVIEW', 'Set application status to FINAL_INTERVIEW', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_OFFER_MADE', 'Set application status to OFFER_MADE', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_HIRED', 'Set application status to HIRED', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_REJECTED', 'Set application status to REJECTED', 'Applications', 'UPDATE'),
+    ('SET_APPLICATION_STATUS_WITHDRAWN', 'Set application status to WITHDRAWN', 'Applications', 'UPDATE'),
     ('SHORTLIST_CANDIDATE', 'Move candidates to shortlist', 'Applications', 'UPDATE'),
     
     -- Candidate permissions
@@ -759,7 +770,13 @@ FROM roles r, permissions p
 WHERE r.name = 'HR_MANAGER' 
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB', 'APPROVE_JOB',
                'EMPLOYER_DASHBOARD',
-               'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS', 
+               'VIEW_APPLICATIONS', 'MOVE_BACK_TO_ALL_APPLICANTS',
+               'SET_APPLICATION_STATUS_APPLIED', 'SET_APPLICATION_STATUS_SCREENING',
+               'SET_APPLICATION_STATUS_LONG_LISTED', 'SET_APPLICATION_STATUS_SHORTLISTED',
+               'SET_APPLICATION_STATUS_ORAL_INTERVIEW', 'SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW',
+               'SET_APPLICATION_STATUS_FINAL_INTERVIEW', 'SET_APPLICATION_STATUS_OFFER_MADE',
+               'SET_APPLICATION_STATUS_HIRED', 'SET_APPLICATION_STATUS_REJECTED',
+               'SET_APPLICATION_STATUS_WITHDRAWN',
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE',
                'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS',
                'APPROVE_COMPANY', 'MANAGE_NOTIFICATIONS');
@@ -771,7 +788,13 @@ FROM roles r, permissions p
 WHERE r.name = 'RECRUITER'
 AND p.name IN ('CREATE_JOB', 'VIEW_JOB', 'EDIT_JOB',
                'EMPLOYER_DASHBOARD',
-               'VIEW_APPLICATIONS', 'CHANGE_JOBSEEKER_APP_STATUS',
+               'VIEW_APPLICATIONS', 'MOVE_BACK_TO_ALL_APPLICANTS',
+               'SET_APPLICATION_STATUS_APPLIED', 'SET_APPLICATION_STATUS_SCREENING',
+               'SET_APPLICATION_STATUS_LONG_LISTED', 'SET_APPLICATION_STATUS_SHORTLISTED',
+               'SET_APPLICATION_STATUS_ORAL_INTERVIEW', 'SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW',
+               'SET_APPLICATION_STATUS_FINAL_INTERVIEW', 'SET_APPLICATION_STATUS_OFFER_MADE',
+               'SET_APPLICATION_STATUS_HIRED', 'SET_APPLICATION_STATUS_REJECTED',
+               'SET_APPLICATION_STATUS_WITHDRAWN',
                'SHORTLIST_CANDIDATE', 'VIEW_CV_DATABASE');
 
 -- Approver permissions
