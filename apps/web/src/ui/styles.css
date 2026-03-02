@@ -290,6 +290,28 @@ a {
   opacity: 0.7;
 }
 
+/* Make color inputs show a full swatch (not a thin line) */
+.input[type="color"] {
+  padding: 0;
+  height: 42px;
+  width: 80px;
+  cursor: pointer;
+}
+
+.input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+}
+
+.input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+}
+
 .form {
   display: grid;
   gap: 14px;

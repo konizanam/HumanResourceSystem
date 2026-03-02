@@ -431,39 +431,60 @@ export function JobApplicationsPage() {
               {docs.length === 0 ? (
                 <p className="pageText">No document links found.</p>
               ) : (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {docs.map((doc) => (
-                    <button
-                      key={`${app.id}-${doc.label}-${doc.url}`}
-                      type="button"
-                      className="btn btnGhost btnSm"
-                      onClick={() =>
-                        setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }))
-                      }
-                    >
-                      View Document ({doc.label})
-                    </button>
-                  ))}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: selectedDoc
+                      ? "repeat(auto-fit, minmax(320px, 1fr))"
+                      : "1fr",
+                    gap: 12,
+                    alignItems: "start",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {docs.map((doc) => (
+                      <button
+                        key={`${app.id}-${doc.label}-${doc.url}`}
+                        type="button"
+                        className="btn btnGhost btnSm"
+                        onClick={() =>
+                          setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }))
+                        }
+                      >
+                        View Document ({doc.label})
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedDoc && (
+                    <div>
+                      <div className="readLabel">Document Preview</div>
+                      <iframe
+                        src={selectedDoc}
+                        title="Document preview"
+                        style={{
+                          width: "100%",
+                          height: 560,
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          background: "#fff",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </Section>
 
-            {selectedDoc && (
-              <div style={{ marginTop: 10 }}>
-                <div className="readLabel">Document Preview</div>
-                <iframe
-                  src={selectedDoc}
-                  title="Document preview"
-                  style={{
-                    width: "100%",
-                    height: 560,
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    background: "#fff",
-                  }}
-                />
-              </div>
-            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btnPrimary btnSm"
+                onClick={() => void onToggleProfile(app)}
+              >
+                Hide Profile
+              </button>
+            </div>
           </>
         )}
       </div>

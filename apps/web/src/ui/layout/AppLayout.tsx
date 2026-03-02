@@ -7,6 +7,16 @@ import { applyAppThemeColor } from "../utils/themeColor";
 
 const THEME_KEY = "hrs-theme";
 
+function getMainCompanyBrandingLogoUrl(mainCompanyId: unknown): string {
+  const id = String(mainCompanyId ?? "").trim();
+  if (!id) return "";
+
+  const apiUrl = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  if (!apiUrl) return "";
+
+  return `${apiUrl}/api/v1/public/companies/${encodeURIComponent(id)}/logo`;
+}
+
 /** Returns the current effective theme without touching data-theme. */
 function getInitialTheme(): "light" | "dark" {
   try {
@@ -358,7 +368,9 @@ export function AppLayout({
         const settings = await getSystemSettings(accessToken);
         if (cancelled) return;
         setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
-        setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+        setBrandingLogoUrl(
+          getMainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
+        );
         setLastAppColor(settings.app_color);
         applyAppThemeColor(settings.app_color);
       } catch {

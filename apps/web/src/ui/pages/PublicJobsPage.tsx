@@ -132,6 +132,17 @@ export function PublicJobsPage() {
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
   const [brandingLogoFailed, setBrandingLogoFailed] = useState(false);
 
+  const mainCompanyBrandingLogoUrl = useCallback((mainCompanyId: unknown): string => {
+    const id = String(mainCompanyId ?? "").trim();
+    if (!id) return "";
+
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim();
+    if (!apiBase) return "";
+
+    const normalizedBase = apiBase.replace(/\/$/, "");
+    return `${normalizedBase}/api/v1/public/companies/${encodeURIComponent(id)}/logo`;
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -165,7 +176,9 @@ export function PublicJobsPage() {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
         setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
-        setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+        setBrandingLogoUrl(
+          mainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
+        );
         applyAppThemeColor(settings.app_color);
         setBrandingLogoFailed(false);
       } catch {

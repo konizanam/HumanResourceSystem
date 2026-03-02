@@ -44,6 +44,20 @@ function normalizeHexColor(value: string): string {
   return "#6366f1";
 }
 
+function resolveCompanyLogoUrl(company: Company): string {
+  const id = String((company as any)?.id ?? "").trim();
+  const hasLogo = Boolean((company as any)?.has_logo ?? (company as any)?.hasLogo);
+  const legacy = String((company as any)?.logo_url ?? "").trim();
+
+  if (id && hasLogo) {
+    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+    const apiBase = `${String(apiUrl).replace(/\/$/, "")}/api/v1`;
+    return `${apiBase}/public/companies/${encodeURIComponent(id)}/logo`;
+  }
+
+  return legacy;
+}
+
 export function GlobalSettingsPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -55,6 +69,7 @@ export function GlobalSettingsPage() {
   const [primaryCompany, setPrimaryCompany] = useState<Company | null>(null);
   const [mainCompanyId, setMainCompanyId] = useState("");
   const [loadedMainCompanyId, setLoadedMainCompanyId] = useState<string | null>(null);
+  const [existingLogoFailed, setExistingLogoFailed] = useState(false);
   const [companyForm, setCompanyForm] = useState({
     name: "",
     logoFile: null as File | null,
@@ -67,7 +82,6 @@ export function GlobalSettingsPage() {
   });
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
   const [systemName, setSystemName] = useState("Human Resource System");
-  const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
   const [appColor, setAppColor] = useState("#6366f1");
   const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
     DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
@@ -76,6 +90,7 @@ export function GlobalSettingsPage() {
   const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
   const canEditSystemSettings = canEdit || canChangeAppColor;
   const currentAppColor = normalizeHexColor(appColor);
+  const existingLogoUrl = primaryCompany ? resolveCompanyLogoUrl(primaryCompany) : "";
 
   const applySelectedColor = (nextColor: string) => {
     setAppColor(nextColor);
@@ -104,7 +119,6 @@ export function GlobalSettingsPage() {
       setCompanies(companies);
       setMode(settings.company_approval_mode);
       setSystemName(settings.system_name);
-      setBrandingLogoUrl(settings.branding_logo_url);
       setAppColor(settings.app_color || "#6366f1");
       applyAppThemeColor(settings.app_color || "#6366f1");
 
@@ -122,6 +136,7 @@ export function GlobalSettingsPage() {
       setLoadedMainCompanyId(preferredId || null);
       setMainCompanyId(selectedCompany?.id ?? "");
       setPrimaryCompany(selectedCompany);
+      setExistingLogoFailed(false);
       setCompanyForm({
         name: selectedCompany?.name ?? "",
         logoFile: null,
@@ -162,13 +177,11 @@ export function GlobalSettingsPage() {
 
       const systemPayload: Partial<{
         system_name: string;
-        branding_logo_url: string;
         app_color: string;
         application_status_notifications: Record<string, boolean>;
       }> = {};
       if (canEdit) {
         systemPayload.system_name = systemName;
-        systemPayload.branding_logo_url = brandingLogoUrl;
         systemPayload.application_status_notifications = applicationStatusNotifications;
       }
       if (canChangeAppColor) {
@@ -181,7 +194,6 @@ export function GlobalSettingsPage() {
       const updatedMode = canEdit ? (results[0] as CompanyApprovalMode) : mode;
       const updatedSettings = results[results.length - 1] as Awaited<ReturnType<typeof updateSystemSettings>>;
       setSystemName(updatedSettings.system_name);
-      setBrandingLogoUrl(updatedSettings.branding_logo_url);
       setAppColor(updatedSettings.app_color || "#6366f1");
       applyAppThemeColor(updatedSettings.app_color || "#6366f1");
       setApplicationStatusNotifications({
@@ -218,6 +230,7 @@ export function GlobalSettingsPage() {
       if (companyIdToUpdate !== primaryCompany.id) {
         const nextCompany = companies.find((c) => String(c.id) === String(companyIdToUpdate)) ?? null;
         setPrimaryCompany(nextCompany);
+        setExistingLogoFailed(false);
       }
 
       const updated = await updateCompany(accessToken, companyIdToUpdate, {
@@ -233,6 +246,7 @@ export function GlobalSettingsPage() {
 
       setCompanies((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       setPrimaryCompany(updated);
+      setExistingLogoFailed(false);
       setCompanyForm({
         name: updated.name ?? "",
         logoFile: null,
@@ -280,6 +294,7 @@ export function GlobalSettingsPage() {
                     setMainCompanyId(nextId);
                     const next = companies.find((c) => String(c.id) === nextId) ?? null;
                     setPrimaryCompany(next);
+                    setExistingLogoFailed(false);
                     setCompanyForm({
                       name: next?.name ?? "",
                       logoFile: null,
@@ -307,6 +322,16 @@ export function GlobalSettingsPage() {
               </label>
               <label className="field">
                 <span className="fieldLabel">Company Logo</span>
+                {existingLogoUrl && !existingLogoFailed ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <img
+                      src={existingLogoUrl}
+                      alt="Current company logo"
+                      style={{ maxWidth: "100%", height: 56, objectFit: "contain", display: "block" }}
+                      onError={() => setExistingLogoFailed(true)}
+                    />
+                  </div>
+                ) : null}
                 <input
                   className="input"
                   type="file"
@@ -365,23 +390,19 @@ export function GlobalSettingsPage() {
             marginTop: 12,
           }}
         >
-          <section>
+          <section className="dashCard">
             <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Branding</h3>
             <div className="editGrid">
               <label className="field">
                 <span className="fieldLabel">System Name</span>
                 <input className="input" value={systemName} onChange={(e) => setSystemName(e.target.value)} disabled={!canEdit || saving || loading} />
               </label>
-              <label className="field">
-                <span className="fieldLabel">Branding Logo URL</span>
-                <input className="input" value={brandingLogoUrl} onChange={(e) => setBrandingLogoUrl(e.target.value)} disabled={!canEdit || saving || loading} />
-              </label>
             </div>
-          </section>
-
-          <section>
-            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>App Color</h3>
-            <div className="editGrid">
+            <p className="pageText" style={{ marginTop: 8 }}>
+              Branding logo is sourced from the Main Company logo.
+            </p>
+            <h3 className="editFormTitle" style={{ margin: "14px 0 10px" }}>App Color</h3>
+            <div className="editGrid" style={{ marginBottom: 0 }}>
               <div className="field fieldFull">
                 <span className="fieldLabel">Current: {currentAppColor}</span>
                 <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
@@ -415,8 +436,8 @@ export function GlobalSettingsPage() {
             </div>
           </section>
 
-          <section>
-            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Company Approval Mode</h3>
+          <section className="dashCard">
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Company Registration Approval</h3>
             <div className="editGrid">
               <div className="field fieldFull">
                 <div style={{ display: "grid", gap: 10 }}>
@@ -445,7 +466,7 @@ export function GlobalSettingsPage() {
             </div>
           </section>
 
-          <section>
+          <section className="dashCard">
             <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Application Status Notifications</h3>
             <div className="editGrid">
               <div className="field fieldFull">
@@ -473,7 +494,7 @@ export function GlobalSettingsPage() {
             </div>
           </section>
 
-          <section style={{ gridColumn: "1 / -1" }}>
+          <section className="dashCard" style={{ gridColumn: "1 / -1" }}>
             <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Other Global Settings</h3>
             <div className="editGrid">
               <div className="field fieldFull">

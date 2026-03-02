@@ -3,8 +3,8 @@
   "company_approval_mode": "auto_approved",
   "system_name": "Hito HR Consultant",
   "branding_logo_url": "",
-  "app_color": "#0b0d60",
-  "main_company_id": null,
+  "app_color": "#7610ad",
+  "main_company_id": "e3922b48-f965-4968-9521-1f980276875c",
   "application_status_notifications": {
     "APPLIED": true,
     "SCREENING": true,

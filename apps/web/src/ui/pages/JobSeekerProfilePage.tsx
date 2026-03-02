@@ -106,27 +106,43 @@ function extractFileName(raw: unknown): string {
   return parts.length ? parts[parts.length - 1] : clean;
 }
 
+function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
+  const url = String(resolvedUrl ?? "").trim();
+  if (!url) return "none";
+  if (/^data:image\//i.test(url)) return "image";
+  if (/^data:application\/pdf/i.test(url)) return "pdf";
+  const fileName = extractFileName(url).toLowerCase();
+  if (/\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(fileName)) return "image";
+  if (/\.pdf$/i.test(fileName)) return "pdf";
+  return "none";
+}
+
 function UploadedDocumentCard({
   title,
   url,
   fallbackText,
   hint,
+  previewMode = "inline",
+  externalPreviewOpen,
+  onToggleExternalPreview,
 }: {
   title: string;
   url: string;
   fallbackText: string;
   hint?: string;
+  previewMode?: "inline" | "external";
+  externalPreviewOpen?: boolean;
+  onToggleExternalPreview?: (resolvedUrl: string, title: string) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const resolvedUrl = resolveFileUrl(url);
   const hasFile = Boolean(resolvedUrl);
   const fileName = extractFileName(url);
-  const lowerName = fileName.toLowerCase();
-  const isImage = /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(lowerName);
-  const isPdf = /\.pdf$/i.test(lowerName);
-  const canInlinePreview = Boolean(
-    resolvedUrl && (isImage || isPdf || /^data:image\//i.test(resolvedUrl) || /^data:application\/pdf/i.test(resolvedUrl)),
-  );
+  const inlineKind = getInlinePreviewKind(resolvedUrl);
+  const isImage = inlineKind === "image";
+  const canInlinePreview = inlineKind !== "none";
+  const isExternalPreview = previewMode === "external";
+  const effectivePreviewOpen = isExternalPreview ? Boolean(externalPreviewOpen) : previewOpen;
 
   function onDownload(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -158,10 +174,14 @@ function UploadedDocumentCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              if (isExternalPreview) {
+                onToggleExternalPreview?.(resolvedUrl, title);
+                return;
+              }
               setPreviewOpen((v) => !v);
             }}
           >
-            {previewOpen ? "Hide" : "View"}
+            {effectivePreviewOpen ? "Hide" : "View"}
           </button>
           <button
             type="button"
@@ -173,7 +193,7 @@ function UploadedDocumentCard({
         </div>
       ) : null}
 
-      {hasFile && previewOpen ? (
+      {hasFile && !isExternalPreview && previewOpen ? (
         <div className="uploadedDocPreview">
           {canInlinePreview ? (
             isImage ? (
@@ -304,6 +324,10 @@ export function JobSeekerProfilePage() {
 
   const [directoryDocumentsByUserId, setDirectoryDocumentsByUserId] = useState<
     Record<string, UserDocument[] | null | undefined>
+  >({});
+
+  const [directoryDocPreviewByUserId, setDirectoryDocPreviewByUserId] = useState<
+    Record<string, { url: string; title: string } | null | undefined>
   >({});
 
   const [blockModalUser, setBlockModalUser] = useState<JobSeekerListItem | null>(null);
@@ -518,6 +542,7 @@ export function JobSeekerProfilePage() {
     if (!id) return;
     const nextOpen = openDirectoryProfileId === id ? null : id;
     setOpenDirectoryProfileId(nextOpen);
+    setDirectoryDocPreviewByUserId((prev) => ({ ...prev, [id]: null }));
     if (!nextOpen || !accessToken) return;
 
     const hasProfile = Object.prototype.hasOwnProperty.call(directoryProfileByUserId, id);
@@ -586,6 +611,7 @@ export function JobSeekerProfilePage() {
     const userId = String(seeker.id ?? "").trim();
     const profile = userId ? directoryProfileByUserId[userId] : null;
     const docs = userId ? directoryDocumentsByUserId[userId] : null;
+    const selectedPreview = userId ? (directoryDocPreviewByUserId[userId] ?? null) : null;
 
     if (!userId) {
       return (
@@ -772,21 +798,72 @@ export function JobSeekerProfilePage() {
                     return <p className="pageText">No documents uploaded.</p>;
                   }
 
+                  const previewKind = selectedPreview?.url ? getInlinePreviewKind(selectedPreview.url) : "none";
+
                   return (
-                    <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
-                      {unique.map((c, idx) => (
-                        <UploadedDocumentCard
-                          key={`${userId}-doc-${idx}`}
-                          title={c.title}
-                          url={c.url}
-                          fallbackText="—"
-                          hint={c.hint}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
+                        {unique.map((c, idx) => (
+                          <UploadedDocumentCard
+                            key={`${userId}-doc-${idx}`}
+                            title={c.title}
+                            url={c.url}
+                            fallbackText="—"
+                            hint={c.hint}
+                            previewMode="external"
+                            externalPreviewOpen={Boolean(selectedPreview?.url && selectedPreview.url === resolveFileUrl(c.url))}
+                            onToggleExternalPreview={(resolvedUrl, title) => {
+                              setDirectoryDocPreviewByUserId((prev) => {
+                                const current = prev[userId];
+                                const isSame = Boolean(current?.url && current.url === resolvedUrl);
+                                return {
+                                  ...prev,
+                                  [userId]: isSame ? null : { url: resolvedUrl, title },
+                                };
+                              });
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      {selectedPreview?.url ? (
+                        <div style={{ marginTop: 10 }}>
+                          <div className="readLabel">{selectedPreview.title} Preview</div>
+                          <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+                            {previewKind === "image" ? (
+                              <img
+                                className="uploadedDocPreviewImage"
+                                src={selectedPreview.url}
+                                alt={selectedPreview.title}
+                              />
+                            ) : previewKind === "pdf" ? (
+                              <iframe
+                                className="uploadedDocPreviewFrame"
+                                src={selectedPreview.url}
+                                title={`${selectedPreview.title} preview`}
+                              />
+                            ) : (
+                              <span className="uploadedDocCardHint">
+                                Preview is not available for this file type. Use Download.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
                   );
                 })()}
               </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btnPrimary btnSm"
+                onClick={() => void onToggleDirectoryProfile(seeker)}
+              >
+                Hide Profile
+              </button>
             </div>
           </>
         )}
@@ -1291,6 +1368,7 @@ function PersonalDetailsSection({
   const [conductCertificateUrl, setConductCertificateUrl] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
+  const [externalDocPreview, setExternalDocPreview] = useState<{ url: string; title: string } | null>(null);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1423,6 +1501,10 @@ function PersonalDetailsSection({
 
   const currentIdDocumentUrl = String(form.idDocumentUrl ?? d.id_document_url ?? "").trim();
 
+  useEffect(() => {
+    setExternalDocPreview(null);
+  }, [editing, currentIdDocumentUrl, licenseDocumentUrl, conductCertificateUrl, form.idDocumentUrl]);
+
   if (!editing) {
     return (
       <div className="editForm" style={{ marginTop: 0 }}>
@@ -1441,26 +1523,73 @@ function PersonalDetailsSection({
           <EditField label="ID Type" value={String(d.id_type ?? "")} onChange={() => {}} disabled />
           <EditField label="ID Number" value={String(d.id_number ?? "")} onChange={() => {}} disabled />
           <div className="field fieldFull">
-            <UploadedDocumentCard
-              title="Identification Document"
-              url={currentIdDocumentUrl}
-              fallbackText="No file uploaded yet."
-            />
+            <div className="uploadedDocsGrid">
+              <UploadedDocumentCard
+                title="Identification Document"
+                url={currentIdDocumentUrl}
+                fallbackText="No file uploaded yet."
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(currentIdDocumentUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+              <UploadedDocumentCard
+                title="License (Optional)"
+                url={licenseDocumentUrl}
+                fallbackText="No file uploaded."
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(licenseDocumentUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+              <UploadedDocumentCard
+                title="Conduct Certificate (Optional)"
+                url={conductCertificateUrl}
+                fallbackText="No file uploaded."
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(conductCertificateUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+            </div>
           </div>
-          <div className="field fieldFull">
-            <UploadedDocumentCard
-              title="License (Optional)"
-              url={licenseDocumentUrl}
-              fallbackText="No file uploaded."
-            />
-          </div>
-          <div className="field fieldFull">
-            <UploadedDocumentCard
-              title="Conduct Certificate (Optional)"
-              url={conductCertificateUrl}
-              fallbackText="No file uploaded."
-            />
-          </div>
+
+          {externalDocPreview?.url ? (
+            <div className="field fieldFull">
+              <div className="readLabel">{externalDocPreview.title} Preview</div>
+              <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+                {(() => {
+                  const kind = getInlinePreviewKind(externalDocPreview.url);
+                  if (kind === "image") {
+                    return (
+                      <img
+                        className="uploadedDocPreviewImage"
+                        src={externalDocPreview.url}
+                        alt={externalDocPreview.title}
+                      />
+                    );
+                  }
+                  if (kind === "pdf") {
+                    return (
+                      <iframe
+                        className="uploadedDocPreviewFrame"
+                        src={externalDocPreview.url}
+                        title={`${externalDocPreview.title} preview`}
+                      />
+                    );
+                  }
+                  return (
+                    <span className="uploadedDocCardHint">
+                      Preview is not available for this file type. Use Download.
+                    </span>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : null}
           <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
           <label className="field fieldCheckbox">
             <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
@@ -1578,68 +1707,121 @@ function PersonalDetailsSection({
           required
           error={fieldErrors.idNumber}
         />
-        <label className="field fieldFull">
-          <span className="fieldLabel">Identification Document</span>
-          <input
-            className="input"
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              void onUploadDocument(file, "id");
-              e.currentTarget.value = "";
-            }}
-            disabled={uploadingDocType === "id" || saving}
-            required={!form.idDocumentUrl.trim()}
-          />
-          <UploadedDocumentCard
-            title="Identification Document"
-            url={form.idDocumentUrl}
-            fallbackText="No file uploaded yet."
-            hint={form.idDocumentUrl ? "Upload another file to replace the current one." : undefined}
-          />
-          {fieldErrors.idDocumentUrl && <span className="fieldError">{fieldErrors.idDocumentUrl}</span>}
-        </label>
-        <label className="field fieldFull">
-          <span className="fieldLabel">License (Optional)</span>
-          <input
-            className="input"
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              void onUploadDocument(file, "license");
-              e.currentTarget.value = "";
-            }}
-            disabled={uploadingDocType === "license" || saving || documentsLoading}
-          />
-          <UploadedDocumentCard
-            title="License (Optional)"
-            url={licenseDocumentUrl}
-            fallbackText="No file uploaded."
-            hint={licenseDocumentUrl ? "Upload another file to replace the current one." : undefined}
-          />
-        </label>
-        <label className="field fieldFull">
-          <span className="fieldLabel">Conduct Certificate (Optional)</span>
-          <input
-            className="input"
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              void onUploadDocument(file, "conduct");
-              e.currentTarget.value = "";
-            }}
-            disabled={uploadingDocType === "conduct" || saving || documentsLoading}
-          />
-          <UploadedDocumentCard
-            title="Conduct Certificate (Optional)"
-            url={conductCertificateUrl}
-            fallbackText="No file uploaded."
-            hint={conductCertificateUrl ? "Upload another file to replace the current one." : undefined}
-          />
-        </label>
+        <div className="field fieldFull">
+          <div className="uploadedDocsGrid">
+            <label className="field">
+              <span className="fieldLabel">Identification Document</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onUploadDocument(file, "id");
+                  e.currentTarget.value = "";
+                }}
+                disabled={uploadingDocType === "id" || saving}
+                required={!form.idDocumentUrl.trim()}
+              />
+              <UploadedDocumentCard
+                title="Identification Document"
+                url={form.idDocumentUrl}
+                fallbackText="No file uploaded yet."
+                hint={form.idDocumentUrl ? "Upload another file to replace the current one." : undefined}
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(form.idDocumentUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+              {fieldErrors.idDocumentUrl && <span className="fieldError">{fieldErrors.idDocumentUrl}</span>}
+            </label>
+            <label className="field">
+              <span className="fieldLabel">License (Optional)</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onUploadDocument(file, "license");
+                  e.currentTarget.value = "";
+                }}
+                disabled={uploadingDocType === "license" || saving || documentsLoading}
+              />
+              <UploadedDocumentCard
+                title="License (Optional)"
+                url={licenseDocumentUrl}
+                fallbackText="No file uploaded."
+                hint={licenseDocumentUrl ? "Upload another file to replace the current one." : undefined}
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(licenseDocumentUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Conduct Certificate (Optional)</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onUploadDocument(file, "conduct");
+                  e.currentTarget.value = "";
+                }}
+                disabled={uploadingDocType === "conduct" || saving || documentsLoading}
+              />
+              <UploadedDocumentCard
+                title="Conduct Certificate (Optional)"
+                url={conductCertificateUrl}
+                fallbackText="No file uploaded."
+                hint={conductCertificateUrl ? "Upload another file to replace the current one." : undefined}
+                previewMode="external"
+                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(conductCertificateUrl))}
+                onToggleExternalPreview={(resolvedUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                }
+              />
+            </label>
+          </div>
+        </div>
+
+        {externalDocPreview?.url ? (
+          <div className="field fieldFull">
+            <div className="readLabel">{externalDocPreview.title} Preview</div>
+            <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+              {(() => {
+                const kind = getInlinePreviewKind(externalDocPreview.url);
+                if (kind === "image") {
+                  return (
+                    <img
+                      className="uploadedDocPreviewImage"
+                      src={externalDocPreview.url}
+                      alt={externalDocPreview.title}
+                    />
+                  );
+                }
+                if (kind === "pdf") {
+                  return (
+                    <iframe
+                      className="uploadedDocPreviewFrame"
+                      src={externalDocPreview.url}
+                      title={`${externalDocPreview.title} preview`}
+                    />
+                  );
+                }
+                return (
+                  <span className="uploadedDocCardHint">
+                    Preview is not available for this file type. Use Download.
+                  </span>
+                );
+              })()}
+            </div>
+          </div>
+        ) : null}
         <label className="field">
           <span className="fieldLabel">Marital Status</span>
           <select
