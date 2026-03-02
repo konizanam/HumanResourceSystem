@@ -192,7 +192,10 @@ async function getBrandingInfo() {
     const mainCompanyId = settings.main_company_id;
     if (mainCompanyId) {
         try {
-            const result = await (0, database_1.query)(`SELECT id, name, has_logo, logo_url
+            const result = await (0, database_1.query)(`SELECT id,
+                name,
+                (logo_data IS NOT NULL) as has_logo,
+                logo_url
          FROM companies
          WHERE id = $1
          LIMIT 1`, [mainCompanyId]);

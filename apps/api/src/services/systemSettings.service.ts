@@ -239,7 +239,10 @@ export async function getBrandingInfo(): Promise<BrandingInfo> {
   if (mainCompanyId) {
     try {
       const result = await dbQuery(
-        `SELECT id, name, has_logo, logo_url
+        `SELECT id,
+                name,
+                (logo_data IS NOT NULL) as has_logo,
+                logo_url
          FROM companies
          WHERE id = $1
          LIMIT 1`,
