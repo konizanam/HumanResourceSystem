@@ -4,6 +4,33 @@ import { getSystemSettings } from '../services/systemSettings.service';
 
 const router = Router();
 
+function sniffImageMime(data: Buffer): string | null {
+  if (data.length >= 8) {
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    const pngSig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    if (data.subarray(0, 8).equals(pngSig)) return 'image/png';
+  }
+
+  if (data.length >= 3) {
+    // JPEG: FF D8 FF
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
+  }
+
+  if (data.length >= 6) {
+    const head = data.subarray(0, 6).toString('ascii');
+    if (head === 'GIF87a' || head === 'GIF89a') return 'image/gif';
+  }
+
+  if (data.length >= 12) {
+    // WEBP: RIFF....WEBP
+    const riff = data.subarray(0, 4).toString('ascii');
+    const webp = data.subarray(8, 12).toString('ascii');
+    if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp';
+  }
+
+  return null;
+}
+
 router.get('/system-settings', async (_req, res) => {
   try {
     const settings = await getSystemSettings();
@@ -68,13 +95,28 @@ router.get('/companies/:companyId/logo', async (req, res) => {
     );
 
     const row = rows[0];
-    const data = row?.logo_data as Buffer | null | undefined;
-    if (!data || !(data instanceof Buffer) || data.length === 0) {
+
+    const raw = (row as any)?.logo_data as unknown;
+    let data: Buffer | null = null;
+    if (raw instanceof Buffer) {
+      data = raw;
+    } else if (raw instanceof Uint8Array) {
+      data = Buffer.from(raw);
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      // pg can return BYTEA as a hex string like "\\x89504e47..."
+      if (trimmed.startsWith('\\x') && trimmed.length > 2) {
+        data = Buffer.from(trimmed.slice(2), 'hex');
+      }
+    }
+
+    if (!data || data.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Logo not found' });
     }
 
     const mimeRaw = typeof row?.logo_mime === 'string' ? row.logo_mime.trim() : '';
-    const mime = mimeRaw || 'application/octet-stream';
+    const mimeFromData = sniffImageMime(data);
+    const mime = mimeRaw && mimeRaw.startsWith('image/') ? mimeRaw : (mimeFromData ?? 'application/octet-stream');
 
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=3600');

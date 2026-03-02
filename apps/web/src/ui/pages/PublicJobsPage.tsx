@@ -392,6 +392,8 @@ export function PublicJobsPage() {
   }
 
   const resolvePublicJobCompanyName = useCallback((job: JobListItem) => {
+    const fromCompanyName = String(job.company_name ?? "").replace(/\s+/g, " ").trim();
+    if (fromCompanyName) return fromCompanyName;
     const direct = String(job.company ?? "").replace(/\s+/g, " ").trim();
     if (direct) return direct;
     const employerCompany = String(job.employer_company ?? "").replace(/\s+/g, " ").trim();
@@ -661,7 +663,6 @@ export function PublicJobsPage() {
                     ? `${window.location.origin}/jobs/${encodeURIComponent(String(job.id))}`
                     : `/jobs/${encodeURIComponent(String(job.id))}`;
                 const companyName = resolvePublicJobCompanyName(job);
-                const companyDisplayName = companyName === "—" ? "View Company Info" : companyName;
                 const categoryName = resolvePublicJobCategoryName(job);
                 const shareText = `${job.title}${companyName && companyName !== "—" ? ` - ${companyName}` : ""}`;
                 const facebookShareHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareHref)}&quote=${encodeURIComponent(shareText)}`;
@@ -686,7 +687,7 @@ export function PublicJobsPage() {
                             onClick={() => void onOpenCompanyInfo(job)}
                             disabled={companyModalLoading}
                           >
-                            {companyDisplayName}
+                            {companyName}
                           </button>
                         </span>
                       </div>

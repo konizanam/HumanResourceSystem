@@ -229,12 +229,14 @@ router.get('/', authenticateOptional, [
     // Get paginated jobs with employer info
     const jobsResult = await dbQuery(
       `SELECT j.*, 
+        c.name as company_name,
         (u.first_name || ' ' || u.last_name) as employer_name, 
         u.email as employer_email,
         u.company_name as employer_company,
         (SELECT COUNT(*) FROM applications WHERE job_id = j.id) as applications_count
        FROM jobs j
        LEFT JOIN users u ON j.employer_id = u.id
+       LEFT JOIN companies c ON c.id = j.company_id
        ${whereClause}
        ORDER BY 
          CASE WHEN j.employer_id = $${paramIndex} AND $${paramIndex + 1}::boolean THEN 0 ELSE 1 END,

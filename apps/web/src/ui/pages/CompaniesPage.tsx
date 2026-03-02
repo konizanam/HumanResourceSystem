@@ -1433,6 +1433,7 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
 
   const users = formatCompanyUsers(company);
   const logoUrl = String((company as any)?.logo_url ?? "").trim();
+  const [logoFailed, setLogoFailed] = useState(false);
 
   return (
     <div className="editForm">
@@ -1445,11 +1446,12 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
         <div className="readField">
           <span className="readLabel">Company Logo</span>
           <span className="readValue">
-            {logoUrl ? (
+            {logoUrl && !logoFailed ? (
               <img
                 src={logoUrl}
                 alt={`${company.name} logo`}
                 style={{ maxWidth: "100%", height: 44, objectFit: "contain", display: "block" }}
+                onError={() => setLogoFailed(true)}
               />
             ) : (
               "—"
@@ -1487,6 +1489,7 @@ function CompanyEditPanel({
   saving: boolean;
 }) {
   const existingLogoUrl = String((company as any)?.logo_url ?? "").trim();
+  const [existingLogoFailed, setExistingLogoFailed] = useState(false);
 
   return (
     <div className="editForm">
@@ -1532,12 +1535,13 @@ function CompanyEditPanel({
 
         <div className="field">
           <label className="fieldLabel">Company Logo</label>
-          {existingLogoUrl ? (
+          {existingLogoUrl && !existingLogoFailed ? (
             <div style={{ marginBottom: 10 }}>
               <img
                 src={existingLogoUrl}
                 alt="Current company logo"
                 style={{ maxWidth: "100%", height: 56, objectFit: "contain", display: "block" }}
+                onError={() => setExistingLogoFailed(true)}
               />
             </div>
           ) : null}

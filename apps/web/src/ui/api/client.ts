@@ -1678,6 +1678,7 @@ export type MyApplicationsResponse = {
 export type JobListItem = {
   id: string;
   company_id?: string | null;
+  company_name?: string | null;
   category_id?: string | null;
   title: string;
   description?: string | null;
