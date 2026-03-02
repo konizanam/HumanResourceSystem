@@ -105,10 +105,15 @@ export function GlobalSettingsPage() {
   }, [load]);
 
   async function onSaveSettings() {
-    if (!accessToken || !canEditSystemSettings) return;
+    if (!accessToken) {
+      setError("You are not signed in.");
+      return;
+    }
+    if (!canEditSystemSettings) return;
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
 
       const updates: Promise<any>[] = [];
 
@@ -144,10 +149,15 @@ export function GlobalSettingsPage() {
   }
 
   async function onSaveCompany() {
-    if (!accessToken || !canEdit || !primaryCompany) return;
+    if (!accessToken) {
+      setError("You are not signed in.");
+      return;
+    }
+    if (!canEdit || !primaryCompany) return;
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
       const updated = await updateCompany(accessToken, primaryCompany.id, {
         name: companyForm.name.trim(),
         logo_url: companyForm.logo_url.trim(),

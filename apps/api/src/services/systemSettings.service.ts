@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 
 export type CompanyApprovalMode = "auto_approved" | "pending";
@@ -34,9 +35,38 @@ function normalizeHexColor(input: unknown): string | null {
   return `#${hex.toLowerCase()}`;
 }
 
+const RESOLVED_SETTINGS_FILE_PATH = resolveSettingsFilePath();
+
+function resolveSettingsFilePath(): string {
+  // Allow overrides for deployments.
+  const override = String(process.env.SYSTEM_SETTINGS_PATH ?? "").trim();
+  if (override) return path.resolve(override);
+
+  // Prefer stable project locations so dev (src) and prod (dist)
+  // read/write the same file.
+  const candidates = [
+    // When running from the apps/api package directory.
+    path.resolve(process.cwd(), "data", "system-settings.json"),
+    // When running from the monorepo root.
+    path.resolve(process.cwd(), "apps", "api", "data", "system-settings.json"),
+    // Backwards-compatible fallback (older behavior).
+    path.resolve(__dirname, "..", "..", "data", "system-settings.json"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fsSync.existsSync(candidate)) return candidate;
+    } catch {
+      // ignore
+    }
+  }
+
+  // If nothing exists yet, default to the first candidate so writes create it.
+  return candidates[0];
+}
+
 function settingsFilePath() {
-  // When compiled, __dirname is .../apps/api/dist/services.
-  return path.resolve(__dirname, "..", "..", "data", "system-settings.json");
+  return RESOLVED_SETTINGS_FILE_PATH;
 }
 
 async function readSettings(): Promise<SystemSettings> {
