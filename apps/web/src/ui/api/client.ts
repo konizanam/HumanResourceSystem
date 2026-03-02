@@ -142,6 +142,7 @@ export type SystemSettings = {
   system_name: string;
   branding_logo_url: string;
   app_color: string;
+  main_company_id?: string | null;
 };
 
 export type UserSearchResult = {
@@ -220,12 +221,13 @@ function normalizeCompanyLogoUrl(company: any): any {
 
   const id = String((company as any)?.id ?? "").trim();
   const hasLogo = Boolean((company as any)?.has_logo ?? (company as any)?.hasLogo);
-  const current = String((company as any)?.logo_url ?? "").trim();
 
   if (id && hasLogo) {
     const apiBase = String(API_BASE ?? "").replace(/\/$/, "");
     const logoUrl = `${apiBase}/public/companies/${encodeURIComponent(id)}/logo`;
-    return { ...company, logo_url: current || logoUrl };
+    // Force DB-backed logo URLs. Legacy `logo_url` values (pre-DB logos)
+    // may be non-empty but no longer valid.
+    return { ...company, logo_url: logoUrl };
   }
 
   return company;
@@ -422,6 +424,10 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
+    main_company_id:
+      data.main_company_id === null || data.main_company_id === undefined
+        ? null
+        : String(data.main_company_id),
   };
 }
 
@@ -438,12 +444,16 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
+    main_company_id:
+      data.main_company_id === null || data.main_company_id === undefined
+        ? null
+        : String(data.main_company_id),
   };
 }
 
 export async function updateSystemSettings(
   token: string,
-  payload: Partial<{ system_name: string; branding_logo_url: string; app_color: string }>,
+  payload: Partial<{ system_name: string; branding_logo_url: string; app_color: string; main_company_id: string | null }>,
 ): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/companies/settings`, {
     method: "PUT",
@@ -459,6 +469,10 @@ export async function updateSystemSettings(
     system_name: String(data.system_name ?? "Human Resource System"),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
+    main_company_id:
+      data.main_company_id === null || data.main_company_id === undefined
+        ? null
+        : String(data.main_company_id),
   };
 }
 

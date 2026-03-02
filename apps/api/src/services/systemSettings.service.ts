@@ -10,6 +10,7 @@ export type SystemSettings = {
   system_name: string;
   branding_logo_url: string;
   app_color: string;
+  main_company_id: string | null;
 };
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -18,6 +19,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   system_name: "Human Resource System",
   branding_logo_url: "",
   app_color: "#6366f1",
+  main_company_id: null,
 };
 
 function normalizeHexColor(input: unknown): string | null {
@@ -87,6 +89,9 @@ async function readSettings(): Promise<SystemSettings> {
         ? parsed.branding_logo_url.trim()
         : "";
     const appColor = normalizeHexColor((parsed as any).app_color) ?? DEFAULT_SETTINGS.app_color;
+    const mainCompanyIdRaw =
+      typeof (parsed as any).main_company_id === "string" ? String((parsed as any).main_company_id).trim() : "";
+    const mainCompanyId = mainCompanyIdRaw || null;
 
     return {
       version: 1,
@@ -94,6 +99,7 @@ async function readSettings(): Promise<SystemSettings> {
       system_name: systemNameRaw || DEFAULT_SETTINGS.system_name,
       branding_logo_url: brandingLogoRaw,
       app_color: appColor,
+      main_company_id: mainCompanyId,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -126,7 +132,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 }
 
 export async function updateSystemSettings(
-  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color">>,
+  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color" | "main_company_id">>,
 ): Promise<SystemSettings> {
   const settings = await readSettings();
 
@@ -143,6 +149,15 @@ export async function updateSystemSettings(
 
   if (typeof changes.app_color === "string") {
     settings.app_color = normalizeHexColor(changes.app_color) ?? settings.app_color;
+  }
+
+  if (changes.main_company_id !== undefined) {
+    if (typeof changes.main_company_id === "string") {
+      const next = changes.main_company_id.trim();
+      settings.main_company_id = next || null;
+    } else if (changes.main_company_id === null) {
+      settings.main_company_id = null;
+    }
   }
 
   await writeSettings(settings);

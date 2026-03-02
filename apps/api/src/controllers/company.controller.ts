@@ -345,8 +345,15 @@ export class CompanyController {
         req.body?.app_color === undefined
           ? undefined
           : String(req.body.app_color);
+      const mainCompanyId =
+        req.body?.main_company_id === undefined
+          ? undefined
+          : req.body.main_company_id === null
+            ? null
+            : String(req.body.main_company_id);
 
-      const updatingGeneralSettings = systemName !== undefined || brandingLogo !== undefined;
+      const updatingGeneralSettings =
+        systemName !== undefined || brandingLogo !== undefined || mainCompanyId !== undefined;
       const updatingAppColor = appColor !== undefined;
 
       if (!updatingGeneralSettings && !updatingAppColor) {
@@ -376,6 +383,7 @@ export class CompanyController {
         system_name: systemName,
         branding_logo_url: brandingLogo,
         app_color: appColor,
+        main_company_id: mainCompanyId,
       });
       res.json({
         status: 'success',

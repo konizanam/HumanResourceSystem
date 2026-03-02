@@ -34,7 +34,10 @@ export function GlobalSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [primaryCompany, setPrimaryCompany] = useState<Company | null>(null);
+  const [mainCompanyId, setMainCompanyId] = useState("");
+  const [loadedMainCompanyId, setLoadedMainCompanyId] = useState<string | null>(null);
   const [companyForm, setCompanyForm] = useState({
     name: "",
     logoFile: null as File | null,
@@ -73,25 +76,34 @@ export function GlobalSettingsPage() {
             system_name: "Human Resource System",
             branding_logo_url: "",
             app_color: "#6366f1",
+            main_company_id: null,
           };
         }),
       ]);
+      setCompanies(companies);
       setMode(settings.company_approval_mode);
       setSystemName(settings.system_name);
       setBrandingLogoUrl(settings.branding_logo_url);
       setAppColor(settings.app_color || "#6366f1");
       applyAppThemeColor(settings.app_color || "#6366f1");
-      const firstCompany = companies[0] ?? null;
-      setPrimaryCompany(firstCompany);
+
+      const preferredId = String(settings.main_company_id ?? "").trim();
+      const selectedCompany =
+        (preferredId ? companies.find((c) => String(c.id) === preferredId) : null) ??
+        (companies[0] ?? null);
+
+      setLoadedMainCompanyId(preferredId || null);
+      setMainCompanyId(selectedCompany?.id ?? "");
+      setPrimaryCompany(selectedCompany);
       setCompanyForm({
-        name: firstCompany?.name ?? "",
+        name: selectedCompany?.name ?? "",
         logoFile: null,
-        contact_email: firstCompany?.contact_email ?? "",
-        contact_phone: firstCompany?.contact_phone ?? "",
-        address_line1: firstCompany?.address_line1 ?? "",
-        address_line2: firstCompany?.address_line2 ?? "",
-        city: firstCompany?.city ?? "",
-        country: firstCompany?.country ?? "",
+        contact_email: selectedCompany?.contact_email ?? "",
+        contact_phone: selectedCompany?.contact_phone ?? "",
+        address_line1: selectedCompany?.address_line1 ?? "",
+        address_line2: selectedCompany?.address_line2 ?? "",
+        city: selectedCompany?.city ?? "",
+        country: selectedCompany?.country ?? "",
       });
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load global settings");
@@ -158,7 +170,20 @@ export function GlobalSettingsPage() {
       setSaving(true);
       setError(null);
       setSuccess(null);
-      const updated = await updateCompany(accessToken, primaryCompany.id, {
+
+      const selectedMainId = mainCompanyId.trim();
+      if (selectedMainId && selectedMainId !== loadedMainCompanyId) {
+        const updatedSettings = await updateSystemSettings(accessToken, { main_company_id: selectedMainId });
+        setLoadedMainCompanyId(updatedSettings.main_company_id ?? null);
+      }
+
+      const companyIdToUpdate = selectedMainId || primaryCompany.id;
+      if (companyIdToUpdate !== primaryCompany.id) {
+        const nextCompany = companies.find((c) => String(c.id) === String(companyIdToUpdate)) ?? null;
+        setPrimaryCompany(nextCompany);
+      }
+
+      const updated = await updateCompany(accessToken, companyIdToUpdate, {
         name: companyForm.name.trim(),
         logoFile: companyForm.logoFile,
         contact_email: companyForm.contact_email.trim(),
@@ -168,6 +193,8 @@ export function GlobalSettingsPage() {
         city: companyForm.city.trim(),
         country: companyForm.country.trim(),
       });
+
+      setCompanies((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       setPrimaryCompany(updated);
       setCompanyForm({
         name: updated.name ?? "",
@@ -206,6 +233,37 @@ export function GlobalSettingsPage() {
         {!loading && primaryCompany ? (
           <>
             <div className="editGrid">
+              <label className="field">
+                <span className="fieldLabel">Main Company</span>
+                <select
+                  className="input"
+                  value={mainCompanyId}
+                  onChange={(e) => {
+                    const nextId = String(e.target.value ?? "");
+                    setMainCompanyId(nextId);
+                    const next = companies.find((c) => String(c.id) === nextId) ?? null;
+                    setPrimaryCompany(next);
+                    setCompanyForm({
+                      name: next?.name ?? "",
+                      logoFile: null,
+                      contact_email: next?.contact_email ?? "",
+                      contact_phone: next?.contact_phone ?? "",
+                      address_line1: next?.address_line1 ?? "",
+                      address_line2: next?.address_line2 ?? "",
+                      city: next?.city ?? "",
+                      country: next?.country ?? "",
+                    });
+                  }}
+                  disabled={!canEdit || saving}
+                >
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="pageText">This company is used for system-wide branding/company info.</p>
+              </label>
               <label className="field">
                 <span className="fieldLabel">Company Name</span>
                 <input className="input" value={companyForm.name} onChange={(e) => setCompanyForm((p) => ({ ...p, name: e.target.value }))} disabled={!canEdit || saving} />
