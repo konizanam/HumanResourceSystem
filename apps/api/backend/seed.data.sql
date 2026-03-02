@@ -1048,6 +1048,28 @@ JOIN permissions p ON p.name IN ('MANAGE_NOTIFICATIONS', 'APPROVE_COMPANY', 'EMP
 WHERE r.name IN ('HR_MANAGER', 'EMPLOYER')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
+-- Ensure HR/Recruiter/Employer can change application status (granular per-status permissions).
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+JOIN permissions p ON p.name IN (
+    'VIEW_APPLICATIONS',
+    'MOVE_BACK_TO_ALL_APPLICANTS',
+    'SET_APPLICATION_STATUS_APPLIED',
+    'SET_APPLICATION_STATUS_SCREENING',
+    'SET_APPLICATION_STATUS_LONG_LISTED',
+    'SET_APPLICATION_STATUS_SHORTLISTED',
+    'SET_APPLICATION_STATUS_ORAL_INTERVIEW',
+    'SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW',
+    'SET_APPLICATION_STATUS_FINAL_INTERVIEW',
+    'SET_APPLICATION_STATUS_OFFER_MADE',
+    'SET_APPLICATION_STATUS_HIRED',
+    'SET_APPLICATION_STATUS_REJECTED',
+    'SET_APPLICATION_STATUS_WITHDRAWN'
+)
+WHERE r.name IN ('HR_MANAGER', 'RECRUITER', 'EMPLOYER')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
 -- User 1: Admin
 INSERT INTO users (id, first_name, last_name, email, password_hash, is_active)
 VALUES (

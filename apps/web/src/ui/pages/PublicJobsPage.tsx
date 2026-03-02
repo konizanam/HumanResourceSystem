@@ -166,6 +166,20 @@ export function PublicJobsPage() {
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
 
+  const pageName = useMemo(() => {
+    const rawJobId = String(jobId ?? "").trim();
+    if (!rawJobId) return "Jobs";
+    const job = jobs.find((item) => String(item?.id) === rawJobId);
+    const title = String((job as any)?.title ?? "").trim();
+    return title || "Jobs";
+  }, [jobId, jobs]);
+
+  useEffect(() => {
+    const name = String(systemName ?? "").trim() || "Human Resource System";
+    const page = String(pageName ?? "").trim();
+    document.title = page ? `${name} | ${page}` : name;
+  }, [pageName, systemName]);
+
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryNameById, setCategoryNameById] = useState<Record<string, string>>({});
 

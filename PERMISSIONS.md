@@ -42,8 +42,18 @@
 ## Page: Job Applications
 - View page: `VIEW_APPLICATIONS` or route access from Jobs action
 - View applicant profile panel: authenticated user on page
-- Update application status (Longlist/Shortlist/Rejected/Interview/Assessment/Hired): `CHANGE_JOBSEEKER_APP_STATUS`
-- Move applicant back to All Applicants: `MOVE_BACK_TO_ALL_APPLICANTS`
+- Update application status (job-specific; buttons shown per permission):
+  - Longlist: `SET_APPLICATION_STATUS_LONG_LISTED`
+  - Shortlist: `SET_APPLICATION_STATUS_SHORTLISTED`
+  - Rejected: `SET_APPLICATION_STATUS_REJECTED`
+  - Interview: `SET_APPLICATION_STATUS_ORAL_INTERVIEW`
+  - Assessment: `SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW`
+  - Hired: `SET_APPLICATION_STATUS_HIRED`
+- Move applicant back to All Applicants:
+  - `MOVE_BACK_TO_ALL_APPLICANTS` (or `SET_APPLICATION_STATUS_APPLIED`)
+- Legacy compatibility (still accepted by backend, but not recommended for new role setups):
+  - `CHANGE_JOBSEEKER_APP_STATUS`
+  - `UPDATE_APPLICATION_STATUS`
 - View inline documents: authenticated user on page
 
 ## Page: Roles
@@ -99,6 +109,17 @@
 - `APPLY_JOB` — Can apply for jobs (job seekers)
 - `CHANGE_JOBSEEKER_APP_STATUS` — Can update job seeker application status transitions
 - `MOVE_BACK_TO_ALL_APPLICANTS` — Can move applicants from status lists back to All Applicants
+- `SET_APPLICATION_STATUS_APPLIED` — Can set application status to APPLIED
+- `SET_APPLICATION_STATUS_SCREENING` — Can set application status to SCREENING
+- `SET_APPLICATION_STATUS_LONG_LISTED` — Can set application status to LONG_LISTED
+- `SET_APPLICATION_STATUS_SHORTLISTED` — Can set application status to SHORTLISTED
+- `SET_APPLICATION_STATUS_ORAL_INTERVIEW` — Can set application status to ORAL_INTERVIEW
+- `SET_APPLICATION_STATUS_PRACTICAL_INTERVIEW` — Can set application status to PRACTICAL_INTERVIEW
+- `SET_APPLICATION_STATUS_FINAL_INTERVIEW` — Can set application status to FINAL_INTERVIEW
+- `SET_APPLICATION_STATUS_OFFER_MADE` — Can set application status to OFFER_MADE
+- `SET_APPLICATION_STATUS_HIRED` — Can set application status to HIRED
+- `SET_APPLICATION_STATUS_REJECTED` — Can set application status to REJECTED
+- `SET_APPLICATION_STATUS_WITHDRAWN` — Can set application status to WITHDRAWN
 - `CHANGE_APP_COLOR` — Can change application color theme
 - `EMPLOYER_DASHBOARD` — Can access employer dashboard widgets
 - `JOB_SEEKER_DASHBOARD` — Can access job seeker dashboard widgets
