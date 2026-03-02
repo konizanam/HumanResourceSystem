@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   applyToJob,
@@ -121,8 +121,8 @@ export function DashboardPage() {
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
-  const [jobDetailsModalOpen, setJobDetailsModalOpen] = useState(false);
-  const [jobDetailsModalLoading, setJobDetailsModalLoading] = useState(false);
+  const [openApplicationDetailsId, setOpenApplicationDetailsId] = useState<string | null>(null);
+  const [jobDetailsLoading, setJobDetailsLoading] = useState(false);
   const [jobDetails, setJobDetails] = useState<JobListItem | null>(null);
   const [recallTarget, setRecallTarget] = useState<JobApplication | null>(null);
   const [recalling, setRecalling] = useState(false);
@@ -677,13 +677,21 @@ export function DashboardPage() {
     return true;
   }, [isJobExpiredForApplication]);
 
-  const onViewJobDetails = useCallback(async (jobId: string) => {
+  const onViewJobDetails = useCallback(async (applicationId: string, jobId: string) => {
     if (!accessToken) return;
+    const appId = String(applicationId ?? "").trim();
     const id = String(jobId ?? "").trim();
-    if (!id) return;
+    if (!appId || !id) return;
+
+    if (openApplicationDetailsId === appId) {
+      setOpenApplicationDetailsId(null);
+      setJobDetails(null);
+      return;
+    }
+
     try {
-      setJobDetailsModalOpen(true);
-      setJobDetailsModalLoading(true);
+      setOpenApplicationDetailsId(appId);
+      setJobDetailsLoading(true);
       setJobDetails(null);
       setError(null);
       const job = await getJob(accessToken, id);
@@ -691,9 +699,9 @@ export function DashboardPage() {
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load job details");
     } finally {
-      setJobDetailsModalLoading(false);
+      setJobDetailsLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, openApplicationDetailsId]);
 
   const onConfirmRecallApplication = useCallback(async () => {
     if (!accessToken || !recallTarget) return;
@@ -1153,11 +1161,13 @@ export function DashboardPage() {
                     <tbody>
                       {seekerRecentApplications.map((app) => {
                         const jobId = String(app.job_id ?? "").trim();
+                        const appId = String(app.id ?? "").trim();
+                        const isDetailsOpen = openApplicationDetailsId === appId;
                         const actions = [
                           {
                             key: "view",
-                            label: "View job details",
-                            onClick: () => void onViewJobDetails(jobId),
+                            label: isDetailsOpen ? "Hide job details" : "View job details",
+                            onClick: () => void onViewJobDetails(appId, jobId),
                           },
                           ...(canRecallApplication(app)
                             ? [
@@ -1172,24 +1182,58 @@ export function DashboardPage() {
                         ];
 
                         return (
-                          <tr key={app.id}>
-                            <td>{app.job_title ?? app.job_id}</td>
-                            <td>{app.company ?? app.company_name ?? "—"}</td>
-                            <td>{app.status ?? "—"}</td>
-                            <td>
-                              {(app as any).applied_at || app.created_at
-                                ? new Date(String((app as any).applied_at ?? app.created_at)).toLocaleDateString("en-GB")
-                                : "—"}
-                            </td>
-                            <td className="tdRight">
-                              <ActionMenu
-                                label="⋯"
-                                disabled={!jobId || recalling}
-                                items={actions}
-                                menuLabel="Application actions"
-                              />
-                            </td>
-                          </tr>
+                          <Fragment key={app.id}>
+                            <tr>
+                              <td>{app.job_title ?? app.job_id}</td>
+                              <td>{app.company ?? app.company_name ?? "—"}</td>
+                              <td>{app.status ?? "—"}</td>
+                              <td>
+                                {(app as any).applied_at || app.created_at
+                                  ? new Date(String((app as any).applied_at ?? app.created_at)).toLocaleDateString("en-GB")
+                                  : "—"}
+                              </td>
+                              <td className="tdRight">
+                                <ActionMenu
+                                  label="⋯"
+                                  disabled={!jobId || recalling}
+                                  items={actions}
+                                  menuLabel="Application actions"
+                                />
+                              </td>
+                            </tr>
+                            {isDetailsOpen ? (
+                              <tr className="tableExpandRow">
+                                <td colSpan={5}>
+                                  <div className="dropPanel" style={{ marginTop: 0 }}>
+                                    {jobDetailsLoading ? (
+                                      <div className="emptyState">Loading job details...</div>
+                                    ) : jobDetails ? (
+                                      <>
+                                        <div className="profileReadGrid">
+                                          <div className="readField"><span className="readLabel">Title</span><span className="readValue">{jobDetails.title ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Company</span><span className="readValue">{jobDetails.company ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Category</span><span className="readValue">{resolveSeekerJobCategoryName(jobDetails) ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Employment Type</span><span className="readValue">{jobDetails.employment_type ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Experience Level</span><span className="readValue">{jobDetails.experience_level ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Location</span><span className="readValue">{jobDetails.location ?? "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Remote</span><span className="readValue">{jobDetails.remote ? "Yes" : "No"}</span></div>
+                                          <div className="readField"><span className="readLabel">Salary Range</span><span className="readValue">{`${jobDetails.salary_min ?? "—"} - ${jobDetails.salary_max ?? "—"}`}</span></div>
+                                          <div className="readField"><span className="readLabel">Deadline</span><span className="readValue">{jobDetails.application_deadline ? new Date(jobDetails.application_deadline).toLocaleString("en-GB") : "—"}</span></div>
+                                          <div className="readField"><span className="readLabel">Status</span><span className="readValue">{jobDetails.status ?? "—"}</span></div>
+                                        </div>
+                                        <div style={{ marginTop: 12 }}>
+                                          <span className="readLabel">Description</span>
+                                          <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{jobDetails.description ?? "—"}</p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="emptyState">No job details found.</div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
                         );
                       })}
                     </tbody>
@@ -1429,59 +1473,6 @@ export function DashboardPage() {
             </div>
             <div className="modalActions">
               <button className="btn btnGhost" type="button" onClick={() => setCompanyModalOpen(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {jobDetailsModalOpen ? (
-        <div
-          className="modalOverlay"
-          role="presentation"
-          onMouseDown={() => !jobDetailsModalLoading && setJobDetailsModalOpen(false)}
-        >
-          <div
-            className="modalCard"
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modalTitle">Job Details</div>
-            <div className="modalMessage">
-              {jobDetailsModalLoading ? (
-                "Loading job details..."
-              ) : jobDetails ? (
-                <>
-                  <div className="profileReadGrid">
-                    <div className="readField"><span className="readLabel">Title</span><span className="readValue">{jobDetails.title ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Company</span><span className="readValue">{jobDetails.company ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Category</span><span className="readValue">{resolveSeekerJobCategoryName(jobDetails) ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Employment Type</span><span className="readValue">{jobDetails.employment_type ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Experience Level</span><span className="readValue">{jobDetails.experience_level ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Location</span><span className="readValue">{jobDetails.location ?? "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Remote</span><span className="readValue">{jobDetails.remote ? "Yes" : "No"}</span></div>
-                    <div className="readField"><span className="readLabel">Salary Range</span><span className="readValue">{`${jobDetails.salary_min ?? "—"} - ${jobDetails.salary_max ?? "—"}`}</span></div>
-                    <div className="readField"><span className="readLabel">Deadline</span><span className="readValue">{jobDetails.application_deadline ? new Date(jobDetails.application_deadline).toLocaleString("en-GB") : "—"}</span></div>
-                    <div className="readField"><span className="readLabel">Status</span><span className="readValue">{jobDetails.status ?? "—"}</span></div>
-                  </div>
-                  <div style={{ marginTop: 12 }}>
-                    <span className="readLabel">Description</span>
-                    <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>{jobDetails.description ?? "—"}</p>
-                  </div>
-                </>
-              ) : (
-                "No job details found."
-              )}
-            </div>
-            <div className="modalActions">
-              <button
-                className="btn btnGhost"
-                type="button"
-                onClick={() => setJobDetailsModalOpen(false)}
-                disabled={jobDetailsModalLoading}
-              >
                 Close
               </button>
             </div>
