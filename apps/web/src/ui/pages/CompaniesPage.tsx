@@ -1197,6 +1197,7 @@ export function CompaniesPage() {
                       <CompanyViewPanel company={openCompany} />
                     ) : (
                       <CompanyEditPanel
+                        company={openCompany}
                         form={editForm}
                         onChange={setEditForm}
                         onCancel={() => {
@@ -1431,6 +1432,7 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
   if (!company) return null;
 
   const users = formatCompanyUsers(company);
+  const logoUrl = String((company as any)?.logo_url ?? "").trim();
 
   return (
     <div className="editForm">
@@ -1440,7 +1442,20 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
         <ReadField label="Company Name" value={company.name} />
         <ReadField label="Industry" value={company.industry} />
         <ReadField label="Website" value={company.website} />
-        <ReadField label="Logo" value={(company as any)?.has_logo ? "Uploaded" : "Not uploaded"} />
+        <div className="readField">
+          <span className="readLabel">Company Logo</span>
+          <span className="readValue">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${company.name} logo`}
+                style={{ maxWidth: "100%", height: 44, objectFit: "contain", display: "block" }}
+              />
+            ) : (
+              "—"
+            )}
+          </span>
+        </div>
         <ReadField label="Contact Email" value={company.contact_email} />
         <ReadField label="Contact Phone" value={company.contact_phone} />
         <ReadField label="Address Line 1" value={company.address_line1} />
@@ -1457,18 +1472,22 @@ function CompanyViewPanel({ company }: { company: Company | null }) {
 }
 
 function CompanyEditPanel({
+  company,
   form,
   onChange,
   onCancel,
   onSave,
   saving,
 }: {
+  company: Company | null;
   form: CompanyUpsertPayload;
   onChange: (v: CompanyUpsertPayload) => void;
   onCancel: () => void;
   onSave: () => void;
   saving: boolean;
 }) {
+  const existingLogoUrl = String((company as any)?.logo_url ?? "").trim();
+
   return (
     <div className="editForm">
       <h2 className="editFormTitle">Edit Company</h2>
@@ -1513,6 +1532,15 @@ function CompanyEditPanel({
 
         <div className="field">
           <label className="fieldLabel">Company Logo</label>
+          {existingLogoUrl ? (
+            <div style={{ marginBottom: 10 }}>
+              <img
+                src={existingLogoUrl}
+                alt="Current company logo"
+                style={{ maxWidth: "100%", height: 56, objectFit: "contain", display: "block" }}
+              />
+            </div>
+          ) : null}
           <input
             className="input"
             type="file"
