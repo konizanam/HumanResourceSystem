@@ -27,7 +27,13 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // =====================
 
 // Security middleware
-app.use(helmet());
+app.use(
+  helmet({
+    // Default is `same-origin`, which can block loading images (e.g. company logos)
+    // from the API when the web app runs on a different origin during development.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // CORS configuration
 const corsOrigin = process.env.WEB_ORIGIN || 'http://localhost:5173';

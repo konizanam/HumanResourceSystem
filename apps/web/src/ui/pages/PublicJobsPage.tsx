@@ -766,7 +766,6 @@ export function PublicJobsPage() {
                         <div className="profileReadGrid">
                           <ReadField label="Employment Type" value={job.employment_type ?? "—"} />
                           <ReadField label="Experience Level" value={job.experience_level ?? "—"} />
-                          <ReadField label="Status" value={job.status ?? "—"} />
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>

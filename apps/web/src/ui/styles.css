@@ -1973,6 +1973,11 @@ input[type="radio"][required] {
   margin-bottom: 12px;
 }
 
+/* Allow grid children (e.g. inputs with long values) to shrink without forcing uneven columns. */
+.editGrid > * {
+  min-width: 0;
+}
+
 /* Global Settings: keep Main Company form controls visually aligned */
 .globalSettingsPage .editGrid .input {
   min-height: 42px;
@@ -1985,7 +1990,7 @@ input[type="radio"][required] {
 
 @media (min-width: 600px) {
   .editGrid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
@@ -2019,8 +2024,18 @@ input[type="radio"][required] {
   margin-bottom: 6px;
 }
 
+.richTextToolbar .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  min-width: 32px;
+}
+
 .richTextEditor {
   min-height: 120px;
+  resize: vertical;
+  overflow: auto;
 }
 
 .richTextEditor:empty:before {
@@ -2051,6 +2066,12 @@ input[type="radio"][required] {
 .richTextContent a {
   color: var(--menu-icon-active);
   text-decoration: underline;
+}
+
+.richTextContent blockquote {
+  margin: 6px 0 6px 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--stroke);
 }
 
 /* ── Record cards (education, experience, etc.) ── */

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { getEmailTemplates, type EmailTemplate } from './emailTemplates.service';
+import { getBrandingInfo } from './systemSettings.service';
 
 type EmailConfig = {
   host: string;
@@ -56,13 +57,19 @@ function supportEmail(): string {
   return '';
 }
 
-function emailLogoUrl(): string {
+async function emailLogoUrl(): Promise<string> {
   const v = process.env.EMAIL_LOGO_URL;
   if (v && v.trim()) return v.trim();
 
-  const origin = webOrigin();
-  if (!origin) return '';
-  return `${origin}/hito-logo.png`;
+  const branding = await getBrandingInfo();
+  const raw = String(branding.logoUrl ?? '').trim();
+  if (!raw) return '';
+
+  // Convert relative API paths to absolute URLs for email clients.
+  if (raw.startsWith('/')) {
+    return `${apiOrigin()}${raw}`;
+  }
+  return raw;
 }
 
 function textToHtmlContent(bodyText: string): string {
@@ -104,16 +111,16 @@ const ACCENTS: Record<EmailAccent, { top: string; badge: string; badgeText: stri
   warning:  { top: 'linear-gradient(90deg,#ea580c 0%,#f97316 100%)', badge: '#fff7ed', badgeText: '#9a3412', badgeBorder: '#fed7aa', label: 'Notice' },
 };
 
-function wrapBrandedEmailHtml(params: {
+async function wrapBrandedEmailHtml(params: {
   title: string;
   preheader?: string;
   contentHtml: string;
   accent?: EmailAccent;
-}): string {
+}): Promise<string> {
   const year = new Date().getFullYear();
-  const logo = emailLogoUrl();
+  const logo = await emailLogoUrl();
   const support = supportEmail();
-  const brand = appName();
+  const brand = (await getBrandingInfo()).name;
   const preheader = params.preheader ? escapeHtml(params.preheader) : '';
   const nowText = toDisplayDate();
   const acc = ACCENTS[params.accent ?? 'default'];
@@ -349,10 +356,17 @@ export async function sendTemplatedEmail(params: {
     throw new Error(`Email template not found: ${params.templateKey}`);
   }
 
-  const contentHtml = renderTokens(textToHtmlContent(tpl.body_text), params.data, { html: true });
-  const subject = renderTokens(tpl.subject, params.data);
-  const text = renderTokens(tpl.body_text, params.data);
-  const html = wrapBrandedEmailHtml({
+  const branding = await getBrandingInfo();
+  const data: Record<string, string> = {
+    ...params.data,
+    // Ensure any template token using {{app_name}} reflects Global Settings main company name.
+    app_name: branding.name,
+  };
+
+  const contentHtml = renderTokens(textToHtmlContent(tpl.body_text), data, { html: true });
+  const subject = renderTokens(tpl.subject, data);
+  const text = renderTokens(tpl.body_text, data);
+  const html = await wrapBrandedEmailHtml({
     title: tpl.title || subject,
     preheader: subject,
     contentHtml,

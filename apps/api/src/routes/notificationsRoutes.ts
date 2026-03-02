@@ -3,7 +3,8 @@ import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { Request, Response } from 'express';
-import { appName, sendTemplatedEmail, webOrigin } from '../services/emailSender.service';
+import { sendTemplatedEmail, webOrigin } from '../services/emailSender.service';
+import { getBrandingInfo } from '../services/systemSettings.service';
 
 const router = express.Router();
 
@@ -1109,6 +1110,7 @@ export async function createNotification(
                       : null;
 
         if (templateKey) {
+          const branding = await getBrandingInfo();
           const fullName = `${String(userRow?.first_name ?? '').trim()} ${String(userRow?.last_name ?? '').trim()}`.trim() || 'User';
           const rawAction = String(action_url ?? '').trim();
           const origin = webOrigin();
@@ -1121,9 +1123,8 @@ export async function createNotification(
             templateKey,
             to: toEmail,
             data: {
-              app_name: appName(),
               user_full_name: fullName,
-              company_name: String((data as any)?.company_name ?? (data as any)?.company ?? 'Human Resource System'),
+              company_name: String((data as any)?.company_name ?? (data as any)?.company ?? branding.name),
               applicant_name: String((data as any)?.applicant_name ?? ''),
               job_title: String((data as any)?.job_title ?? title ?? 'Job update'),
               job_link: link,

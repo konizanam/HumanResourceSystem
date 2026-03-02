@@ -203,6 +203,10 @@ router.get('/', authenticateOptional, [
       whereConditions.push(`j.status = ANY($${paramIndex}::text[])`);
       queryParams.push(statuses);
       paramIndex++;
+
+      // Public view should not include expired jobs.
+      // application_deadline is a DATE, so compare using CURRENT_DATE.
+      whereConditions.push(`(j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE)`);
     }
 
     // Add status filter if provided and user is employer/admin
@@ -573,6 +577,20 @@ router.get('/:id([0-9a-fA-F-]{36})', [
     const job = jobResult.rows[0];
 
     const isPubliclyActive = job.status === 'active' || job.status === 'APPROVED';
+    const canViewExpired = !!req.user && isEmployerOrAdmin(req.user);
+
+    // Public (and non-employer/admin) views should not expose expired jobs.
+    if (!canViewExpired && job.application_deadline) {
+      const deadline = new Date(job.application_deadline);
+      if (!Number.isNaN(deadline.getTime())) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const deadlineDay = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
+        if (deadlineDay < today) {
+          return res.status(404).json({ error: 'Job not found' });
+        }
+      }
+    }
 
     // Check if user can view this job (public can only view active/approved jobs)
     if (!isPubliclyActive && !req.user?.roles?.includes('EMPLOYER') && !req.user?.roles?.includes('ADMIN')) {

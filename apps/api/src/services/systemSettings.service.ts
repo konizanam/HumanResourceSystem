@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import { query as dbQuery } from "../config/database";
 
 export type CompanyApprovalMode = "auto_approved" | "pending";
 
@@ -80,6 +81,12 @@ export type SystemSettings = {
   application_status_notifications: ApplicationStatusNotificationSettings;
 };
 
+export type BrandingInfo = {
+  name: string;
+  logoUrl: string;
+  mainCompanyId: string | null;
+};
+
 const DEFAULT_SETTINGS: SystemSettings = {
   version: 1,
   company_approval_mode: "auto_approved",
@@ -89,6 +96,9 @@ const DEFAULT_SETTINGS: SystemSettings = {
   main_company_id: null,
   application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
 };
+
+const BRANDING_CACHE_MS = 30_000;
+let brandingCache: { at: number; value: BrandingInfo } | null = null;
 
 function normalizeHexColor(input: unknown): string | null {
   if (typeof input !== "string") return null;
@@ -213,6 +223,54 @@ export async function setCompanyApprovalMode(mode: CompanyApprovalMode): Promise
 
 export async function getSystemSettings(): Promise<SystemSettings> {
   return readSettings();
+}
+
+export async function getBrandingInfo(): Promise<BrandingInfo> {
+  const now = Date.now();
+  if (brandingCache && now - brandingCache.at < BRANDING_CACHE_MS) {
+    return brandingCache.value;
+  }
+
+  const settings = await readSettings();
+  let name = settings.system_name;
+  let logoUrl = settings.branding_logo_url;
+  const mainCompanyId = settings.main_company_id;
+
+  if (mainCompanyId) {
+    try {
+      const result = await dbQuery(
+        `SELECT id, name, has_logo, logo_url
+         FROM companies
+         WHERE id = $1
+         LIMIT 1`,
+        [mainCompanyId]
+      );
+      const row = result.rows[0] as any;
+
+      const rowName = typeof row?.name === "string" ? row.name.trim() : "";
+      if (rowName) name = rowName;
+
+      const hasLogo = Boolean(row?.has_logo);
+      const legacyUrl = typeof row?.logo_url === "string" ? row.logo_url.trim() : "";
+
+      if (hasLogo) {
+        logoUrl = `/api/v1/public/companies/${encodeURIComponent(mainCompanyId)}/logo`;
+      } else if (legacyUrl) {
+        logoUrl = legacyUrl;
+      }
+    } catch {
+      // Ignore DB errors and fall back to settings.
+    }
+  }
+
+  const value: BrandingInfo = {
+    name: name || DEFAULT_SETTINGS.system_name,
+    logoUrl: logoUrl || "",
+    mainCompanyId,
+  };
+
+  brandingCache = { at: now, value };
+  return value;
 }
 
 export async function updateSystemSettings(
