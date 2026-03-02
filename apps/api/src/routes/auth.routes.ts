@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt, { type SignOptions } from "jsonwebtoken";
+import { createHash } from "node:crypto";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { query, getClient } from "../db";
@@ -132,6 +133,10 @@ function getTokenExpiryDate(token: string): Date {
   return new Date(Date.now() + 8 * 60 * 60 * 1000);
 }
 
+function tokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 async function persistUserSession(params: {
   userId: string;
   token: string;
@@ -140,7 +145,9 @@ async function persistUserSession(params: {
   previousToken?: string | null;
 }) {
   const expiresAt = getTokenExpiryDate(params.token);
+  const tokenKey = tokenFingerprint(params.token);
   const previousToken = String(params.previousToken ?? "").trim();
+  const previousTokenKey = previousToken ? tokenFingerprint(previousToken) : "";
 
   if (previousToken) {
     const updated = await query(
@@ -150,9 +157,17 @@ async function persistUserSession(params: {
               user_agent = $3,
               expires_at = $4,
               last_activity = NOW()
-        WHERE token = $5
-          AND user_id = $6`,
-      [params.token, params.ipAddress, params.userAgent, expiresAt.toISOString(), previousToken, params.userId]
+        WHERE user_id = $5
+          AND (token = $6 OR token = $7)`,
+      [
+        tokenKey,
+        params.ipAddress,
+        params.userAgent,
+        expiresAt.toISOString(),
+        params.userId,
+        previousTokenKey,
+        previousToken,
+      ]
     );
 
     if (updated.rowCount && updated.rowCount > 0) {
@@ -163,7 +178,7 @@ async function persistUserSession(params: {
   await query(
     `INSERT INTO user_sessions (user_id, token, ip_address, user_agent, expires_at, created_at, last_activity)
      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-    [params.userId, params.token, params.ipAddress, params.userAgent, expiresAt.toISOString()]
+    [params.userId, tokenKey, params.ipAddress, params.userAgent, expiresAt.toISOString()]
   );
 }
 

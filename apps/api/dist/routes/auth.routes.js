@@ -7,6 +7,7 @@ exports.authRouter = void 0;
 const express_1 = require("express");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const node_crypto_1 = require("node:crypto");
 const uuid_1 = require("uuid");
 const zod_1 = require("zod");
 const db_1 = require("../db");
@@ -106,9 +107,14 @@ function getTokenExpiryDate(token) {
     }
     return new Date(Date.now() + 8 * 60 * 60 * 1000);
 }
+function tokenFingerprint(token) {
+    return (0, node_crypto_1.createHash)("sha256").update(token).digest("hex");
+}
 async function persistUserSession(params) {
     const expiresAt = getTokenExpiryDate(params.token);
+    const tokenKey = tokenFingerprint(params.token);
     const previousToken = String(params.previousToken ?? "").trim();
+    const previousTokenKey = previousToken ? tokenFingerprint(previousToken) : "";
     if (previousToken) {
         const updated = await (0, db_1.query)(`UPDATE user_sessions
           SET token = $1,
@@ -116,14 +122,22 @@ async function persistUserSession(params) {
               user_agent = $3,
               expires_at = $4,
               last_activity = NOW()
-        WHERE token = $5
-          AND user_id = $6`, [params.token, params.ipAddress, params.userAgent, expiresAt.toISOString(), previousToken, params.userId]);
+        WHERE user_id = $5
+          AND (token = $6 OR token = $7)`, [
+            tokenKey,
+            params.ipAddress,
+            params.userAgent,
+            expiresAt.toISOString(),
+            params.userId,
+            previousTokenKey,
+            previousToken,
+        ]);
         if (updated.rowCount && updated.rowCount > 0) {
             return;
         }
     }
     await (0, db_1.query)(`INSERT INTO user_sessions (user_id, token, ip_address, user_agent, expires_at, created_at, last_activity)
-     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`, [params.userId, params.token, params.ipAddress, params.userAgent, expiresAt.toISOString()]);
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`, [params.userId, tokenKey, params.ipAddress, params.userAgent, expiresAt.toISOString()]);
 }
 function activationExpiresIn() {
     const raw = process.env.ACTIVATION_TOKEN_EXPIRES_IN;
