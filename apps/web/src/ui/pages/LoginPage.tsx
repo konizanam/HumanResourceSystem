@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { forgotPassword, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+import { forgotPassword, getPublicSystemSettings, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
 
 const THEME_KEY = "hrs-theme";
 
@@ -37,6 +37,7 @@ export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [systemName, setSystemName] = useState<string>("Human Resource System");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -50,6 +51,31 @@ export function LoginPage() {
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBranding = async () => {
+      try {
+        const settings = await getPublicSystemSettings();
+        if (cancelled) return;
+        const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
+        setSystemName(name);
+      } catch {
+        if (cancelled) return;
+        setSystemName("Human Resource System");
+      }
+    };
+
+    void loadBranding();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const name = String(systemName ?? "Human Resource System").trim() || "Human Resource System";
+    document.title = name;
+  }, [systemName]);
 
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
@@ -195,7 +221,7 @@ export function LoginPage() {
       </button>
       <div className="authWrap">
         <aside className="authVisual" aria-hidden="true">
-          <div className="authVisualBadge">Human Resource System</div>
+          <div className="authVisualBadge">{systemName}</div>
           <h2 className="authVisualTitle">Welcome to your recruitment command center</h2>
           <p className="authVisualText">
             Sign in to post jobs, track applications, and manage candidate profiles in one secure place.
@@ -438,7 +464,7 @@ export function LoginPage() {
             <Link to="/register" className="linkBtn">
               Sign up
             </Link>
-            <div className="loginCopyright">© 2026 Human Resource System. All rights reserved.</div>
+            <div className="loginCopyright">© 2026 {systemName}. All rights reserved.</div>
           </div>
         </div>
       </div>

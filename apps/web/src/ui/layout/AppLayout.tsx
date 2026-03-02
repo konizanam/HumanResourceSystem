@@ -376,6 +376,20 @@ export function AppLayout({
     };
   }, [accessToken]);
 
+  const resolvedSystemName = useMemo(() => {
+    const name = String(systemName ?? "").trim();
+    return name || "Human Resource System";
+  }, [systemName]);
+
+  const brandMono = useMemo(() => {
+    const words = resolvedSystemName.split(/\s+/).filter(Boolean);
+    const initials = words
+      .slice(0, 2)
+      .map((w) => (w[0] ? w[0].toUpperCase() : ""))
+      .join("");
+    return initials || "HR";
+  }, [resolvedSystemName]);
+
   // Re-apply theme color whenever dark/light mode changes
   useEffect(() => {
     applyAppThemeColor(lastAppColor);
@@ -406,10 +420,10 @@ export function AppLayout({
   }, [hasPermission, location.pathname, menuItems]);
 
   useEffect(() => {
-    const name = String(systemName ?? "Human Resource System").trim() || "Human Resource System";
+    const name = resolvedSystemName;
     const page = String(pageName ?? "").trim();
     document.title = page ? `${name} | ${page}` : name;
-  }, [pageName, systemName]);
+  }, [pageName, resolvedSystemName]);
 
   useEffect(() => {
     const href = String(brandingLogoUrl ?? "").trim();
@@ -450,9 +464,9 @@ export function AppLayout({
             aria-label="Home"
             onClick={() => setMobileOpen(false)}
           >
-            <span className="brandText">HR System</span>
+            <span className="brandText">{resolvedSystemName}</span>
             <span className="brandMono" aria-hidden="true">
-              HR
+              {brandMono}
             </span>
           </Link>
 
