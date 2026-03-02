@@ -512,7 +512,6 @@ router.get('/:id',
 
       const applicationId = String(req.params.id);
       const userId = req.user!.userId;
-      const userRoles = req.user!.roles;
 
       // Get application with all related details
       const result = await dbQuery(
