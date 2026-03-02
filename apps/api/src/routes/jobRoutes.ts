@@ -764,7 +764,7 @@ router.post('/',
                 'New job posted in your selected preferences',
                 `A new "${title}" position was posted in ${category}.`,
                 { job_id: createdJob.id, category, category_id: resolvedCategoryId, company_id: resolvedCompanyId, title },
-                '/app/jobs',
+                `/jobs/${createdJob.id}`,
                 'normal'
               )
             )

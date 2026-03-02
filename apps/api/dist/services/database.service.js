@@ -84,7 +84,25 @@ class DatabaseService {
         return result.rows.length > 0;
     }
     async getCompanyById(companyId) {
-        const result = await (0, database_1.query)('SELECT * FROM companies WHERE id = $1', [companyId]);
+        const result = await (0, database_1.query)(`SELECT
+         c.id,
+         c.name,
+         c.industry,
+         c.description,
+         c.website,
+         c.logo_url,
+         c.contact_email,
+         c.contact_phone,
+         c.address_line1,
+         c.address_line2,
+         c.city,
+         c.country,
+         c.created_by,
+         c.created_at,
+         COALESCE(c.status, 'active') as status,
+         (c.logo_data IS NOT NULL) as has_logo
+       FROM companies c
+       WHERE c.id = $1`, [companyId]);
         return result.rows[0];
     }
     async getCompanyUsers(companyId) {
@@ -102,7 +120,23 @@ class DatabaseService {
         await (0, database_1.query)('DELETE FROM company_users WHERE company_id = $1 AND user_id = $2', [companyId, userId]);
     }
     async getUserCompanies(userId) {
-        const result = await (0, database_1.query)(`SELECT c.* 
+        const result = await (0, database_1.query)(`SELECT
+         c.id,
+         c.name,
+         c.industry,
+         c.description,
+         c.website,
+         c.logo_url,
+         c.contact_email,
+         c.contact_phone,
+         c.address_line1,
+         c.address_line2,
+         c.city,
+         c.country,
+         c.created_by,
+         c.created_at,
+         COALESCE(c.status, 'active') as status,
+         (c.logo_data IS NOT NULL) as has_logo
        FROM companies c
        JOIN company_users cu ON c.id = cu.company_id
        WHERE cu.user_id = $1

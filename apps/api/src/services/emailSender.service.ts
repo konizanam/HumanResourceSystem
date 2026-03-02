@@ -395,7 +395,8 @@ export function apiOrigin(): string {
 
 export function webOrigin(): string {
   const v = process.env.WEB_ORIGIN;
-  return v && v.trim() ? v.trim().replace(/\/$/, '') : '';
+  const trimmed = v && v.trim() ? v.trim() : '';
+  return (trimmed || 'http://localhost:5173').replace(/\/$/, '');
 }
 
 /** Format a Date as "DD/MM/YYYY HH:MM" (local server time) */
