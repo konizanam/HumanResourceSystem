@@ -160,6 +160,7 @@ router.get('/', authenticateOptional, [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
   query('status').optional().isIn(['active', 'closed', 'draft']),
+  query('search').optional().isString().trim().isLength({ max: 120 }),
   query('my_jobs').optional().isBoolean().toBoolean(),
   query('company_id').optional().isUUID().withMessage('Invalid company ID')
 ], async (req: Request, res: Response) => {
@@ -223,13 +224,27 @@ router.get('/', authenticateOptional, [
       paramIndex++;
     }
 
+    const searchRaw = typeof req.query.search === 'string' ? String(req.query.search).trim() : '';
+    if (searchRaw) {
+      whereConditions.push(`(
+        j.title ILIKE $${paramIndex}
+        OR COALESCE(j.location, '') ILIKE $${paramIndex}
+        OR COALESCE(c.name, '') ILIKE $${paramIndex}
+      )`);
+      queryParams.push(`%${searchRaw}%`);
+      paramIndex++;
+    }
+
     const whereClause = whereConditions.length > 0 
       ? 'WHERE ' + whereConditions.join(' AND ')
       : '';
 
     // Get total count
     const countResult = await dbQuery(
-      `SELECT COUNT(*) FROM jobs j ${whereClause}`,
+      `SELECT COUNT(*)
+       FROM jobs j
+       LEFT JOIN companies c ON c.id = j.company_id
+       ${whereClause}`,
       queryParams
     );
     const total = parseInt(countResult.rows[0].count);

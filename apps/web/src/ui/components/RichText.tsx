@@ -8,6 +8,9 @@ const ALLOWED_TAGS = [
   "em",
   "u",
   "br",
+  "h1",
+  "h2",
+  "h3",
   "p",
   "div",
   "blockquote",
@@ -273,6 +276,15 @@ export function RichTextEditor({
     onChange(html);
   }
 
+  function formatBlock(tag: "p" | "h1" | "h2" | "h3") {
+    if (disabled) return;
+    editorRef.current?.focus();
+    document.execCommand("formatBlock", false, tag);
+    const html = editorRef.current?.innerHTML ?? "";
+    lastPropValueRef.current = html;
+    onChange(html);
+  }
+
   function openLinkModal() {
     if (disabled) return;
     editorRef.current?.focus();
@@ -305,6 +317,19 @@ export function RichTextEditor({
   return (
     <div className="richTextRoot">
       <div className="richTextToolbar" role="toolbar" aria-label="Formatting">
+        <button className="btn btnGhost btnSm" type="button" onClick={() => formatBlock("h1")} disabled={disabled} aria-label="Heading 1" title="Heading 1">
+          H1
+        </button>
+        <button className="btn btnGhost btnSm" type="button" onClick={() => formatBlock("h2")} disabled={disabled} aria-label="Heading 2" title="Heading 2">
+          H2
+        </button>
+        <button className="btn btnGhost btnSm" type="button" onClick={() => formatBlock("h3")} disabled={disabled} aria-label="Heading 3" title="Heading 3">
+          H3
+        </button>
+        <button className="btn btnGhost btnSm" type="button" onClick={() => formatBlock("p")} disabled={disabled} aria-label="Normal" title="Normal">
+          Normal
+        </button>
+
         <button className="btn btnGhost btnSm" type="button" onClick={() => exec("bold")} disabled={disabled} aria-label="Bold" title="Bold">
           <BoldIcon />
         </button>

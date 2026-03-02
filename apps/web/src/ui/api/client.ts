@@ -1949,6 +1949,7 @@ export async function listPublicJobs(
     limit?: number;
     status?: string;
     company_id?: string;
+    search?: string;
   },
 ): Promise<{
   jobs: JobListItem[];
@@ -1960,6 +1961,7 @@ export async function listPublicJobs(
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.company_id) url.searchParams.set("company_id", params.company_id);
+  if (params?.search) url.searchParams.set("search", params.search);
 
   const res = await fetch(url, { headers: publicHeaders() });
   const body = await safeJson(res);

@@ -1514,7 +1514,17 @@ export function JobsPage() {
                           <span className="readLabel">Description</span>
                           <RichTextView value={job.description} className="readValue" />
                         </div>
-                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                          {canApplyJob ? (
+                            <button
+                              type="button"
+                              className={alreadyApplied ? "btn btnSm jobActionBtn jobActionBtnApplied" : "btn btnPrimary btnSm jobActionBtn"}
+                              onClick={() => onStartApply(job)}
+                              disabled={saving || alreadyApplied}
+                            >
+                              {alreadyApplied ? "Applied" : "Apply"}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="btn btnSm jobActionBtn jobActionBtnDetails"

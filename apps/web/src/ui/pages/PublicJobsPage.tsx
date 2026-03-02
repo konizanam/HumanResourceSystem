@@ -155,6 +155,7 @@ export function PublicJobsPage() {
   const [filterExperienceLevel, setFilterExperienceLevel] = useState<string>("");
   const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite">("all");
   const [filterLocation, setFilterLocation] = useState<string>("");
+  const [filterSearch, setFilterSearch] = useState<string>("");
 
   const [saving, setSaving] = useState(false);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
@@ -252,7 +253,8 @@ export function PublicJobsPage() {
       setError(null);
       setSuccess(null);
 
-      const data = await listPublicJobs({ page, limit: PAGE_LIMIT });
+      const search = filterSearch.trim();
+      const data = await listPublicJobs({ page, limit: PAGE_LIMIT, search: search || undefined });
       const base = Array.isArray(data.jobs) ? data.jobs : [];
       const total = Number(data.pagination?.total ?? base.length);
       const limit = Number(data.pagination?.limit ?? PAGE_LIMIT);
@@ -288,7 +290,7 @@ export function PublicJobsPage() {
     } finally {
       setLoading(false);
     }
-  }, [PAGE_LIMIT, jobId]);
+  }, [PAGE_LIMIT, filterSearch, jobId]);
 
   useEffect(() => {
     void load(1);
@@ -560,6 +562,7 @@ export function PublicJobsPage() {
                 type="button"
                 className="btn btnGhost btnSm"
                 onClick={() => {
+                  setFilterSearch("");
                   setFilterCategory("");
                   setFilterEmploymentType("");
                   setFilterExperienceLevel("");
@@ -573,6 +576,17 @@ export function PublicJobsPage() {
             </div>
 
             <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <label className="fieldLabel">Search</label>
+                <input
+                  className="input"
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  placeholder="Job title or company"
+                  disabled={loading}
+                />
+              </div>
+
               <div>
                 <label className="fieldLabel">Category</label>
                 <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} disabled={loading}>
@@ -654,9 +668,6 @@ export function PublicJobsPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
                   <div>
                     <h1 className="pageTitle">Jobs</h1>
-                    <p className="pageText" style={{ marginTop: 6 }}>
-                      Browse available jobs.
-                    </p>
                   </div>
                 </div>
 
@@ -771,7 +782,22 @@ export function PublicJobsPage() {
                           <span className="readLabel">Description</span>
                           <RichTextView value={job.description} className="readValue" />
                         </div>
-                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className={"btn btnPrimary btnSm"}
+                            onClick={() => {
+                              if (!accessToken) {
+                                const next = `/jobs/${encodeURIComponent(String(job.id))}?apply=1`;
+                                navigate("/login", { replace: true, state: { from: next } });
+                                return;
+                              }
+                              onStartApply(job);
+                            }}
+                            disabled={saving || permissionsLoading}
+                          >
+                            Apply
+                          </button>
                           <button
                             type="button"
                             className="btn btnPrimary btnSm"

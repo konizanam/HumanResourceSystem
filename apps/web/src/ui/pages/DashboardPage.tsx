@@ -95,6 +95,15 @@ function ReadField({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function StatCard({ label, value, color }: { label: string; value: number | string; color?: string }) {
+  return (
+    <div className="dropPanel" style={{ flex: 1, minWidth: 140, textAlign: "center", padding: "14px 16px" }}>
+      <div style={{ fontSize: "1.6rem", fontWeight: 700, color: color ?? "inherit" }}>{value}</div>
+      <div className="readLabel">{label}</div>
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -1048,6 +1057,29 @@ export function DashboardPage() {
                   </table>
                 </div>
               )}
+            </div>
+          ) : null}
+
+          {canViewAdminDashboard && adminStats ? (
+            <div className="dashCard" style={{ marginTop: 12 }}>
+              <div className="dashCardHeader">
+                <h2 className="dashCardTitle">System</h2>
+                <span className="dashCardMeta">Platform</span>
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <StatCard label="API Requests Today" value={adminStats.system.api_requests_today} />
+                <StatCard label="Active Sessions" value={adminStats.system.active_sessions} />
+                <StatCard label="Storage Used" value={adminStats.system.storage_used ?? "—"} />
+                <StatCard
+                  label="Last Backup"
+                  value={
+                    adminStats.system.last_backup
+                      ? new Date(adminStats.system.last_backup).toLocaleString("en-GB")
+                      : "Never"
+                  }
+                />
+                <StatCard label="Version" value={adminStats.system.version} />
+              </div>
             </div>
           ) : null}
         </>

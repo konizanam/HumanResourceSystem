@@ -113,16 +113,6 @@ export function ReportsPage() {
           </tbody>
         </table>
       </div>
-
-      {/* System */}
-      <SectionTitle>System</SectionTitle>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <StatCard label="API Requests Today" value={stats.system.api_requests_today} />
-        <StatCard label="Active Sessions" value={stats.system.active_sessions} />
-        <StatCard label="Storage Used" value={stats.system.storage_used ?? "—"} />
-        <StatCard label="Last Backup" value={stats.system.last_backup ? new Date(stats.system.last_backup).toLocaleString("en-GB") : "Never"} />
-        <StatCard label="Version" value={stats.system.version} />
-      </div>
     </div>
   );
 }

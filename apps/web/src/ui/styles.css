@@ -2053,6 +2053,25 @@ input[type="radio"][required] {
   margin: 0 0 6px;
 }
 
+.richTextContent h1,
+.richTextContent h2,
+.richTextContent h3 {
+  margin: 0 0 6px;
+  font-weight: 800;
+}
+
+.richTextContent h1 {
+  font-size: 1.15em;
+}
+
+.richTextContent h2 {
+  font-size: 1.08em;
+}
+
+.richTextContent h3 {
+  font-size: 1.02em;
+}
+
 .richTextContent ul,
 .richTextContent ol {
   margin: 6px 0 6px 18px;
