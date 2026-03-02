@@ -7,6 +7,7 @@ import { applyAppThemeColor } from "../utils/themeColor";
 
 const THEME_KEY = "hrs-theme";
 
+/** Returns the current effective theme without touching data-theme. */
 function getInitialTheme(): "light" | "dark" {
   try {
     const stored = localStorage.getItem(THEME_KEY);
@@ -17,6 +18,7 @@ function getInitialTheme(): "light" | "dark" {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** Only called when the user explicitly picks a theme. */
 function applyThemeToHtml(theme: "light" | "dark") {
   document.documentElement.setAttribute("data-theme", theme);
 }
@@ -233,11 +235,8 @@ export function AppLayout({
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [systemName, setSystemName] = useState<string>("Human Resource System");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const t = getInitialTheme();
-    applyThemeToHtml(t);
-    return t;
-  });
+  // Don't call applyThemeToHtml here — if no stored pref, let CSS prefers-color-scheme handle it.
+  const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";

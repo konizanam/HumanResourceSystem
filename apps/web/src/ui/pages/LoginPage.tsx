@@ -1,7 +1,37 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { forgotPassword, me, requestTwoFactorChallenge, verifyTwoFactor } from "../api/client";
+
+const THEME_KEY = "hrs-theme";
+
+/** Returns the current effective theme without touching data-theme. */
+function getStoredTheme(): "light" | "dark" {
+  try {
+    const s = localStorage.getItem(THEME_KEY);
+    if (s === "dark" || s === "light") return s;
+  } catch { /* ignore */ }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
 
 export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
@@ -19,6 +49,14 @@ export function LoginPage() {
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
+  const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
+
+  const toggleTheme = useCallback(() => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+  }, [theme]);
 
   const redirectTo = useMemo(() => {
     const from = (location.state as any)?.from;
@@ -146,6 +184,15 @@ export function LoginPage() {
 
   return (
     <div className="loginPage authScreen">
+      <button
+        type="button"
+        className="btn themeToggleBtn loginThemeToggle"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+      </button>
       <div className="authWrap">
         <aside className="authVisual" aria-hidden="true">
           <div className="authVisualBadge">Human Resource System</div>

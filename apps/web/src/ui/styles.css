@@ -1022,6 +1022,16 @@ input[type="radio"][required] {
   }
 }
 
+.loginThemeToggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+  background: var(--card) !important;
+  border-color: var(--stroke) !important;
+  box-shadow: var(--shadow-sm);
+}
+
 .loginPage {
   position: relative;
   isolation: isolate;
