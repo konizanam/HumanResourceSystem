@@ -13,6 +13,23 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
 
+const APPLICATION_STATUS_NOTIFICATION_OPTIONS = [
+  { key: "APPLIED", label: "Applied" },
+  { key: "SCREENING", label: "Screening" },
+  { key: "LONG_LISTED", label: "Long Listed" },
+  { key: "SHORTLISTED", label: "Shortlisted" },
+  { key: "ORAL_INTERVIEW", label: "Oral Interview" },
+  { key: "PRACTICAL_INTERVIEW", label: "Practical Interview" },
+  { key: "FINAL_INTERVIEW", label: "Final Interview" },
+  { key: "OFFER_MADE", label: "Offer Made" },
+  { key: "HIRED", label: "Hired" },
+  { key: "REJECTED", label: "Rejected" },
+  { key: "WITHDRAWN", label: "Withdrawn" },
+] as const;
+
+const DEFAULT_APPLICATION_STATUS_NOTIFICATIONS: Record<string, boolean> =
+  Object.fromEntries(APPLICATION_STATUS_NOTIFICATION_OPTIONS.map((o) => [o.key, true]));
+
 function normalizeHexColor(value: string): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "#6366f1";
@@ -52,6 +69,9 @@ export function GlobalSettingsPage() {
   const [systemName, setSystemName] = useState("Human Resource System");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
   const [appColor, setAppColor] = useState("#6366f1");
+  const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
+    DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+  );
   const canEdit = hasPermission("MANAGE_USERS");
   const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
   const canEditSystemSettings = canEdit || canChangeAppColor;
@@ -77,6 +97,7 @@ export function GlobalSettingsPage() {
             branding_logo_url: "",
             app_color: "#6366f1",
             main_company_id: null,
+            application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
           };
         }),
       ]);
@@ -86,6 +107,12 @@ export function GlobalSettingsPage() {
       setBrandingLogoUrl(settings.branding_logo_url);
       setAppColor(settings.app_color || "#6366f1");
       applyAppThemeColor(settings.app_color || "#6366f1");
+
+      const nextNotifications = {
+        ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+        ...(settings.application_status_notifications ?? {}),
+      };
+      setApplicationStatusNotifications(nextNotifications);
 
       const preferredId = String(settings.main_company_id ?? "").trim();
       const selectedCompany =
@@ -133,10 +160,16 @@ export function GlobalSettingsPage() {
         updates.push(updateCompanyApprovalMode(accessToken, mode));
       }
 
-      const systemPayload: Partial<{ system_name: string; branding_logo_url: string; app_color: string }> = {};
+      const systemPayload: Partial<{
+        system_name: string;
+        branding_logo_url: string;
+        app_color: string;
+        application_status_notifications: Record<string, boolean>;
+      }> = {};
       if (canEdit) {
         systemPayload.system_name = systemName;
         systemPayload.branding_logo_url = brandingLogoUrl;
+        systemPayload.application_status_notifications = applicationStatusNotifications;
       }
       if (canChangeAppColor) {
         systemPayload.app_color = appColor;
@@ -151,6 +184,10 @@ export function GlobalSettingsPage() {
       setBrandingLogoUrl(updatedSettings.branding_logo_url);
       setAppColor(updatedSettings.app_color || "#6366f1");
       applyAppThemeColor(updatedSettings.app_color || "#6366f1");
+      setApplicationStatusNotifications({
+        ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+        ...(updatedSettings.application_status_notifications ?? {}),
+      });
       setMode(updatedMode);
       setSuccess("Global settings updated.");
     } catch (e) {
@@ -381,6 +418,31 @@ export function GlobalSettingsPage() {
                 <span className="fieldLabel">pending</span>
               </label>
             </div>
+          </div>
+          <div className="field fieldFull">
+            <span className="fieldLabel">Application Status Notifications</span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 6 }}>
+              {APPLICATION_STATUS_NOTIFICATION_OPTIONS.map((option) => (
+                <label key={option.key} className="fieldCheckbox">
+                  <input
+                    type="checkbox"
+                    checked={applicationStatusNotifications[option.key] !== false}
+                    onChange={(e) => {
+                      const enabled = Boolean(e.target.checked);
+                      setApplicationStatusNotifications((prev) => ({
+                        ...prev,
+                        [option.key]: enabled,
+                      }));
+                    }}
+                    disabled={!canEdit || saving || loading}
+                  />
+                  <span className="fieldLabel">{option.label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="pageText">
+              Controls whether job seekers receive in-app notifications when their application status changes.
+            </p>
           </div>
           <div className="field fieldFull">
             <span className="fieldLabel">Other Global Settings</span>

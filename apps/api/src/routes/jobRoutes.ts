@@ -6,6 +6,10 @@ import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
 import { logAdminAction } from '../middleware/adminLogger';
 import { logAudit } from '../helpers/auditLogger';
+import {
+  getSystemSettings,
+  toCanonicalApplicationStatusNotificationKey,
+} from '../services/systemSettings.service';
 
 const router = express.Router();
 
@@ -1095,7 +1099,7 @@ router.patch('/:id/applications/:applicationId/status',
 
       // Check if job exists and user owns it
       const jobCheck = await dbQuery(
-        'SELECT employer_id FROM jobs WHERE id = $1',
+        'SELECT employer_id, title FROM jobs WHERE id = $1',
         [req.params.id]
       );
 
@@ -1104,6 +1108,7 @@ router.patch('/:id/applications/:applicationId/status',
       }
 
       const job = jobCheck.rows[0];
+      const jobTitle = String((job as any)?.title ?? '').trim();
 
       // Check if user is the employer who created the job or an admin
       if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
@@ -1174,6 +1179,27 @@ router.patch('/:id/applications/:applicationId/status',
             status: updatedApplication.status,
           },
         });
+
+        try {
+          const settings = await getSystemSettings();
+          const key = toCanonicalApplicationStatusNotificationKey(updatedApplication.status);
+          const enabled = key ? settings.application_status_notifications[key] !== false : true;
+
+          if (enabled) {
+            const statusLabel = String(updatedApplication.status ?? '').trim();
+            await createNotification(
+              updatedApplication.user_id,
+              'application_update',
+              'Application Status Update',
+              `Your application for ${jobTitle || 'this job'} has been updated to ${statusLabel}`,
+              { application_id: updatedApplication.id, job_id: req.params.id, status: updatedApplication.status },
+              '/app/dashboard',
+              String(updatedApplication.status ?? '').trim().toUpperCase() === 'REJECTED' ? 'normal' : 'high',
+            );
+          }
+        } catch (notificationError) {
+          console.error('Failed to create applicant notification:', notificationError);
+        }
       }
 
       res.json(updatedApplication);

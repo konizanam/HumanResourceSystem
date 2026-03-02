@@ -224,7 +224,7 @@ export function LoginPage() {
           <div className="authVisualBadge">{systemName}</div>
           <h2 className="authVisualTitle">Welcome to your recruitment command center</h2>
           <p className="authVisualText">
-            Sign in to post jobs, track applications, and manage candidate profiles in one secure place.
+            Sign in to hire, apply, and stay updated on applications — all in one secure place.
           </p>
           <div className="authVisualMeta">Fast • Secure • Reliable</div>
         </aside>

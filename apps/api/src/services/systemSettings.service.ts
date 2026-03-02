@@ -4,6 +4,72 @@ import path from "path";
 
 export type CompanyApprovalMode = "auto_approved" | "pending";
 
+export type ApplicationStatusNotificationKey =
+  | "APPLIED"
+  | "SCREENING"
+  | "LONG_LISTED"
+  | "SHORTLISTED"
+  | "ORAL_INTERVIEW"
+  | "PRACTICAL_INTERVIEW"
+  | "FINAL_INTERVIEW"
+  | "OFFER_MADE"
+  | "HIRED"
+  | "REJECTED"
+  | "WITHDRAWN";
+
+export type ApplicationStatusNotificationSettings = Record<ApplicationStatusNotificationKey, boolean>;
+
+const DEFAULT_APPLICATION_STATUS_NOTIFICATIONS: ApplicationStatusNotificationSettings = {
+  APPLIED: true,
+  SCREENING: true,
+  LONG_LISTED: true,
+  SHORTLISTED: true,
+  ORAL_INTERVIEW: true,
+  PRACTICAL_INTERVIEW: true,
+  FINAL_INTERVIEW: true,
+  OFFER_MADE: true,
+  HIRED: true,
+  REJECTED: true,
+  WITHDRAWN: true,
+};
+
+export function toCanonicalApplicationStatusNotificationKey(
+  input: unknown,
+): ApplicationStatusNotificationKey | null {
+  if (typeof input !== "string") return null;
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const normalized = raw.replace(/[-\s]+/g, "_").toUpperCase();
+
+  const direct = normalized as ApplicationStatusNotificationKey;
+  if (direct in DEFAULT_APPLICATION_STATUS_NOTIFICATIONS) return direct;
+
+  // Common synonyms / legacy statuses / UI stage keys.
+  const map: Record<string, ApplicationStatusNotificationKey> = {
+    PENDING: "APPLIED",
+    REVIEWED: "SCREENING",
+    APPLIED: "APPLIED",
+    SCREENING: "SCREENING",
+    LONGLISTED: "LONG_LISTED",
+    LONG_LISTED: "LONG_LISTED",
+    SHORTLIST: "SHORTLISTED",
+    SHORTLISTED: "SHORTLISTED",
+    INTERVIEW: "ORAL_INTERVIEW",
+    ORAL_INTERVIEW: "ORAL_INTERVIEW",
+    PRACTICAL_INTERVIEW: "PRACTICAL_INTERVIEW",
+    ASSESSMENT: "PRACTICAL_INTERVIEW",
+    FINAL_INTERVIEW: "FINAL_INTERVIEW",
+    OFFER_MADE: "OFFER_MADE",
+    ACCEPTED: "HIRED",
+    HIRED: "HIRED",
+    REJECTED: "REJECTED",
+    WITHDRAWN: "WITHDRAWN",
+  };
+
+  return map[normalized] ?? null;
+}
+
 export type SystemSettings = {
   version: 1;
   company_approval_mode: CompanyApprovalMode;
@@ -11,6 +77,7 @@ export type SystemSettings = {
   branding_logo_url: string;
   app_color: string;
   main_company_id: string | null;
+  application_status_notifications: ApplicationStatusNotificationSettings;
 };
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -20,6 +87,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   branding_logo_url: "",
   app_color: "#6366f1",
   main_company_id: null,
+  application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
 };
 
 function normalizeHexColor(input: unknown): string | null {
@@ -93,6 +161,21 @@ async function readSettings(): Promise<SystemSettings> {
       typeof (parsed as any).main_company_id === "string" ? String((parsed as any).main_company_id).trim() : "";
     const mainCompanyId = mainCompanyIdRaw || null;
 
+    const notificationsRaw = (parsed as any).application_status_notifications as unknown;
+    const application_status_notifications: ApplicationStatusNotificationSettings = {
+      ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+    };
+
+    if (notificationsRaw && typeof notificationsRaw === "object") {
+      for (const [key, value] of Object.entries(notificationsRaw as Record<string, unknown>)) {
+        const canonical = toCanonicalApplicationStatusNotificationKey(key);
+        if (!canonical) continue;
+        if (typeof value === "boolean") {
+          application_status_notifications[canonical] = value;
+        }
+      }
+    }
+
     return {
       version: 1,
       company_approval_mode: mode,
@@ -100,6 +183,7 @@ async function readSettings(): Promise<SystemSettings> {
       branding_logo_url: brandingLogoRaw,
       app_color: appColor,
       main_company_id: mainCompanyId,
+      application_status_notifications,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -132,7 +216,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 }
 
 export async function updateSystemSettings(
-  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color" | "main_company_id">>,
+  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color" | "main_company_id" | "application_status_notifications">>,
 ): Promise<SystemSettings> {
   const settings = await readSettings();
 
@@ -157,6 +241,21 @@ export async function updateSystemSettings(
       settings.main_company_id = next || null;
     } else if (changes.main_company_id === null) {
       settings.main_company_id = null;
+    }
+  }
+
+  if (changes.application_status_notifications !== undefined) {
+    const raw = changes.application_status_notifications as unknown;
+    if (raw && typeof raw === "object") {
+      const next: ApplicationStatusNotificationSettings = { ...settings.application_status_notifications };
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        const canonical = toCanonicalApplicationStatusNotificationKey(key);
+        if (!canonical) continue;
+        if (typeof value === "boolean") {
+          next[canonical] = value;
+        }
+      }
+      settings.application_status_notifications = next;
     }
   }
 

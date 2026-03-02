@@ -3,5 +3,19 @@
   "company_approval_mode": "auto_approved",
   "system_name": "Hito HR Consultant",
   "branding_logo_url": "",
-  "app_color": "#6366f1"
+  "app_color": "#0b0d60",
+  "main_company_id": null,
+  "application_status_notifications": {
+    "APPLIED": true,
+    "SCREENING": true,
+    "LONG_LISTED": true,
+    "SHORTLISTED": true,
+    "ORAL_INTERVIEW": true,
+    "PRACTICAL_INTERVIEW": true,
+    "FINAL_INTERVIEW": true,
+    "OFFER_MADE": true,
+    "HIRED": true,
+    "REJECTED": true,
+    "WITHDRAWN": true
+  }
 }

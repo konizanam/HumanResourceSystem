@@ -143,7 +143,17 @@ export type SystemSettings = {
   branding_logo_url: string;
   app_color: string;
   main_company_id?: string | null;
+  application_status_notifications?: Record<string, boolean>;
 };
+
+function normalizeApplicationStatusNotifications(input: any): Record<string, boolean> | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof v === "boolean") out[String(k)] = v;
+  }
+  return out;
+}
 
 export type UserSearchResult = {
   id: string;
@@ -428,6 +438,9 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
       data.main_company_id === null || data.main_company_id === undefined
         ? null
         : String(data.main_company_id),
+    application_status_notifications: normalizeApplicationStatusNotifications(
+      (data as any).application_status_notifications,
+    ),
   };
 }
 
@@ -448,12 +461,21 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
       data.main_company_id === null || data.main_company_id === undefined
         ? null
         : String(data.main_company_id),
+    application_status_notifications: normalizeApplicationStatusNotifications(
+      (data as any).application_status_notifications,
+    ),
   };
 }
 
 export async function updateSystemSettings(
   token: string,
-  payload: Partial<{ system_name: string; branding_logo_url: string; app_color: string; main_company_id: string | null }>,
+  payload: Partial<{
+    system_name: string;
+    branding_logo_url: string;
+    app_color: string;
+    main_company_id: string | null;
+    application_status_notifications: Record<string, boolean>;
+  }>,
 ): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/companies/settings`, {
     method: "PUT",
@@ -473,6 +495,9 @@ export async function updateSystemSettings(
       data.main_company_id === null || data.main_company_id === undefined
         ? null
         : String(data.main_company_id),
+    application_status_notifications: normalizeApplicationStatusNotifications(
+      (data as any).application_status_notifications,
+    ),
   };
 }
 

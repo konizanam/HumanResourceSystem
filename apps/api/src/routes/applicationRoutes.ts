@@ -6,6 +6,10 @@ import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
 import { logAdminAction } from '../middleware/adminLogger';
 import { logAudit } from '../helpers/auditLogger';
+import {
+  getSystemSettings,
+  toCanonicalApplicationStatusNotificationKey,
+} from '../services/systemSettings.service';
 
 const router = express.Router();
 
@@ -675,15 +679,20 @@ router.put('/:id/status',
       );
 
       try {
-        await createNotification(
-          application.applicant_id,
-          'application_update',
-          'Application Status Update',
-          `Your application for ${application.job_title} has been updated to ${status}`,
-          { application_id: applicationId, job_id: application.job_id, status },
-          '/app/job-applications',
-          status === 'rejected' ? 'normal' : 'high'
-        );
+        const settings = await getSystemSettings();
+        const key = toCanonicalApplicationStatusNotificationKey(status);
+        const enabled = key ? settings.application_status_notifications[key] !== false : true;
+        if (enabled) {
+          await createNotification(
+            application.applicant_id,
+            'application_update',
+            'Application Status Update',
+            `Your application for ${application.job_title} has been updated to ${status}`,
+            { application_id: applicationId, job_id: application.job_id, status },
+            '/app/dashboard',
+            String(status ?? '').trim().toLowerCase() === 'rejected' ? 'normal' : 'high'
+          );
+        }
       } catch (notificationError) {
         console.error('Failed to create applicant notification:', notificationError);
       }
