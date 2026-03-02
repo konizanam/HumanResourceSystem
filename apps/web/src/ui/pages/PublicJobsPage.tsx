@@ -130,7 +130,7 @@ export function PublicJobsPage() {
 
   const PAGE_LIMIT = 5;
 
-  const [systemName, setSystemName] = useState<string>("Human Resource System");
+  const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
   const [brandingLogoFailed, setBrandingLogoFailed] = useState(false);
 
@@ -176,10 +176,40 @@ export function PublicJobsPage() {
   }, [jobId, jobs]);
 
   useEffect(() => {
-    const name = String(systemName ?? "").trim() || "Human Resource System";
+    const name = String(systemName ?? "").trim();
     const page = String(pageName ?? "").trim();
-    document.title = page ? `${name} | ${page}` : name;
+    if (name) {
+      document.title = page ? `${name} | ${page}` : name;
+      return;
+    }
+    document.title = page;
   }, [pageName, systemName]);
+
+  useEffect(() => {
+    const raw = String(brandingLogoUrl ?? "").trim();
+    if (!raw) return;
+
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+    const href = /^(https?:\/\/|data:)/i.test(raw)
+      ? raw
+      : apiBase
+        ? `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`
+        : raw;
+
+    const link =
+      (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
+      (document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null);
+
+    if (link) {
+      link.href = href;
+      return;
+    }
+
+    const created = document.createElement("link");
+    created.rel = "icon";
+    created.href = href;
+    document.head.appendChild(created);
+  }, [brandingLogoUrl]);
 
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryNameById, setCategoryNameById] = useState<Record<string, string>>({});
@@ -198,15 +228,15 @@ export function PublicJobsPage() {
             const company = await getPublicCompanyById(mainCompanyId);
             if (!cancelled) {
               const companyName = String(company?.name ?? "").trim();
-              setSystemName(companyName || String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+              setSystemName(companyName);
             }
           } catch {
             if (!cancelled) {
-              setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+              setSystemName("");
             }
           }
         } else {
-          setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+          setSystemName("");
         }
         setBrandingLogoUrl(
           mainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
@@ -215,7 +245,7 @@ export function PublicJobsPage() {
         setBrandingLogoFailed(false);
       } catch {
         if (cancelled) return;
-        setSystemName("Human Resource System");
+        setSystemName("");
         setBrandingLogoUrl("");
         applyAppThemeColor("#6366f1");
         setBrandingLogoFailed(false);
@@ -876,7 +906,7 @@ export function PublicJobsPage() {
               <button
                 className="btn btnGhost btnSm stepperSaveBtn"
                 type="button"
-                onClick={() => navigate("/app/job-seekers", { state: { pendingJob: applyContextJob } })}
+                onClick={() => navigate("/app/my-profile", { state: { pendingJob: applyContextJob } })}
               >
                 Go to Profile
               </button>
@@ -914,7 +944,7 @@ export function PublicJobsPage() {
                 onClick={() => {
                   const job = updateProfileBeforeApplyJob;
                   setUpdateProfileBeforeApplyJob(null);
-                  navigate("/app/job-seekers", { state: { pendingJob: job } });
+                  navigate("/app/my-profile", { state: { pendingJob: job } });
                 }}
                 disabled={saving}
               >

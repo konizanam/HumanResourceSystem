@@ -17,13 +17,10 @@
   - `Approved` (green)
 
 ## Page: Job Seeker Profile
-- View page: authenticated user
-- Edit Personal Details: profile owner
-- Edit Address: profile owner
-- Edit Education: profile owner
-- Edit Experience: profile owner
-- Edit References: profile owner
-- Edit Professional Summary: profile owner
+
+## Job Seekers
+- My Profile (job seeker self-service): APPLY_JOB
+- Job Seeker Profiles (CV database / directory): VIEW_CV_DATABASE (or user/application management permissions)
 
 ## Page: Jobs
 - View page: authenticated user

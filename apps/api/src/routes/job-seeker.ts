@@ -21,7 +21,13 @@ const listJobSeekersQuerySchema = z.object({
 
 jobSeekerRouter.get(
   "/list",
-  authorizePermission("view_users", "manage_users", "view_applications", "manage_applications"),
+  authorizePermission(
+    "view_users",
+    "manage_users",
+    "view_applications",
+    "manage_applications",
+    "VIEW_CV_DATABASE",
+  ),
   async (req, res, next) => {
     try {
       const parsed = listJobSeekersQuerySchema.parse(req.query);
@@ -90,6 +96,10 @@ jobSeekerRouter.get(
     }
   },
 );
+
+// From here on, job seeker self-service endpoints are permission-based.
+// Anyone with APPLY_JOB should have access to "My Profile" and related job-seeker functionality.
+jobSeekerRouter.use(authorizePermission('APPLY_JOB'));
 
 /* ================================================================== */
 /*  PROFILE (professional summary)                                     */

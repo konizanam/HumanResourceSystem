@@ -383,7 +383,7 @@ export async function sendTemplatedEmail(params: {
 
 export function appName(): string {
   const v = process.env.APP_NAME;
-  return v && v.trim() ? v.trim() : 'Human Resource System';
+  return v && v.trim() ? v.trim() : "";
 }
 
 export function apiOrigin(): string {

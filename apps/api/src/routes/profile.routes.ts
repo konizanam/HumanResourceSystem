@@ -1,7 +1,7 @@
 // src/routes/profile.routes.ts
 import { Router } from 'express';
 import { ProfileController } from '../controllers/profile.controller';
-import { authenticate, isJobSeeker } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import {
   validateRequest,
   profileUpdateValidation,
@@ -15,8 +15,8 @@ import {
 const router = Router();
 const profileController = new ProfileController();
 
-// All profile routes require authentication and job seeker role
-router.use(authenticate, isJobSeeker);
+// All profile routes require authentication and job seeker permissions
+router.use(authenticate, authorizePermission('APPLY_JOB'));
 
 // Main profile
 router.get('/', profileController.getProfile);

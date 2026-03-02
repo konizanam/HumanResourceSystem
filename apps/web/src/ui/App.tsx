@@ -30,7 +30,8 @@ import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
   { path: "global-settings", title: "Global Settings", icon: "settings" },
-  { path: "job-seekers", title: "Job Seeker Profiles", icon: "users" },
+  { path: "my-profile", title: "My Profile", icon: "users" },
+  { path: "job-seeker-profiles", title: "Job Seeker Profiles", icon: "users" },
   { path: "jobs", title: "Jobs", icon: "briefcase" },
   { path: "applications", title: "Applications", icon: "list" },
   { path: "companies", title: "Companies", icon: "building" },
@@ -131,15 +132,39 @@ export function App() {
           }
         />
         <Route
-          path="job-seekers"
+          path="my-profile"
+          element={
+            <PermissionGate
+              allow={(hasPermission) =>
+                hasPermission("APPLY_JOB")
+              }
+              requiredPermissions={["APPLY_JOB"]}
+            >
+              <JobSeekerProfilePage forcedMode="self" />
+            </PermissionGate>
+          }
+        />
+
+        <Route
+          path="job-seeker-profiles"
           element={
             <PermissionGate
               allow={(hasPermission) =>
                 hasPermission("MANAGE_USERS") ||
-                (!hasPermission("MANAGE_USERS") && !hasPermission("CREATE_JOB"))
+                hasPermission("VIEW_USERS") ||
+                hasPermission("VIEW_APPLICATIONS") ||
+                hasPermission("MANAGE_APPLICATIONS") ||
+                hasPermission("VIEW_CV_DATABASE")
               }
+              requiredPermissions={[
+                "MANAGE_USERS",
+                "VIEW_USERS",
+                "VIEW_APPLICATIONS",
+                "MANAGE_APPLICATIONS",
+                "VIEW_CV_DATABASE",
+              ]}
             >
-              <JobSeekerProfilePage />
+              <JobSeekerProfilePage forcedMode="directory" />
             </PermissionGate>
           }
         />

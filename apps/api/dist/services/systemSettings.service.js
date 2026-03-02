@@ -62,7 +62,7 @@ function toCanonicalApplicationStatusNotificationKey(input) {
 const DEFAULT_SETTINGS = {
     version: 1,
     company_approval_mode: "auto_approved",
-    system_name: "Human Resource System",
+    system_name: "",
     branding_logo_url: "",
     app_color: "#6366f1",
     main_company_id: null,
@@ -149,7 +149,7 @@ async function readSettings() {
         return {
             version: 1,
             company_approval_mode: mode,
-            system_name: systemNameRaw || DEFAULT_SETTINGS.system_name,
+            system_name: systemNameRaw,
             branding_logo_url: brandingLogoRaw,
             app_color: appColor,
             main_company_id: mainCompanyId,
@@ -187,7 +187,7 @@ async function getBrandingInfo() {
         return brandingCache.value;
     }
     const settings = await readSettings();
-    let name = settings.system_name;
+    let name = "";
     let logoUrl = settings.branding_logo_url;
     const mainCompanyId = settings.main_company_id;
     if (mainCompanyId) {
@@ -217,7 +217,7 @@ async function getBrandingInfo() {
         }
     }
     const value = {
-        name: name || DEFAULT_SETTINGS.system_name,
+        name,
         logoUrl: logoUrl || "",
         mainCompanyId,
     };

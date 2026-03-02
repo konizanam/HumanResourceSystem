@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -151,7 +151,7 @@ const validateResumeId = [
  */
 router.post('/',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   (req: Request, res: Response, next: NextFunction) => {
     upload.single('resume')(req, res, (err) => {
       if (err) {
@@ -277,7 +277,7 @@ router.post('/',
  */
 router.get('/',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   [
     query('include_download_urls').optional().isBoolean().toBoolean()
   ],
@@ -362,7 +362,7 @@ router.get('/',
  */
 router.get('/:id',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {
@@ -438,7 +438,7 @@ router.get('/:id',
  */
 router.get('/:id/download',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {
@@ -526,7 +526,7 @@ router.get('/:id/download',
  */
 router.delete('/:id',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {
@@ -665,7 +665,7 @@ router.delete('/:id',
  */
 router.patch('/:id/primary',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {

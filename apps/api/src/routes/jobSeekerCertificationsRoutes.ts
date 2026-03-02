@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 
 const router = express.Router();
@@ -121,7 +121,7 @@ const validateCertificationId = [
  */
 router.get('/',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   [
     query('issuer').optional().isString().trim(),
     query('search').optional().isString().trim(),
@@ -255,7 +255,7 @@ router.get('/',
  */
 router.post('/',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateCertification,
   async (req: Request, res: Response) => {
     try {
@@ -346,7 +346,7 @@ router.post('/',
  */
 router.delete('/:id',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateCertificationId,
   async (req: Request, res: Response) => {
     try {
@@ -451,7 +451,7 @@ router.delete('/:id',
  */
 router.put('/:id',
   authenticate,
-  authorize('JOB_SEEKER'),
+  authorizePermission('APPLY_JOB'),
   validateCertificationId,
   validateCertification,
   async (req: Request, res: Response) => {

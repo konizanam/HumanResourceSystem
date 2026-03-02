@@ -1,5 +1,5 @@
 -- =====================================================
--- COMPLETE DATABASE SCHEMA FOR HRS (HUMAN RESOURCE SYSTEM)
+-- COMPLETE DATABASE SCHEMA FOR HRS
 -- =====================================================
 
 -- Enable UUID extension

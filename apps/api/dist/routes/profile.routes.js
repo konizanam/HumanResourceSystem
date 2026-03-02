@@ -7,8 +7,8 @@ const auth_1 = require("../middleware/auth");
 const validation_1 = require("../utils/validation");
 const router = (0, express_1.Router)();
 const profileController = new profile_controller_1.ProfileController();
-// All profile routes require authentication and job seeker role
-router.use(auth_1.authenticate, auth_1.isJobSeeker);
+// All profile routes require authentication and job seeker permissions
+router.use(auth_1.authenticate, (0, auth_1.authorizePermission)('APPLY_JOB'));
 // Main profile
 router.get('/', profileController.getProfile);
 router.patch('/', validation_1.profileUpdateValidation, validation_1.validateRequest, profileController.updateProfile);

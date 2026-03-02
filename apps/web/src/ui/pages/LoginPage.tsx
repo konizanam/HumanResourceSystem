@@ -44,7 +44,8 @@ export function LoginPage() {
   const { accessToken, authenticate, setSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [systemName, setSystemName] = useState<string>("Human Resource System");
+  const [systemName, setSystemName] = useState<string>("");
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -71,22 +72,26 @@ export function LoginPage() {
             const company = await getPublicCompanyById(mainCompanyId);
             if (!cancelled) {
               const companyName = String(company?.name ?? "").trim();
-              const fallback = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
-              setSystemName(companyName || fallback);
+              setSystemName(companyName);
             }
           } catch {
             if (!cancelled) {
-              const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
-              setSystemName(name);
+              setSystemName("");
             }
           }
         } else {
-          const name = String(settings.system_name ?? "Human Resource System").trim() || "Human Resource System";
-          setSystemName(name);
+          setSystemName("");
         }
+
+        const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+        const mainCompanyLogo = mainCompanyId && apiBase
+          ? `${apiBase}/api/v1/public/companies/${encodeURIComponent(mainCompanyId)}/logo`
+          : "";
+        setBrandingLogoUrl(mainCompanyLogo || String(settings.branding_logo_url ?? ""));
       } catch {
         if (cancelled) return;
-        setSystemName("Human Resource System");
+        setSystemName("");
+        setBrandingLogoUrl("");
       }
     };
 
@@ -97,9 +102,44 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const name = String(systemName ?? "Human Resource System").trim() || "Human Resource System";
-    document.title = name;
+    const name = String(systemName ?? "").trim();
+    document.title = name || "Login";
   }, [systemName]);
+
+  useEffect(() => {
+    const raw = String(brandingLogoUrl ?? "").trim();
+    if (!raw) return;
+
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+    const href = /^(https?:\/\/|data:)/i.test(raw)
+      ? raw
+      : apiBase
+        ? `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`
+        : raw;
+
+    const link =
+      (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
+      (document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null);
+
+    if (link) {
+      link.href = href;
+      return;
+    }
+
+    const created = document.createElement("link");
+    created.rel = "icon";
+    created.href = href;
+    document.head.appendChild(created);
+  }, [brandingLogoUrl]);
+
+  const resolvedLogoSrc = useMemo(() => {
+    const raw = String(brandingLogoUrl ?? "").trim();
+    if (!raw) return "/hito-logo.png";
+    if (/^(https?:\/\/|data:)/i.test(raw)) return raw;
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+    if (!apiBase) return raw;
+    return `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`;
+  }, [brandingLogoUrl]);
 
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
@@ -256,7 +296,7 @@ export function LoginPage() {
         <div className="loginCard authPanel">
           <div className="loginHeader">
             <div className="loginLogo">
-              <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+              <img src={resolvedLogoSrc} alt={systemName ? `${systemName} Logo` : "Company Logo"} className="loginLogoImg" />
             </div>
             <h1 className="loginTitle">Welcome Back</h1>
             <p className="loginSubtitle">Please enter your details to sign in.</p>

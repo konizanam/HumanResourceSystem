@@ -236,7 +236,7 @@ router.post('/register',
 
         // Create employer stats
         await dbQuery(
-          `INSERT INTO employer_stats (employer_id, last_active, updated_at)
+          `INSERT INTO employer_stats (user_id, last_active, updated_at)
            VALUES ($1, NOW(), NOW())`,
           [employer.id]
         );
@@ -323,7 +323,7 @@ router.get('/profile',
 
       // Get employer stats
       const statsResult = await dbQuery(
-        `SELECT * FROM employer_stats WHERE employer_id = $1`,
+        `SELECT * FROM employer_stats WHERE user_id = $1`,
         [employerId]
       );
 
@@ -534,7 +534,7 @@ router.put('/profile',
 
       // Update last_active in stats
       await dbQuery(
-        'UPDATE employer_stats SET last_active = NOW(), updated_at = NOW() WHERE employer_id = $1',
+        'UPDATE employer_stats SET last_active = NOW(), updated_at = NOW() WHERE user_id = $1',
         [employerId]
       );
 
@@ -974,10 +974,23 @@ router.get('/applications',
  */
 router.get('/dashboard',
   authenticate,
-  authorizePermission('EMPLOYER_DASHBOARD', 'CREATE_JOB'),
+  authorizePermission('EMPLOYER_DASHBOARD'),
   async (req: Request, res: Response) => {
     try {
       const employerId = req.user!.userId;
+
+      // Determine which companies this user can see (HR/staff), with fallback to legacy employer-owned jobs.
+      const companiesResult = await dbQuery(
+        'SELECT company_id FROM company_users WHERE user_id = $1',
+        [employerId]
+      );
+      const companyIds: string[] = companiesResult.rows
+        .map((r: any) => String(r.company_id ?? '').trim())
+        .filter((id: string) => id.length > 0);
+
+      const scopeJobsWhere = '(company_id = ANY($1::uuid[]) OR employer_id = $2)';
+      const scopeJobsWhereAliased = '(j.company_id = ANY($1::uuid[]) OR j.employer_id = $2)';
+      const scopeParams = [companyIds, employerId];
 
       // Get employer profile
       const profileResult = await dbQuery(
@@ -988,18 +1001,23 @@ router.get('/dashboard',
 
       // Get employer stats
       const statsResult = await dbQuery(
-        `SELECT * FROM employer_stats WHERE employer_id = $1`,
-        [employerId]
+        `SELECT
+           COUNT(*)::int as total_jobs_posted,
+           COUNT(*) FILTER (WHERE UPPER(status) = 'APPROVED')::int as active_jobs,
+           COALESCE(SUM(applications_count), 0)::int as total_applications_received
+         FROM jobs
+         WHERE ${scopeJobsWhere}`,
+        scopeParams
       );
 
       // Get recent jobs (last 5)
       const recentJobsResult = await dbQuery(
         `SELECT id, title, status, views, applications_count, created_at
          FROM jobs
-         WHERE employer_id = $1
+         WHERE ${scopeJobsWhere}
          ORDER BY created_at DESC
          LIMIT 5`,
-        [employerId]
+        scopeParams
       );
 
       // Get recent applications (last 10)
@@ -1008,10 +1026,10 @@ router.get('/dashboard',
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
          LEFT JOIN users u ON a.user_id = u.id
-         WHERE j.employer_id = $1
+         WHERE ${scopeJobsWhereAliased}
          ORDER BY a.applied_at DESC
          LIMIT 10`,
-        [employerId]
+        scopeParams
       );
 
       // Get applications over time (last 30 days)
@@ -1019,20 +1037,20 @@ router.get('/dashboard',
         `SELECT DATE(a.applied_at) as date, COUNT(*) as count
          FROM applications a
          LEFT JOIN jobs j ON a.job_id = j.id
-         WHERE j.employer_id = $1
+         WHERE ${scopeJobsWhereAliased}
            AND a.applied_at >= NOW() - INTERVAL '30 days'
          GROUP BY DATE(a.applied_at)
          ORDER BY date`,
-        [employerId]
+        scopeParams
       );
 
       // Get jobs by status
       const jobsByStatusResult = await dbQuery(
         `SELECT status, COUNT(*) as count
          FROM jobs
-         WHERE employer_id = $1
+         WHERE ${scopeJobsWhere}
          GROUP BY status`,
-        [employerId]
+        scopeParams
       );
 
       const jobsByStatus: any = { active: 0, draft: 0, closed: 0 };

@@ -84,7 +84,6 @@ export function GlobalSettingsPage() {
     country: "",
   });
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
-  const [systemName, setSystemName] = useState("Human Resource System");
   const [appColor, setAppColor] = useState("#6366f1");
   const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
     DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
@@ -114,7 +113,7 @@ export function GlobalSettingsPage() {
           const fallbackMode = await getCompanyApprovalMode(accessToken);
           return {
             company_approval_mode: fallbackMode,
-            system_name: "Human Resource System",
+            system_name: "",
             branding_logo_url: "",
             app_color: "#6366f1",
             main_company_id: null,
@@ -124,7 +123,6 @@ export function GlobalSettingsPage() {
       ]);
       setCompanies(companies);
       setMode(settings.company_approval_mode);
-      setSystemName(settings.system_name);
       setAppColor(settings.app_color || "#6366f1");
       applyAppThemeColor(settings.app_color || "#6366f1");
 
@@ -183,12 +181,10 @@ export function GlobalSettingsPage() {
       }
 
       const systemPayload: Partial<{
-        system_name: string;
         app_color: string;
         application_status_notifications: Record<string, boolean>;
       }> = {};
       if (canEdit) {
-        systemPayload.system_name = systemName;
         systemPayload.application_status_notifications = applicationStatusNotifications;
       }
       if (canChangeAppColor) {
@@ -200,7 +196,6 @@ export function GlobalSettingsPage() {
       const results = await Promise.all(updates);
       const updatedMode = canEdit ? (results[0] as CompanyApprovalMode) : mode;
       const updatedSettings = results[results.length - 1] as Awaited<ReturnType<typeof updateSystemSettings>>;
-      setSystemName(updatedSettings.system_name);
       setAppColor(updatedSettings.app_color || "#6366f1");
       applyAppThemeColor(updatedSettings.app_color || "#6366f1");
       setApplicationStatusNotifications({
@@ -403,10 +398,9 @@ export function GlobalSettingsPage() {
           <section className="dashCard">
             <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Branding</h3>
             <div className="editGrid">
-              <label className="field">
-                <span className="fieldLabel">System Name</span>
-                <input className="input" value={systemName} onChange={(e) => setSystemName(e.target.value)} disabled={!canEdit || saving || loading} />
-              </label>
+              <p className="pageText" style={{ margin: 0 }}>
+                App name is sourced from the Main Company name.
+              </p>
             </div>
             <p className="pageText" style={{ marginTop: 8 }}>
               Branding logo is sourced from the Main Company logo.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { getCompany, getSystemSettings, getUnreadNotificationCount } from "../api/client";
+import { getPublicCompanyById, getPublicSystemSettings, getUnreadNotificationCount } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
@@ -243,7 +243,7 @@ export function AppLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-  const [systemName, setSystemName] = useState<string>("Human Resource System");
+  const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
   // Don't call applyThemeToHtml here — if no stored pref, let CSS prefers-color-scheme handle it.
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
@@ -282,8 +282,13 @@ export function AppLayout({
     (mobileOpen ? " sidebarMobileOpen" : "");
 
   const isAdminView = hasPermission("MANAGE_USERS");
-  const isEmployerView = hasPermission("CREATE_JOB") && !isAdminView;
-  const isJobSeekerView = !isAdminView && !hasPermission("CREATE_JOB");
+  const canEmployerDashboard = hasPermission("EMPLOYER_DASHBOARD");
+  const canCreateJob = hasPermission("CREATE_JOB");
+  const canApplyJob = hasPermission("APPLY_JOB");
+  const canViewCvDatabase = hasPermission("VIEW_CV_DATABASE");
+
+  const isEmployerView = !isAdminView && (canEmployerDashboard || canCreateJob);
+  const isJobSeekerView = !isAdminView && !isEmployerView && canApplyJob;
   const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
 
   const visibleMenuItems = useMemo(
@@ -295,9 +300,17 @@ export function AppLayout({
       } else if (isEmployerView) {
         allowedPaths = new Set(["dashboard", "jobs", "companies", "applications", "notifications", "my-permissions", "messages"]);
       } else if (isJobSeekerView) {
-        allowedPaths = new Set(["dashboard", "job-seekers", "jobs", "notifications", "my-permissions", "messages"]);
+        allowedPaths = new Set(["dashboard", "my-profile", "jobs", "notifications", "my-permissions", "messages"]);
       } else {
         allowedPaths = new Set(["dashboard", "notifications", "my-permissions", "messages"]);
+      }
+
+      if (canApplyJob) {
+        allowedPaths.add("my-profile");
+      }
+
+      if (canViewCvDatabase) {
+        allowedPaths.add("job-seeker-profiles");
       }
 
       if (canChangeAppColor) {
@@ -310,6 +323,7 @@ export function AppLayout({
       isAdminView,
       isEmployerView,
       isJobSeekerView,
+      canViewCvDatabase,
       canChangeAppColor,
       menuItems,
     ],
@@ -360,28 +374,26 @@ export function AppLayout({
   const [lastAppColor, setLastAppColor] = useState<unknown>("#6366f1");
 
   useEffect(() => {
-    if (!accessToken) return;
-
     let cancelled = false;
     const loadSettings = async () => {
       try {
-        const settings = await getSystemSettings(accessToken);
+        const settings = await getPublicSystemSettings();
         if (cancelled) return;
         const mainCompanyId = String(settings.main_company_id ?? "").trim();
         if (mainCompanyId) {
           try {
-            const company = await getCompany(accessToken, mainCompanyId);
+            const company = await getPublicCompanyById(mainCompanyId);
             if (!cancelled) {
               const companyName = String(company?.name ?? "").trim();
-              setSystemName(companyName || String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+              setSystemName(companyName);
             }
           } catch {
             if (!cancelled) {
-              setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+              setSystemName("");
             }
           }
         } else {
-          setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
+          setSystemName("");
         }
         setBrandingLogoUrl(
           getMainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),
@@ -390,7 +402,7 @@ export function AppLayout({
         applyAppThemeColor(settings.app_color);
       } catch {
         if (cancelled) return;
-        setSystemName("Human Resource System");
+        setSystemName("");
         setBrandingLogoUrl("");
         setLastAppColor("#6366f1");
         applyAppThemeColor("#6366f1");
@@ -405,7 +417,7 @@ export function AppLayout({
 
   const resolvedSystemName = useMemo(() => {
     const name = String(systemName ?? "").trim();
-    return name || "Human Resource System";
+    return name;
   }, [systemName]);
 
   const brandMono = useMemo(() => {
@@ -414,7 +426,7 @@ export function AppLayout({
       .slice(0, 2)
       .map((w) => (w[0] ? w[0].toUpperCase() : ""))
       .join("");
-    return initials || "HR";
+    return initials;
   }, [resolvedSystemName]);
 
   // Re-apply theme color whenever dark/light mode changes
@@ -437,19 +449,17 @@ export function AppLayout({
     const menuItem = menuItems.find((item) => item.path === segment);
     const baseTitle = menuItem?.title ?? segment;
 
-    const isAdminView = hasPermission("MANAGE_USERS");
-    const isEmployerView = hasPermission("CREATE_JOB") && !isAdminView;
-    const isJobSeekerView = !isAdminView && !isEmployerView;
-
-    if (isJobSeekerView && segment === "job-seekers") return "My Profile";
-
     return baseTitle;
   }, [hasPermission, location.pathname, menuItems]);
 
   useEffect(() => {
-    const name = resolvedSystemName;
+    const name = String(resolvedSystemName ?? "").trim();
     const page = String(pageName ?? "").trim();
-    document.title = page ? `${name} | ${page}` : name;
+    if (name) {
+      document.title = page ? `${name} | ${page}` : name;
+      return;
+    }
+    document.title = page;
   }, [pageName, resolvedSystemName]);
 
   useEffect(() => {
@@ -520,7 +530,7 @@ export function AppLayout({
 
         <nav className="nav">
           {visibleMenuItems.map((item) => {
-            const title = isJobSeekerView && item.path === "job-seekers" ? "My Profile" : item.title;
+            const title = item.title;
             return (
               <NavLink
                 key={item.path}

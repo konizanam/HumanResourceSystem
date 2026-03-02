@@ -1710,7 +1710,7 @@ export function JobsPage() {
               <button
                 className="btn btnGhost btnSm stepperSaveBtn"
                 type="button"
-                onClick={() => navigate("/app/job-seekers", { state: { pendingJob: applyContextJob } })}
+                onClick={() => navigate("/app/my-profile", { state: { pendingJob: applyContextJob } })}
               >
                 Go to Profile
               </button>
@@ -1758,7 +1758,7 @@ export function JobsPage() {
                 onClick={() => {
                   const job = updateProfileBeforeApplyJob;
                   setUpdateProfileBeforeApplyJob(null);
-                  navigate("/app/job-seekers", { state: { pendingJob: job } });
+                  navigate("/app/my-profile", { state: { pendingJob: job } });
                 }}
                 disabled={saving}
               >

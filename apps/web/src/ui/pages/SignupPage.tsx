@@ -2,6 +2,8 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   checkEmailAvailable,
+  getPublicCompanyById,
+  getPublicSystemSettings,
   getIpLocation,
   register,
   saveAddress,
@@ -163,6 +165,88 @@ const DEV_PREFILL: Partial<FormData> = {
 };
 
 export function SignupPage() {
+  const [systemName, setSystemName] = useState<string>("");
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBranding = async () => {
+      try {
+        const settings = await getPublicSystemSettings();
+        if (cancelled) return;
+        const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        if (mainCompanyId) {
+          try {
+            const company = await getPublicCompanyById(mainCompanyId);
+            if (!cancelled) {
+              setSystemName(String(company?.name ?? "").trim());
+            }
+          } catch {
+            if (!cancelled) setSystemName("");
+          }
+        } else {
+          setSystemName("");
+        }
+
+        const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+        const mainCompanyLogo = mainCompanyId && apiBase
+          ? `${apiBase}/api/v1/public/companies/${encodeURIComponent(mainCompanyId)}/logo`
+          : "";
+        setBrandingLogoUrl(mainCompanyLogo || String(settings.branding_logo_url ?? ""));
+      } catch {
+        if (!cancelled) {
+          setSystemName("");
+          setBrandingLogoUrl("");
+        }
+      }
+    };
+
+    void loadBranding();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const name = String(systemName ?? "").trim();
+    document.title = name ? `${name} | Register` : "Register";
+  }, [systemName]);
+
+  useEffect(() => {
+    const raw = String(brandingLogoUrl ?? "").trim();
+    if (!raw) return;
+
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+    const href = /^(https?:\/\/|data:)/i.test(raw)
+      ? raw
+      : apiBase
+        ? `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`
+        : raw;
+
+    const link =
+      (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
+      (document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null);
+
+    if (link) {
+      link.href = href;
+      return;
+    }
+
+    const created = document.createElement("link");
+    created.rel = "icon";
+    created.href = href;
+    document.head.appendChild(created);
+  }, [brandingLogoUrl]);
+
+  const resolvedLogoSrc = useMemo(() => {
+    const raw = String(brandingLogoUrl ?? "").trim();
+    if (!raw) return "/hito-logo.png";
+    if (/^(https?:\/\/|data:)/i.test(raw)) return raw;
+    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+    if (!apiBase) return raw;
+    return `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`;
+  }, [brandingLogoUrl]);
+
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(() =>
@@ -1138,7 +1222,7 @@ export function SignupPage() {
       <div className="loginCard signupCard">
         <div className="loginHeader">
           <div className="loginLogo">
-            <img src="/hito-logo.png" alt="Hito HR Logo" className="loginLogoImg" />
+            <img src={resolvedLogoSrc} alt={systemName ? `${systemName} Logo` : "Company Logo"} className="loginLogoImg" />
           </div>
           <h1 className="loginTitle">Create account</h1>
           <p className="loginSubtitle">Sign up as a Job Seeker</p>

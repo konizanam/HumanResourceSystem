@@ -471,7 +471,7 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
   return {
     company_approval_mode:
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
-    system_name: String(data.system_name ?? "Human Resource System"),
+    system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
     main_company_id:
@@ -494,7 +494,7 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
   return {
     company_approval_mode:
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
-    system_name: String(data.system_name ?? "Human Resource System"),
+    system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
     main_company_id:
@@ -528,7 +528,7 @@ export async function updateSystemSettings(
   return {
     company_approval_mode:
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
-    system_name: String(data.system_name ?? "Human Resource System"),
+    system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
     app_color: String(data.app_color ?? "#6366f1"),
     main_company_id:

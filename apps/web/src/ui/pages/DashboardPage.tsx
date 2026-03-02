@@ -158,11 +158,16 @@ export function DashboardPage() {
   const canViewAdminDashboard = hasPermission("ADMIN_DASHBOARD", "MANAGE_USERS");
   const canViewEmployerDashboard =
     !canViewAdminDashboard &&
-    hasPermission("EMPLOYER_DASHBOARD", "CREATE_JOB");
-  const isJobSeekerUser = !canViewAdminDashboard && !canViewEmployerDashboard;
+    hasPermission("EMPLOYER_DASHBOARD");
+
+  const canViewSeekerDashboard =
+    !canViewAdminDashboard &&
+    !canViewEmployerDashboard &&
+    hasPermission("APPLY_JOB");
+
+  const isJobSeekerUser = canViewSeekerDashboard;
   const isStandardDashboardUser = !isJobSeekerUser;
-  const canViewSeekerDashboard = isJobSeekerUser;
-  const canApplyJob = canViewSeekerDashboard && hasPermission("APPLY_JOB");
+  const canApplyJob = canViewSeekerDashboard;
 
   const load = useCallback(async () => {
     if (!accessToken || permissionsLoading) return;
@@ -1471,7 +1476,7 @@ export function DashboardPage() {
                 onClick={() => {
                   const job = updateProfileBeforeApplyJob;
                   setUpdateProfileBeforeApplyJob(null);
-                  navigate("/app/job-seekers", { state: { pendingJob: job } });
+                  navigate("/app/my-profile", { state: { pendingJob: job } });
                 }}
                 disabled={Boolean(applyingJobId)}
               >

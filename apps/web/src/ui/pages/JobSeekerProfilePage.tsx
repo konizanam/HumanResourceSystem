@@ -298,10 +298,15 @@ function StepIcon({ step }: { step: number }) {
 
 const DIRECTORY_PAGE_LIMIT = 5;
 
-export function JobSeekerProfilePage() {
+export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "directory" }) {
   const { accessToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const pageTitle = forcedMode === "directory"
+    ? "Job Seeker Profiles"
+    : forcedMode === "self"
+      ? "My Profile"
+      : "Job Seeker Profile";
   const [data, setData] = useState<FullProfile | null>(null);
   const [mode, setMode] = useState<"self" | "directory" | "forbidden">("self");
   const [jobSeekers, setJobSeekers] = useState<JobSeekerListItem[]>([]);
@@ -364,13 +369,62 @@ export function JobSeekerProfilePage() {
 
       const normalizedRoles = roles.map((r) => r.toUpperCase());
       const normalizedPerms = permissions.map((p) => p.toLowerCase());
-      const isJobSeeker = normalizedRoles.includes("JOB_SEEKER");
+      void normalizedRoles;
+      const canApplyJob = normalizedPerms.includes("apply_job");
       const canViewJobSeekerProfiles = normalizedPerms.some((p) =>
-        ["view_users", "manage_users", "view_applications", "manage_applications"].includes(p),
+        [
+          "view_users",
+          "manage_users",
+          "view_applications",
+          "manage_applications",
+          "view_cv_database",
+        ].includes(p),
       );
       setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
 
-      if (!isJobSeeker && canViewJobSeekerProfiles) {
+      if (forcedMode === "directory") {
+        if (!canViewJobSeekerProfiles) {
+          setMode("forbidden");
+          setData(null);
+          setError("Access denied. Required permission: VIEW_CV_DATABASE (or admin/user-management permissions).");
+          return;
+        }
+
+        setMode("directory");
+        setError(null);
+        setSuccess(null);
+        setPendingJob(null);
+        setData(null);
+        setJobSeekers([]);
+        return;
+      }
+
+      if (forcedMode === "self") {
+        if (!canApplyJob) {
+          setMode("forbidden");
+          setData(null);
+          setError("Access denied. Required permission: APPLY_JOB.");
+          return;
+        }
+
+        setMode("self");
+        const profile = await getFullProfile(accessToken);
+        if (!profile.personalDetails) {
+          try {
+            const user = (session as any)?.user ?? {};
+            profile.personalDetails = {
+              first_name: user.first_name ?? "",
+              last_name: user.last_name ?? "",
+            };
+          } catch {
+            // Best-effort fallback only.
+          }
+        }
+        setData(profile);
+        return;
+      }
+
+      if (!canApplyJob && canViewJobSeekerProfiles) {
         setMode("directory");
         setError(null);
         setSuccess(null);
@@ -382,10 +436,10 @@ export function JobSeekerProfilePage() {
         return;
       }
 
-      if (!isJobSeeker) {
+      if (!canApplyJob) {
         setMode("forbidden");
         setData(null);
-        setError("Access denied. You do not have permission to view job seeker profiles.");
+        setError("Access denied. Required permission: APPLY_JOB or VIEW_CV_DATABASE (or admin/user-management permissions).");
         return;
       }
 
@@ -900,7 +954,7 @@ export function JobSeekerProfilePage() {
   if (loading) {
     return (
       <div className="page">
-        <h1 className="pageTitle">Job Seeker Profiles</h1>
+        <h1 className="pageTitle">{pageTitle}</h1>
         <p className="pageText">Loading…</p>
       </div>
     );
@@ -1120,7 +1174,7 @@ export function JobSeekerProfilePage() {
   if (mode === "forbidden") {
     return (
       <div className="page">
-        <h1 className="pageTitle">Job Seeker Profiles</h1>
+        <h1 className="pageTitle">{pageTitle}</h1>
         <p className="pageText">{error ?? "Access denied."}</p>
       </div>
     );
@@ -1129,7 +1183,7 @@ export function JobSeekerProfilePage() {
   if (!data) {
     return (
       <div className="page">
-        <h1 className="pageTitle">Job Seeker Profile</h1>
+        <h1 className="pageTitle">{pageTitle}</h1>
         <p className="pageText">
           {error ?? "No profile data found. Please contact support."}
         </p>
@@ -1140,7 +1194,7 @@ export function JobSeekerProfilePage() {
   return (
     <div className="page">
       <div className="profileHeader">
-        <h1 className="pageTitle">Job Seeker Profile</h1>
+        <h1 className="pageTitle">{pageTitle}</h1>
       </div>
 
       {error && <div className="errorBox">{error}</div>}

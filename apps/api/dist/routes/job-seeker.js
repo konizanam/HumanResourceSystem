@@ -17,7 +17,7 @@ const listJobSeekersQuerySchema = zod_1.z.object({
     search: zod_1.z.string().optional().default(""),
     status: zod_1.z.string().optional().default(""),
 });
-exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users", "manage_users", "view_applications", "manage_applications"), async (req, res, next) => {
+exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users", "manage_users", "view_applications", "manage_applications", "VIEW_CV_DATABASE"), async (req, res, next) => {
     try {
         const parsed = listJobSeekersQuerySchema.parse(req.query);
         const page = parsed.page;
@@ -74,6 +74,9 @@ exports.jobSeekerRouter.get("/list", (0, auth_1.authorizePermission)("view_users
         return next(err);
     }
 });
+// From here on, job seeker self-service endpoints are permission-based.
+// Anyone with APPLY_JOB should have access to "My Profile" and related job-seeker functionality.
+exports.jobSeekerRouter.use((0, auth_1.authorizePermission)('APPLY_JOB'));
 /* ================================================================== */
 /*  PROFILE (professional summary)                                     */
 /* ================================================================== */
