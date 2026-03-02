@@ -51,29 +51,74 @@ function darken(hex: string, factor: number): string {
   return toHexColor(rr, gg, bb);
 }
 
+function lighten(hex: string, factor: number): string {
+  const { r, g, b } = toRgb(hex);
+  const rr = clampChannel(r + (255 - r) * factor);
+  const gg = clampChannel(g + (255 - g) * factor);
+  const bb = clampChannel(b + (255 - b) * factor);
+  return toHexColor(rr, gg, bb);
+}
+
+export function isDarkMode(): boolean {
+  if (typeof document === "undefined") return false;
+  const theme = document.documentElement.getAttribute("data-theme");
+  if (theme === "dark") return true;
+  if (theme === "light") return false;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+}
+
 export function applyAppThemeColor(appColor: unknown) {
   if (typeof document === "undefined") return;
 
   const base = normalizeHexColor(appColor);
-  const active = darken(base, 0.78);
+  const dark = isDarkMode();
   const { r, g, b } = toRgb(base);
-  const accentSoft = `rgba(${r}, ${g}, ${b}, 0.14)`;
-  const bg0 = blend(base, "#ffffff", 0.96);
-  const bg1 = blend(base, "#ffffff", 0.92);
-  const card2 = blend(base, "#ffffff", 0.94);
-  const sidebarBg = blend(base, "#ffffff", 0.88);
-  const sidebarSurface = blend(base, "#ffffff", 0.93);
-  const contentBg = blend(base, "#ffffff", 0.95);
 
-  const root = document.documentElement;
-  root.style.setProperty("--menu-icon", base);
-  root.style.setProperty("--menu-icon-active", active);
-  root.style.setProperty("--primary", active);
-  root.style.setProperty("--accent-soft", accentSoft);
-  root.style.setProperty("--bg0", bg0);
-  root.style.setProperty("--bg1", bg1);
-  root.style.setProperty("--card2", card2);
-  root.style.setProperty("--sidebar-bg", sidebarBg);
-  root.style.setProperty("--sidebar-surface", sidebarSurface);
-  root.style.setProperty("--content-bg", contentBg);
+  if (dark) {
+    // Dark mode: use a slightly lighter/more vivid version of the base color
+    const menuIcon = lighten(base, 0.25);
+    const menuIconActive = base;
+    const active = darken(base, 0.82);
+    const accentSoft = `rgba(${r}, ${g}, ${b}, 0.16)`;
+    const bg0 = blend(base, "#0a0d14", 0.94);
+    const bg1 = blend(base, "#111827", 0.92);
+    const card2 = blend(base, "#0d1117", 0.94);
+    const sidebarBg = blend(base, "#0a0e18", 0.92);
+    const sidebarSurface = blend(base, "#111827", 0.90);
+    const contentBg = blend(base, "#0a0e18", 0.94);
+
+    const root = document.documentElement;
+    root.style.setProperty("--menu-icon", menuIcon);
+    root.style.setProperty("--menu-icon-active", menuIconActive);
+    root.style.setProperty("--primary", active);
+    root.style.setProperty("--accent-soft", accentSoft);
+    root.style.setProperty("--bg0", bg0);
+    root.style.setProperty("--bg1", bg1);
+    root.style.setProperty("--card2", card2);
+    root.style.setProperty("--sidebar-bg", sidebarBg);
+    root.style.setProperty("--sidebar-surface", sidebarSurface);
+    root.style.setProperty("--content-bg", contentBg);
+  } else {
+    // Light mode (original behaviour)
+    const active = darken(base, 0.78);
+    const accentSoft = `rgba(${r}, ${g}, ${b}, 0.14)`;
+    const bg0 = blend(base, "#ffffff", 0.96);
+    const bg1 = blend(base, "#ffffff", 0.92);
+    const card2 = blend(base, "#ffffff", 0.94);
+    const sidebarBg = blend(base, "#ffffff", 0.88);
+    const sidebarSurface = blend(base, "#ffffff", 0.93);
+    const contentBg = blend(base, "#ffffff", 0.95);
+
+    const root = document.documentElement;
+    root.style.setProperty("--menu-icon", base);
+    root.style.setProperty("--menu-icon-active", active);
+    root.style.setProperty("--primary", active);
+    root.style.setProperty("--accent-soft", accentSoft);
+    root.style.setProperty("--bg0", bg0);
+    root.style.setProperty("--bg1", bg1);
+    root.style.setProperty("--card2", card2);
+    root.style.setProperty("--sidebar-bg", sidebarBg);
+    root.style.setProperty("--sidebar-surface", sidebarSurface);
+    root.style.setProperty("--content-bg", contentBg);
+  }
 }

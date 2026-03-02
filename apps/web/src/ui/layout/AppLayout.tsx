@@ -5,6 +5,22 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
 
+const THEME_KEY = "hrs-theme";
+
+function getInitialTheme(): "light" | "dark" {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "dark" || stored === "light") return stored;
+  } catch {
+    // ignore
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyThemeToHtml(theme: "light" | "dark") {
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
 type IconName =
   | "home"
   | "settings"
@@ -23,7 +39,9 @@ type IconName =
   | "collapse"
   | "expand"
   | "menu"
-  | "close";
+  | "close"
+  | "sun"
+  | "moon";
 
 function Icon({ name }: { name: IconName }) {
   const paths = useMemo(() => {
@@ -178,6 +196,17 @@ function Icon({ name }: { name: IconName }) {
             <path d="M6 6l12 12" />
           </>
         );
+      case "sun":
+        return (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </>
+        );
+      case "moon":
+        return (
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        );
       default:
         return null;
     }
@@ -204,6 +233,18 @@ export function AppLayout({
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [systemName, setSystemName] = useState<string>("Human Resource System");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const t = getInitialTheme();
+    applyThemeToHtml(t);
+    return t;
+  });
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    applyThemeToHtml(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+  };
 
   const displayName = useMemo(() => {
     const name = (userName ?? "").trim();
@@ -307,6 +348,8 @@ export function AppLayout({
     };
   }, []);
 
+  const [lastAppColor, setLastAppColor] = useState<unknown>("#6366f1");
+
   useEffect(() => {
     if (!accessToken) return;
 
@@ -317,11 +360,13 @@ export function AppLayout({
         if (cancelled) return;
         setSystemName(String(settings.system_name ?? "Human Resource System") || "Human Resource System");
         setBrandingLogoUrl(String(settings.branding_logo_url ?? ""));
+        setLastAppColor(settings.app_color);
         applyAppThemeColor(settings.app_color);
       } catch {
         if (cancelled) return;
         setSystemName("Human Resource System");
         setBrandingLogoUrl("");
+        setLastAppColor("#6366f1");
         applyAppThemeColor("#6366f1");
       }
     };
@@ -331,6 +376,11 @@ export function AppLayout({
       cancelled = true;
     };
   }, [accessToken]);
+
+  // Re-apply theme color whenever dark/light mode changes
+  useEffect(() => {
+    applyAppThemeColor(lastAppColor);
+  }, [theme, lastAppColor]);
 
   const pageName = useMemo(() => {
     const rawPath = String(location.pathname ?? "");
@@ -471,6 +521,15 @@ export function AppLayout({
               {displayName}
             </div>
           ) : null}
+          <button
+            type="button"
+            className="btn themeToggleBtn"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <Icon name={theme === "dark" ? "sun" : "moon"} />
+          </button>
           <button
             className="btn btnGhost btnSm"
             onClick={logout}
