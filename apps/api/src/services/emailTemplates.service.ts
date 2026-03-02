@@ -131,45 +131,45 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
     placeholders: ['app_name', 'user_full_name', 'job_title', 'company_name'],
   },
   job_alert: {
-    key: ‘job_alert’,
-    title: ‘Job Alert’,
-    description: ‘Sent when a new job matches a user\’s alert preferences.’,
-    subject: ‘New job alert: {{job_title}}’,
+    key: 'job_alert',
+    title: 'Job Alert',
+    description: 'Sent when a new job matches a user\'s alert preferences.',
+    subject: 'New job alert: {{job_title}}',
     body_text:
-      ‘Hi {{user_full_name}},\n\n’
-      + ‘A new job was posted that may match your preferences:\n’
-      + ‘{{job_title}} at {{company_name}}\n\n’
-      + ‘Use the View Job button below to open this opportunity.\n’
-      + ‘Job link: {{job_link}}\n\n’
-      + ‘{{unsubscribe_link}}\n\n’
-      + ‘Regards,\n’
-      + ‘{{app_name}} Team’,
-    body_html: ‘’,
-    placeholders: [‘app_name’, ‘user_full_name’, ‘job_title’, ‘company_name’, ‘job_link’, ‘unsubscribe_link’],
+      'Hi {{user_full_name}},\n\n'
+      + 'A new job was posted that may match your preferences:\n'
+      + '{{job_title}} at {{company_name}}\n\n'
+      + 'Use the View Job button below to open this opportunity.\n'
+      + 'Job link: {{job_link}}\n\n'
+      + '{{unsubscribe_link}}\n\n'
+      + 'Regards,\n'
+      + '{{app_name}} Team',
+    body_html: '',
+    placeholders: ['app_name', 'user_full_name', 'job_title', 'company_name', 'job_link', 'unsubscribe_link'],
   },
   login_notification: {
-    key: ‘login_notification’,
-    title: ‘Login Notification’,
-    description: ‘Sent to a user after a successful login to notify them of new account access.’,
-    subject: ‘New sign-in to your {{app_name}} account’,
+    key: 'login_notification',
+    title: 'Login Notification',
+    description: 'Sent to a user after a successful login to notify them of new account access.',
+    subject: 'New sign-in to your {{app_name}} account',
     body_text:
-      ‘Dear {{user_full_name}},\n\n’
-      + ‘A new sign-in to your {{app_name}} account was detected.\n\n’
-      + ‘{{login_info_block}}\n\n’
-      + ‘If this was you, no action is required.\n\n’
-      + ‘If you did not sign in, please change your password immediately and contact support at {{support_email}}.\n\n’
-      + ‘Regards,\n’
-      + ‘{{app_name}} Team’,
-    body_html: ‘’,
+      'Dear {{user_full_name}},\n\n'
+      + 'A new sign-in to your {{app_name}} account was detected.\n\n'
+      + '{{login_info_block}}\n\n'
+      + 'If this was you, no action is required.\n\n'
+      + 'If you did not sign in, please change your password immediately and contact support at {{support_email}}.\n\n'
+      + 'Regards,\n'
+      + '{{app_name}} Team',
+    body_html: '',
     placeholders: [
-      ‘app_name’,
-      ‘user_full_name’,
-      ‘login_info_block’,
-      ‘login_date_time’,
-      ‘login_ip’,
-      ‘login_location’,
-      ‘login_device’,
-      ‘support_email’,
+      'app_name',
+      'user_full_name',
+      'login_info_block',
+      'login_date_time',
+      'login_ip',
+      'login_location',
+      'login_device',
+      'support_email',
     ],
   },
 };
