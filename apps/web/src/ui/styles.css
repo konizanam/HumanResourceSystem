@@ -2176,6 +2176,8 @@ input[type="radio"][required] {
   width: 100%;
   border-collapse: collapse;
   min-width: 920px;
+  --table-row-odd: color-mix(in srgb, var(--menu-icon) 18%, var(--card));
+  --table-row-even: color-mix(in srgb, var(--menu-icon) 7%, var(--card2));
 }
 
 .auditTableWrap {
@@ -2257,12 +2259,17 @@ input[type="radio"][required] {
   border-bottom: none;
 }
 
-.table tbody tr:nth-child(odd):not(.tableRowActive):not(.tableExpandRow) td {
-  background: color-mix(in srgb, var(--menu-icon) 6%, var(--card));
+.table tbody tr:nth-child(odd):not(.tableRowActive):not(.tableExpandRow) {
+  background: var(--table-row-odd);
 }
 
+.table tbody tr:nth-child(even):not(.tableRowActive):not(.tableExpandRow) {
+  background: var(--table-row-even);
+}
+
+.table tbody tr:nth-child(odd):not(.tableRowActive):not(.tableExpandRow) td,
 .table tbody tr:nth-child(even):not(.tableRowActive):not(.tableExpandRow) td {
-  background: color-mix(in srgb, var(--menu-icon) 1.5%, var(--card2));
+  background: inherit;
 }
 
 .thRight {
