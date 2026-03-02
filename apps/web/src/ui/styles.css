@@ -447,6 +447,30 @@ input[type="radio"][required] {
   display: none;
 }
 
+.sidebarCollapsed .sidebarHeader {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 6px;
+}
+
+.sidebarCollapsed .brand {
+  width: 100%;
+  justify-content: center;
+  padding: 6px;
+  min-height: 36px;
+}
+
+.sidebarCollapsed .brandMono {
+  margin-left: 0;
+}
+
+.sidebarCollapsed .collapseToggle {
+  width: 100%;
+  justify-content: center;
+  padding: 6px;
+}
+
 .mobileToggle {
   display: none;
 }
