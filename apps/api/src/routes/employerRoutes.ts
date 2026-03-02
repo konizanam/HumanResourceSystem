@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
@@ -301,7 +301,7 @@ router.post('/register',
  */
 router.get('/profile',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CREATE_JOB'),
   async (req: Request, res: Response) => {
     try {
       const employerId = req.user!.userId;
@@ -313,7 +313,7 @@ router.get('/profile',
           company_logo_url, company_size, industry, founded_year,
           headquarters_location, phone, is_verified, created_at, updated_at
          FROM users
-         WHERE id = $1 AND role = 'EMPLOYER'`,
+         WHERE id = $1`,
         [employerId]
       );
 
@@ -419,7 +419,7 @@ router.get('/profile',
  */
 router.put('/profile',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CREATE_JOB'),
   validateEmployerProfile,
   async (req: Request, res: Response) => {
     try {
@@ -498,7 +498,7 @@ router.put('/profile',
       const result = await dbQuery(
         `UPDATE users 
          SET ${updateFields.join(', ')}
-         WHERE id = $${paramIndex} AND role = 'EMPLOYER'
+         WHERE id = $${paramIndex}
          RETURNING id, email, first_name, last_name, 
           company_name, company_description, company_website,
           company_logo_url, company_size, industry, founded_year,
@@ -618,7 +618,7 @@ router.put('/profile',
  */
 router.get('/jobs',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CREATE_JOB'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -801,7 +801,7 @@ router.get('/jobs',
  */
 router.get('/applications',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('VIEW_APPLICATIONS'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -974,7 +974,7 @@ router.get('/applications',
  */
 router.get('/dashboard',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('EMPLOYER_DASHBOARD', 'CREATE_JOB'),
   async (req: Request, res: Response) => {
     try {
       const employerId = req.user!.userId;

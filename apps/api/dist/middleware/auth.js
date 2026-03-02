@@ -91,7 +91,7 @@ const authorize = (...allowedRoles) => {
         const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
         const hasRole = req.user.roles.some((role) => normalizedAllowed.includes(String(role).toUpperCase()));
         if (!hasRole) {
-            return next(new errors_1.ForbiddenError('Insufficient permissions'));
+            return next(new errors_1.ForbiddenError(`Insufficient permissions. Required role: ${allowedRoles.join(' or ')}`));
         }
         next();
     };
@@ -110,7 +110,7 @@ const authorizePermission = (...allowedPermissions) => {
         }
         const hasPermission = req.user.permissions?.some(permission => allowedPermissions.includes(permission));
         if (!hasPermission) {
-            return next(new errors_1.ForbiddenError('Insufficient permissions'));
+            return next(new errors_1.ForbiddenError(`Insufficient permissions. Required permission: ${allowedPermissions.join(' or ')}`));
         }
         next();
     };

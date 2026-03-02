@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize, authorizePermission } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
 import { logAdminAction } from '../middleware/adminLogger';
@@ -27,10 +27,16 @@ const validateStatusUpdate = [
   body('notes').optional().isString().trim()
 ];
 
-// Helper function to check if user is HR/Employer
-const isHRorEmployer = (user: any): boolean => {
-  return user?.roles?.includes('EMPLOYER') || user?.roles?.includes('ADMIN') || user?.roles?.includes('HR');
-};
+function isAdmin(user: any): boolean {
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  return roles.some((r: any) => String(r).toUpperCase() === 'ADMIN');
+}
+
+function hasPermission(user: any, permission: string): boolean {
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const normalized = new Set(perms.map((p: any) => String(p).trim().toUpperCase()));
+  return normalized.has(String(permission).trim().toUpperCase());
+}
 
 /**
  * @swagger
@@ -541,14 +547,14 @@ router.get('/:id',
       // - Admin/HR can view any application
       const isApplicant = application.applicant_id === userId;
       const isEmployer = application.employer_id === userId;
-      const isAdminOrHR = userRoles.includes('ADMIN') || userRoles.includes('HR');
+      const isPrivileged = isAdmin(req.user) || hasPermission(req.user, 'MANAGE_USERS') || hasPermission(req.user, 'VIEW_APPLICATIONS');
 
-      if (!isApplicant && !isEmployer && !isAdminOrHR) {
+      if (!isApplicant && !isEmployer && !isPrivileged) {
         return res.status(403).json({ error: 'You do not have permission to view this application' });
       }
 
       // Remove sensitive information for applicants
-      if (isApplicant && !isEmployer && !isAdminOrHR) {
+      if (isApplicant && !isEmployer && !isPrivileged) {
         delete application.employer_email;
         delete application.employer_name;
         delete application.notes;
@@ -654,7 +660,7 @@ router.put('/:id/status',
           (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
         );
         if (!hasMoveBackPermission) {
-          return res.status(403).json({ error: 'Insufficient permissions to move applicant back to All Applicants' });
+          return res.status(403).json({ error: 'Insufficient permissions. Required permission: MOVE_BACK_TO_ALL_APPLICANTS' });
         }
       }
 
@@ -918,7 +924,7 @@ router.delete('/:id',
  */
 router.get('/employer/jobs',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN', 'HR'),
+  authorizePermission('VIEW_APPLICATIONS'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),

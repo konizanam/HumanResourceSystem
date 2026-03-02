@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { body, param } from 'express-validator';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorizePermission } from '../middleware/auth';
 import { validateRequest } from '../utils/validation';
 import { BadRequestError } from '../utils/errors';
 import {
@@ -14,7 +14,7 @@ const router = Router();
 
 // Email template editing is an admin function.
 router.use(authenticate);
-router.use(authorize('ADMIN', 'HR_MANAGER'));
+router.use(authorizePermission('MANAGE_USERS'));
 
 router.get('/', async (req, res, next) => {
   try {

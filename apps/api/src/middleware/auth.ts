@@ -108,7 +108,11 @@ export const authorize = (...allowedRoles: string[]) => {
     const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
     const hasRole = req.user.roles.some((role) => normalizedAllowed.includes(String(role).toUpperCase()));
     if (!hasRole) {
-      return next(new ForbiddenError('Insufficient permissions'));
+      return next(
+        new ForbiddenError(
+          `Insufficient permissions. Required role: ${allowedRoles.join(' or ')}`
+        )
+      );
     }
 
     next();
@@ -133,7 +137,11 @@ export const authorizePermission = (...allowedPermissions: string[]) => {
     );
 
     if (!hasPermission) {
-      return next(new ForbiddenError('Insufficient permissions'));
+      return next(
+        new ForbiddenError(
+          `Insufficient permissions. Required permission: ${allowedPermissions.join(' or ')}`
+        )
+      );
     }
 
     next();

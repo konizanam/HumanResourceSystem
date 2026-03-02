@@ -56,10 +56,35 @@ const validateJob = [
   body('application_deadline').isISO8601().toDate().withMessage('Valid deadline is required')
 ];
 
-// Helper function to check if user is employer or admin
+function hasPermission(user: any, permission: string): boolean {
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const normalized = new Set(perms.map((p: any) => String(p).trim().toUpperCase()));
+  return normalized.has(String(permission).trim().toUpperCase());
+}
+
+function isAdmin(user: any): boolean {
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  return roles.some((r: any) => String(r).toUpperCase() === 'ADMIN');
+}
+
+// Employer/staff access should be permission-based (admin remains role-based).
 const isEmployerOrAdmin = (user: any): boolean => {
-  return user?.roles?.includes('EMPLOYER') || user?.roles?.includes('ADMIN');
+  if (isAdmin(user)) return true;
+  return (
+    hasPermission(user, 'CREATE_JOB') ||
+    hasPermission(user, 'EDIT_JOB') ||
+    hasPermission(user, 'DELETE_JOB') ||
+    hasPermission(user, 'VIEW_APPLICATIONS')
+  );
 };
+
+async function userHasCompanyAccess(userId: string, companyId: string): Promise<boolean> {
+  const result = await dbQuery(
+    `SELECT 1 FROM company_users WHERE user_id = $1 AND company_id = $2 LIMIT 1`,
+    [userId, companyId]
+  );
+  return result.rows.length > 0;
+}
 
 // Some routes (like GET /jobs) support both public and authenticated views.
 // If a Bearer token is provided, attach req.user; otherwise continue as public.
@@ -185,15 +210,23 @@ router.get('/', authenticateOptional, [
       if (!req.user) {
         return res.status(401).json({ error: 'Authentication required to view your jobs' });
       }
-      
-      // Employers see their own jobs, admins see all
-      if (req.user.roles.includes('EMPLOYER') && !req.user.roles.includes('ADMIN')) {
-        whereConditions.push(`j.employer_id = $${paramIndex}`);
+
+      const roles = Array.isArray(req.user.roles) ? req.user.roles.map((r) => String(r).toUpperCase()) : [];
+      const permissions = Array.isArray(req.user.permissions)
+        ? req.user.permissions.map((p) => String(p).toUpperCase())
+        : [];
+
+      const isSystemManager = roles.includes('ADMIN') || permissions.includes('MANAGE_USERS');
+
+      // Non-system users should only see jobs for companies they're assigned to.
+      if (!isSystemManager) {
+        whereConditions.push(
+          `j.company_id IN (SELECT company_id FROM company_users WHERE user_id = $${paramIndex})`
+        );
         queryParams.push(req.user.userId);
         paramIndex++;
-      }
-      // Admins can optionally filter by employer
-      else if (req.user.roles.includes('ADMIN') && req.query.employer_id) {
+      } else if (roles.includes('ADMIN') && req.query.employer_id) {
+        // Admins can optionally filter by employer
         whereConditions.push(`j.employer_id = $${paramIndex}`);
         queryParams.push(req.query.employer_id);
         paramIndex++;
@@ -287,7 +320,7 @@ router.get('/', authenticateOptional, [
 // GET /api/jobs/employer/dashboard - Employer dashboard with job stats
 router.get('/employer/dashboard',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('EMPLOYER_DASHBOARD', 'CREATE_JOB'),
   async (req: Request, res: Response) => {
     try {
       const employerId = req.user!.userId;
@@ -353,7 +386,7 @@ router.get('/employer/dashboard',
 // GET /api/jobs/employer/jobs - Get all jobs for logged-in employer
 router.get('/employer/jobs',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('CREATE_JOB'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -565,6 +598,7 @@ router.get('/filter', [
 
 // GET /api/jobs/:id - Get single job details
 router.get('/:id([0-9a-fA-F-]{36})', [
+  authenticateOptional,
   param('id').isUUID().withMessage('Invalid job ID')
 ], async (req: Request, res: Response) => {
   try {
@@ -608,17 +642,26 @@ router.get('/:id([0-9a-fA-F-]{36})', [
     }
 
     // Check if user can view this job (public can only view active/approved jobs)
-    if (!isPubliclyActive && !req.user?.roles?.includes('EMPLOYER') && !req.user?.roles?.includes('ADMIN')) {
-      return res.status(403).json({ error: 'This job is not publicly available' });
-    }
+    if (!isPubliclyActive) {
+      // Non-public jobs require authenticated, permissioned access.
+      if (!req.user || !isEmployerOrAdmin(req.user)) {
+        return res.status(403).json({ error: 'This job is not publicly available' });
+      }
 
-    // Check if employer can view their own non-active jobs
-    if (!isPubliclyActive && req.user?.roles?.includes('EMPLOYER') && job.employer_id !== req.user.userId) {
-      return res.status(403).json({ error: 'You do not have permission to view this job' });
+      // Staff can view non-active jobs if they belong to the job's company (or are admin).
+      if (!isAdmin(req.user)) {
+        const companyId = String(job.company_id ?? '').trim();
+        if (companyId) {
+          const allowed = await userHasCompanyAccess(req.user.userId, companyId);
+          if (!allowed) {
+            return res.status(403).json({ error: 'You do not have permission to view this job' });
+          }
+        }
+      }
     }
 
     // Increment view count only for active jobs and public views
-    if (isPubliclyActive && !req.user?.roles?.includes('EMPLOYER')) {
+    if (isPubliclyActive && !req.user) {
       await dbQuery(
         'UPDATE jobs SET views = views + 1 WHERE id = $1',
         [req.params.id]
@@ -792,7 +835,7 @@ router.post('/',
 // PUT /api/jobs/:id - Update job (Employer who owns it or Admin)
 router.put('/:id',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('EDIT_JOB'),
   logAdminAction('UPDATE_JOB', 'job'),
   param('id').isUUID().withMessage('Invalid job ID'),
   validateJob,
@@ -816,9 +859,17 @@ router.put('/:id',
       const job = jobCheck.rows[0];
       const beforeJobSnapshot = { ...job };
 
-      // Check if user is the employer who created the job or an admin
-      if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
-        return res.status(403).json({ error: 'Not authorized to update this job' });
+      const currentUserId = req.user!.userId;
+      const adminUser = isAdmin(req.user);
+
+      // Permission is already checked; additionally scope by ownership/company unless admin.
+      if (!adminUser) {
+        const companyId = String(job.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(currentUserId, companyId) : false;
+        const isOwner = String(job.employer_id ?? '') === currentUserId;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to update this job' });
+        }
       }
 
       const {
@@ -904,7 +955,7 @@ router.put('/:id',
 // DELETE /api/jobs/:id - Delete job (Employer who owns it or Admin)
 router.delete('/:id',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('DELETE_JOB'),
   logAdminAction('DELETE_JOB', 'job'),
   param('id').isUUID().withMessage('Invalid job ID'),
   async (req: Request, res: Response) => {
@@ -926,9 +977,17 @@ router.delete('/:id',
 
       const job = jobCheck.rows[0];
 
-      // Check if user is the employer who created the job or an admin
-      if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
-        return res.status(403).json({ error: 'Not authorized to delete this job' });
+      const currentUserId = req.user!.userId;
+      const adminUser = isAdmin(req.user);
+      if (!adminUser) {
+        // jobCheck doesn't include company_id; fetch it for company scoping.
+        const companyResult = await dbQuery('SELECT company_id FROM jobs WHERE id = $1', [req.params.id]);
+        const companyId = String(companyResult.rows[0]?.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(currentUserId, companyId) : false;
+        const isOwner = String(job.employer_id ?? '') === currentUserId;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to delete this job' });
+        }
       }
 
       // Check if there are applications for this job
@@ -979,7 +1038,7 @@ router.delete('/:id',
 // GET /api/jobs/:id/applications - Get applications for a job (Employer who owns it or Admin)
 router.get('/:id/applications',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
+  authorizePermission('VIEW_APPLICATIONS'),
   param('id').isUUID().withMessage('Invalid job ID'),
   [
     query('status').optional().isIn(['pending', 'reviewed', 'accepted', 'rejected']),
@@ -999,7 +1058,7 @@ router.get('/:id/applications',
 
       // Check if job exists and user owns it
       const jobCheck = await dbQuery(
-        'SELECT employer_id, title FROM jobs WHERE id = $1',
+        'SELECT employer_id, company_id, title FROM jobs WHERE id = $1',
         [req.params.id]
       );
 
@@ -1009,9 +1068,14 @@ router.get('/:id/applications',
 
       const job = jobCheck.rows[0];
 
-      // Check if user is the employer who created the job or an admin
-      if (job.employer_id !== req.user!.userId && !req.user!.roles.includes('ADMIN')) {
-        return res.status(403).json({ error: 'Not authorized to view applications for this job' });
+      const currentUserId = req.user!.userId;
+      if (!isAdmin(req.user)) {
+        const isOwner = String(job.employer_id ?? '') === currentUserId;
+        const companyId = String(job.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(currentUserId, companyId) : false;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to view applications for this job' });
+        }
       }
 
       let whereConditions = ['a.job_id = $1'];
@@ -1076,7 +1140,6 @@ router.get('/:id/applications',
 // PATCH /api/jobs/:id/applications/:applicationId/status - Update application status
 router.patch('/:id/applications/:applicationId/status',
   authenticate,
-  authorize('EMPLOYER', 'ADMIN'),
   authorizePermission('CHANGE_JOBSEEKER_APP_STATUS'),
   param('id').isUUID().withMessage('Invalid job ID'),
   param('applicationId').isUUID().withMessage('Invalid application ID'),
@@ -1168,7 +1231,7 @@ router.patch('/:id/applications/:applicationId/status',
           (permission) => String(permission).trim().toUpperCase() === 'MOVE_BACK_TO_ALL_APPLICANTS'
         );
         if (!hasMoveBackPermission) {
-          return res.status(403).json({ error: 'Insufficient permissions to move applicant back to All Applicants' });
+          return res.status(403).json({ error: 'Insufficient permissions. Required permission: MOVE_BACK_TO_ALL_APPLICANTS' });
         }
       }
 
