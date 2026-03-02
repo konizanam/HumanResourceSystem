@@ -51,8 +51,12 @@ exports.meRouter.get("/me", auth_1.authenticate, async (req, res, next) => {
 });
 exports.meRouter.get("/search", auth_1.authenticate, async (req, res, next) => {
     try {
-        const userRoles = req.user?.roles ?? [];
-        if (!userRoles.includes("ADMIN") && !userRoles.includes("HR_MANAGER")) {
+        const userRoles = (req.user?.roles ?? []).map((r) => String(r).toUpperCase());
+        const userPermissions = (req.user?.permissions ?? []).map((p) => String(p).toUpperCase());
+        const canSearchUsers = userRoles.includes("ADMIN") ||
+            userPermissions.includes("MANAGE_USERS") ||
+            userPermissions.includes("MANAGE_COMPANY");
+        if (!canSearchUsers) {
             throw new errors_1.ForbiddenError("You do not have permission to search users");
         }
         const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
@@ -63,6 +67,13 @@ exports.meRouter.get("/search", auth_1.authenticate, async (req, res, next) => {
         const result = await (0, database_1.query)(`SELECT id, first_name, last_name, email
        FROM users
        WHERE is_active = true
+         AND NOT EXISTS (
+           SELECT 1
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = users.id
+              AND UPPER(COALESCE(r.name, '')) = 'JOB_SEEKER'
+         )
          AND (
            first_name ILIKE $1
            OR last_name ILIKE $1

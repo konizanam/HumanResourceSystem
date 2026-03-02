@@ -493,7 +493,9 @@ export class CompanyService {
 
   async addUserToCompany(companyId: string, targetUserId: string, currentUserId: string) {
     // Check if current user has manage users permission
-    const hasManagePermission = await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY_USERS');
+    const hasManagePermission =
+      (await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY')) ||
+      (await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY_USERS'));
     if (!hasManagePermission) {
       throw new ForbiddenError('You do not have permission to manage company users');
     }
@@ -521,7 +523,9 @@ export class CompanyService {
 
   async removeUserFromCompany(companyId: string, targetUserId: string, currentUserId: string) {
     // Check if current user has manage users permission
-    const hasManagePermission = await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY_USERS');
+    const hasManagePermission =
+      (await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY')) ||
+      (await this.checkCompanyPermission(companyId, currentUserId, 'MANAGE_COMPANY_USERS'));
     if (!hasManagePermission) {
       throw new ForbiddenError('You do not have permission to manage company users');
     }

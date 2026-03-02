@@ -634,7 +634,6 @@ export function CompaniesPage() {
       if (!(addForm.address_line2 ?? "").trim()) errs.address_line2 = "Address line 2 is required";
       if (!(addForm.city ?? "").trim()) errs.city = "City is required";
       if (!(addForm.country ?? "").trim()) errs.country = "Country is required";
-      if (assignSelected.length === 0) errs.assign_users = "Assign at least one user";
 
       setAddFieldErrors(errs);
       if (Object.keys(errs).length > 0) return;
@@ -1025,7 +1024,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field fieldFull">
-                <label className="fieldLabel">Assign Users (comma separated) *</label>
+                <label className="fieldLabel">Assign Users (comma separated)</label>
                 <input
                   className="input"
                   value={assignSelected.length > 0 ? `${assignSelected.map(displayUser).join(", ")}, ${assignQuery}` : assignQuery}

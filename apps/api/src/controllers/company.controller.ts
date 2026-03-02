@@ -217,7 +217,7 @@ export class CompanyController {
       const { userId: targetUserId } = req.body;
       const currentUserId = req.user!.userId;
 
-      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY_USERS'])) {
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS'])) {
         throw new ForbiddenError('You do not have permission to manage company users');
       }
 
@@ -239,7 +239,7 @@ export class CompanyController {
       const targetUserId = getStringParam(req, 'userId');
       const currentUserId = req.user!.userId;
 
-      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY_USERS'])) {
+      if (!hasAnyPermission(req, ['MANAGE_USERS', 'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS'])) {
         throw new ForbiddenError('You do not have permission to manage company users');
       }
 
