@@ -2010,21 +2010,24 @@ input[type="radio"][required] {
 }
 
 .jobActionBtn {
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.01em;
   border-width: 1px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--menu-icon-active) 24%, transparent) inset;
+  border-color: color-mix(in srgb, var(--menu-icon-active) 58%, var(--stroke));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--menu-icon-active) 34%, transparent) inset;
 }
 
 .jobActionBtnDetails {
-  background: color-mix(in srgb, var(--accent-soft) 64%, var(--card));
-  border-color: color-mix(in srgb, var(--menu-icon-active) 52%, var(--stroke));
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--card));
+  border-color: color-mix(in srgb, var(--menu-icon-active) 66%, var(--stroke));
   color: color-mix(in srgb, var(--heading) 86%, var(--menu-icon-active));
 }
 
 .jobActionBtnApplied {
-  background: color-mix(in srgb, var(--menu-icon) 16%, var(--card2));
-  border-color: color-mix(in srgb, var(--menu-icon-active) 62%, var(--stroke));
+  background: color-mix(in srgb, var(--menu-icon) 24%, var(--card2));
+  border-color: color-mix(in srgb, var(--menu-icon-active) 72%, var(--stroke));
   color: var(--menu-icon-active);
 }
 
