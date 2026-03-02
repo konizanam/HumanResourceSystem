@@ -1355,7 +1355,7 @@ export function DashboardPage() {
                         </a>
                         {canApplyJob ? (
                           <button
-                            className={alreadyApplied ? "btn btnGhost btnSm" : "btn btnPrimary btnSm"}
+                            className={alreadyApplied ? "btn btnSm jobActionBtn jobActionBtnApplied" : "btn btnPrimary btnSm jobActionBtn"}
                             type="button"
                             onClick={() => onStartApplyFromDashboard(job)}
                             disabled={busy || alreadyApplied}
@@ -1365,7 +1365,7 @@ export function DashboardPage() {
                         ) : null}
                         <button
                           type="button"
-                          className="btn btnGhost btnSm"
+                          className="btn btnSm jobActionBtn jobActionBtnDetails"
                           onClick={() => setOpenSeekerJobId((prev) => (prev === String(job.id) ? null : String(job.id)))}
                         >
                           {isOpen ? "Hide Details" : "View Details"}

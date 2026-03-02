@@ -1496,7 +1496,7 @@ export function JobsPage() {
                       {canApplyJob ? (
                         <button
                           type="button"
-                          className={alreadyApplied ? "btn btnGhost btnSm" : "btn btnPrimary btnSm"}
+                          className={alreadyApplied ? "btn btnSm jobActionBtn jobActionBtnApplied" : "btn btnPrimary btnSm jobActionBtn"}
                           onClick={() => onStartApply(job)}
                           disabled={saving || alreadyApplied}
                         >
@@ -1506,7 +1506,7 @@ export function JobsPage() {
                       {!isOpen ? (
                         <button
                           type="button"
-                          className="btn btnGhost btnSm"
+                          className="btn btnSm jobActionBtn jobActionBtnDetails"
                           onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
                           disabled={saving}
                         >
@@ -1529,7 +1529,7 @@ export function JobsPage() {
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                           <button
                             type="button"
-                            className="btn btnGhost btnSm"
+                            className="btn btnSm jobActionBtn jobActionBtnDetails"
                             onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
                             disabled={saving}
                           >
@@ -1587,7 +1587,7 @@ export function JobsPage() {
                       {!isOpen ? (
                         <button
                           type="button"
-                          className="btn btnGhost btnSm"
+                          className="btn btnSm jobActionBtn jobActionBtnDetails"
                           onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
                           disabled={saving}
                         >
@@ -1656,7 +1656,7 @@ export function JobsPage() {
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                           <button
                             type="button"
-                            className="btn btnGhost btnSm"
+                            className="btn btnSm jobActionBtn jobActionBtnDetails"
                             onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
                             disabled={saving}
                           >
