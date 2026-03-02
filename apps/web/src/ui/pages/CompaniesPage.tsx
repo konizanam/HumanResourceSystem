@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 import {
   type Company,
   type CompanyUpsertPayload,
@@ -23,6 +23,8 @@ import { useNavigate } from "react-router-dom";
 const COMPANY_PAGE_LIMIT = 5;
 
 type PanelMode = "view" | "edit";
+
+type PanelModeExtended = PanelMode | "post-job";
 
 type CompanyJobFormState = {
   title: string;
@@ -237,7 +239,7 @@ export function CompaniesPage() {
   const [assignSearching, setAssignSearching] = useState(false);
 
   const [openCompanyId, setOpenCompanyId] = useState<string | null>(null);
-  const [panelMode, setPanelMode] = useState<PanelMode>("view");
+  const [panelMode, setPanelMode] = useState<PanelModeExtended>("view");
   const [editForm, setEditForm] = useState<CompanyUpsertPayload>(EMPTY_COMPANY);
 
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
@@ -410,6 +412,9 @@ export function CompaniesPage() {
 
   function openPostJobModal(company: Company) {
     clearMessages();
+    setAddOpen(false);
+    setOpenCompanyId(company.id);
+    setPanelMode("post-job");
     setPostJobCompany(company);
     setPostJobForm({
       ...EMPTY_COMPANY_JOB_FORM,
@@ -422,6 +427,8 @@ export function CompaniesPage() {
     setPostJobCompany(null);
     setPostJobForm(EMPTY_COMPANY_JOB_FORM);
     setPostJobErrors({});
+    setPanelMode("view");
+    setOpenCompanyId(null);
   }
 
   async function onSubmitPostJob() {
@@ -491,6 +498,8 @@ export function CompaniesPage() {
     setAddOpen(false);
     setOpenCompanyId(company.id);
     setPanelMode("view");
+    setPostJobCompany(null);
+    setPostJobErrors({});
 
     setEditForm({
       name: toText(company.name),
@@ -512,6 +521,8 @@ export function CompaniesPage() {
     setAddOpen(false);
     setOpenCompanyId(company.id);
     setPanelMode("edit");
+    setPostJobCompany(null);
+    setPostJobErrors({});
 
     setEditForm({
       name: toText(company.name),
@@ -1156,9 +1167,15 @@ export function CompaniesPage() {
                       type="button"
                       className="btn btnGhost btnSm"
                       disabled={saving}
-                      onClick={() => openPostJobModal(c)}
+                      onClick={() => {
+                        if (isOpen && panelMode === "post-job") {
+                          closePostJobModal();
+                        } else {
+                          openPostJobModal(c);
+                        }
+                      }}
                     >
-                      Post Job
+                      {isOpen && panelMode === "post-job" ? "Close" : "Post Job"}
                     </button>
                   ) : null}
                   {canApproveCompany && isPending ? (
@@ -1195,7 +1212,7 @@ export function CompaniesPage() {
                   <div className="dropPanel" style={{ marginTop: 12 }}>
                     {panelMode === "view" ? (
                       <CompanyViewPanel company={openCompany} />
-                    ) : (
+                    ) : panelMode === "edit" ? (
                       <CompanyEditPanel
                         company={openCompany}
                         form={editForm}
@@ -1204,6 +1221,19 @@ export function CompaniesPage() {
                           setPanelMode("view");
                         }}
                         onSave={onSaveEdit}
+                        saving={saving}
+                      />
+                    ) : (
+                      <CompanyPostJobPanel
+                        company={postJobCompany}
+                        loadingCategories={loadingCategories}
+                        categories={jobCategories}
+                        availableSubcategories={availableSubcategories}
+                        form={postJobForm}
+                        errors={postJobErrors}
+                        onChange={setPostJobForm}
+                        onCancel={closePostJobModal}
+                        onSave={onSubmitPostJob}
                         saving={saving}
                       />
                     )}
@@ -1239,175 +1269,7 @@ export function CompaniesPage() {
         </button>
       </div>
 
-      {postJobCompany && (
-        <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && closePostJobModal()}>
-          <div
-            className="modalCard"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Post Job"
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{ maxWidth: 840 }}
-          >
-            <div className="modalTitle">Post Job — {postJobCompany.name}</div>
-            {loadingCategories ? (
-              <p className="pageText">Loading categories...</p>
-            ) : (
-              <div className="editGrid">
-                <div className="field">
-                  <label className="fieldLabel">Job Title *</label>
-                  <input
-                    className="input"
-                    value={postJobForm.title}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, title: e.target.value }))}
-                  />
-                  {postJobErrors.title && <span className="fieldError">{postJobErrors.title}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Category *</label>
-                  <select
-                    className="input"
-                    value={postJobForm.category_id}
-                    onChange={(e) =>
-                      setPostJobForm((prev) => ({ ...prev, category_id: e.target.value, subcategory: "" }))
-                    }
-                  >
-                    <option value="">Select category</option>
-                    {jobCategories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                  {postJobErrors.category_id && <span className="fieldError">{postJobErrors.category_id}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Subcategory *</label>
-                  <select
-                    className="input"
-                    value={postJobForm.subcategory}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, subcategory: e.target.value }))}
-                    disabled={!postJobForm.category_id}
-                  >
-                    <option value="">Select subcategory</option>
-                    {availableSubcategories.map((sub) => (
-                      <option key={sub.id} value={sub.name}>
-                        {sub.name}
-                      </option>
-                    ))}
-                  </select>
-                  {postJobErrors.subcategory && <span className="fieldError">{postJobErrors.subcategory}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Employment Type *</label>
-                  <select
-                    className="input"
-                    value={postJobForm.employment_type}
-                    onChange={(e) =>
-                      setPostJobForm((prev) => ({
-                        ...prev,
-                        employment_type: e.target.value as JobUpsertPayload["employment_type"],
-                      }))
-                    }
-                  >
-                    <option value="Full-time">Full-time</option>
-                    <option value="Part-time">Part-time</option>
-                    <option value="Contract">Contract</option>
-                    <option value="Internship">Internship</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Salary Min *</label>
-                  <input
-                    className="input"
-                    type="number"
-                    value={postJobForm.salary_min}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, salary_min: e.target.value }))}
-                  />
-                  {postJobErrors.salary_min && <span className="fieldError">{postJobErrors.salary_min}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Salary Max *</label>
-                  <input
-                    className="input"
-                    type="number"
-                    value={postJobForm.salary_max}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, salary_max: e.target.value }))}
-                  />
-                  {postJobErrors.salary_max && <span className="fieldError">{postJobErrors.salary_max}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Location *</label>
-                  <input
-                    className="input"
-                    value={postJobForm.location}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, location: e.target.value }))}
-                  />
-                  {postJobErrors.location && <span className="fieldError">{postJobErrors.location}</span>}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Application Deadline *</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={postJobForm.application_deadline}
-                    onChange={(e) =>
-                      setPostJobForm((prev) => ({ ...prev, application_deadline: e.target.value }))
-                    }
-                  />
-                  {postJobErrors.application_deadline && (
-                    <span className="fieldError">{postJobErrors.application_deadline}</span>
-                  )}
-                </div>
-                <div className="field">
-                  <label className="fieldLabel">Status *</label>
-                  <select
-                    className="input"
-                    value={postJobForm.status}
-                    onChange={(e) =>
-                      setPostJobForm((prev) => ({ ...prev, status: e.target.value as "draft" | "pending" }))
-                    }
-                  >
-                    <option value="draft">DRAFT</option>
-                    <option value="pending">PENDING</option>
-                  </select>
-                </div>
-                <label className="field fieldCheckbox">
-                  <input
-                    type="checkbox"
-                    checked={postJobForm.remote}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, remote: e.target.checked }))}
-                  />
-                  <span className="fieldLabel">Is Remote</span>
-                </label>
-                <div className="field fieldFull">
-                  <label className="fieldLabel">Description *</label>
-                  <textarea
-                    className="input textarea"
-                    rows={4}
-                    value={postJobForm.description}
-                    onChange={(e) => setPostJobForm((prev) => ({ ...prev, description: e.target.value }))}
-                  />
-                  {postJobErrors.description && <span className="fieldError">{postJobErrors.description}</span>}
-                </div>
-              </div>
-            )}
-            <div className="modalActions">
-              <button className="btn btnGhost" type="button" onClick={closePostJobModal} disabled={saving}>
-                Cancel
-              </button>
-              <button
-                className="btn btnGhost btnSm stepperSaveBtn"
-                type="button"
-                onClick={onSubmitPostJob}
-                disabled={saving || loadingCategories}
-              >
-                {saving ? "Posting..." : "Post Job"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <ConfirmModal
         open={Boolean(confirmDeactivateId)}
@@ -1424,6 +1286,204 @@ export function CompaniesPage() {
         company={usersModalCompany}
         onClose={() => setUsersModalCompany(null)}
       />
+    </div>
+  );
+}
+
+function CompanyPostJobPanel({
+  company,
+  loadingCategories,
+  categories,
+  availableSubcategories,
+  form,
+  errors,
+  onChange,
+  onCancel,
+  onSave,
+  saving,
+}: {
+  company: Company | null;
+  loadingCategories: boolean;
+  categories: JobCategory[];
+  availableSubcategories: JobCategory["subcategories"];
+  form: CompanyJobFormState;
+  errors: Record<string, string>;
+  onChange: Dispatch<SetStateAction<CompanyJobFormState>>;
+  onCancel: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  if (!company) {
+    return (
+      <div className="editForm">
+        <h2 className="editFormTitle">Post Job</h2>
+        <p className="pageText">Select a company to post a job.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="editForm">
+      <h2 className="editFormTitle">Post Job — {company.name}</h2>
+
+      {loadingCategories ? (
+        <p className="pageText">Loading categories...</p>
+      ) : (
+        <div className="editGrid">
+          <div className="field">
+            <label className="fieldLabel">Job Title *</label>
+            <input
+              className="input"
+              value={form.title}
+              onChange={(e) => onChange((prev) => ({ ...prev, title: e.target.value }))}
+            />
+            {errors.title && <span className="fieldError">{errors.title}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Category *</label>
+            <select
+              className="input"
+              value={form.category_id}
+              onChange={(e) => onChange((prev) => ({ ...prev, category_id: e.target.value, subcategory: "" }))}
+            >
+              <option value="">Select category</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            {errors.category_id && <span className="fieldError">{errors.category_id}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Subcategory *</label>
+            <select
+              className="input"
+              value={form.subcategory}
+              onChange={(e) => onChange((prev) => ({ ...prev, subcategory: e.target.value }))}
+              disabled={!form.category_id}
+            >
+              <option value="">Select subcategory</option>
+              {availableSubcategories.map((sub) => (
+                <option key={sub.id} value={sub.name}>
+                  {sub.name}
+                </option>
+              ))}
+            </select>
+            {errors.subcategory && <span className="fieldError">{errors.subcategory}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Employment Type *</label>
+            <select
+              className="input"
+              value={form.employment_type}
+              onChange={(e) =>
+                onChange((prev) => ({
+                  ...prev,
+                  employment_type: e.target.value as JobUpsertPayload["employment_type"],
+                }))
+              }
+            >
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Salary Min *</label>
+            <input
+              className="input"
+              type="number"
+              value={form.salary_min}
+              onChange={(e) => onChange((prev) => ({ ...prev, salary_min: e.target.value }))}
+            />
+            {errors.salary_min && <span className="fieldError">{errors.salary_min}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Salary Max *</label>
+            <input
+              className="input"
+              type="number"
+              value={form.salary_max}
+              onChange={(e) => onChange((prev) => ({ ...prev, salary_max: e.target.value }))}
+            />
+            {errors.salary_max && <span className="fieldError">{errors.salary_max}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Location *</label>
+            <input
+              className="input"
+              value={form.location}
+              onChange={(e) => onChange((prev) => ({ ...prev, location: e.target.value }))}
+            />
+            {errors.location && <span className="fieldError">{errors.location}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Application Deadline *</label>
+            <input
+              className="input"
+              type="date"
+              value={form.application_deadline}
+              onChange={(e) => onChange((prev) => ({ ...prev, application_deadline: e.target.value }))}
+            />
+            {errors.application_deadline && <span className="fieldError">{errors.application_deadline}</span>}
+          </div>
+
+          <div className="field">
+            <label className="fieldLabel">Status *</label>
+            <select
+              className="input"
+              value={form.status}
+              onChange={(e) => onChange((prev) => ({ ...prev, status: e.target.value as "draft" | "pending" }))}
+            >
+              <option value="draft">DRAFT</option>
+              <option value="pending">PENDING</option>
+            </select>
+          </div>
+
+          <label className="field fieldCheckbox">
+            <input
+              type="checkbox"
+              checked={form.remote}
+              onChange={(e) => onChange((prev) => ({ ...prev, remote: e.target.checked }))}
+            />
+            <span className="fieldLabel">Is Remote</span>
+          </label>
+
+          <div className="field fieldFull">
+            <label className="fieldLabel">Description *</label>
+            <textarea
+              className="input textarea"
+              rows={4}
+              value={form.description}
+              onChange={(e) => onChange((prev) => ({ ...prev, description: e.target.value }))}
+            />
+            {errors.description && <span className="fieldError">{errors.description}</span>}
+          </div>
+        </div>
+      )}
+
+      <div className="modalActions">
+        <button className="btn btnGhost" type="button" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+        <button
+          className="btn btnGhost btnSm stepperSaveBtn"
+          type="button"
+          onClick={onSave}
+          disabled={saving || loadingCategories}
+        >
+          {saving ? "Posting..." : "Post Job"}
+        </button>
+      </div>
     </div>
   );
 }
