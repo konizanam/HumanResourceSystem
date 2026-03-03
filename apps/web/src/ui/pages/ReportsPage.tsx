@@ -18,16 +18,33 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 
 function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 style={{ margin: "24px 0 12px 0", fontSize: "1.1rem", fontWeight: 600 }}>{children}</h2>;
+  return <h2 className="reportsCardTitle" style={{ margin: "0", fontSize: "1.25rem", fontWeight: 800, color: "var(--heading)", letterSpacing: "0.01em" }}>{children}</h2>;
 }
 
 type ReportType = "job_seekers" | "companies";
 type SortBy = "created_at" | "last_login" | "email" | "name";
 type SortOrder = "ASC" | "DESC";
+type ReportKey =
+  | "applicants_by_job"
+  | "applications_by_status"
+  | "directory"
+  | "monthly_signups"
+  | "hiring_funnel"
+  | "jobs_without_applicants"
+  | "company_hiring_performance";
 
 const PAGE_SIZE = 100;
 const APP_PAGE_SIZE = 100;
 const REPORT_PAGE_SIZE = 10;
+const REPORT_ORDER: ReportKey[] = [
+  "applicants_by_job",
+  "applications_by_status",
+  "directory",
+  "monthly_signups",
+  "hiring_funnel",
+  "jobs_without_applicants",
+  "company_hiring_performance",
+];
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -179,6 +196,29 @@ export function ReportsPage() {
   const [directoryPage, setDirectoryPage] = useState(1);
   const [monthlyPage, setMonthlyPage] = useState(1);
   const [statusPageByKey, setStatusPageByKey] = useState<Record<string, number>>({});
+  const [jobsWithoutApplicantsSearch, setJobsWithoutApplicantsSearch] = useState("");
+  const [companyPerformanceSearch, setCompanyPerformanceSearch] = useState("");
+  const [funnelFilterJobId, setFunnelFilterJobId] = useState("");
+  const [funnelFromDate, setFunnelFromDate] = useState("");
+  const [funnelToDate, setFunnelToDate] = useState("");
+  const [openReports, setOpenReports] = useState<Record<ReportKey, boolean>>({
+    applicants_by_job: false,
+    applications_by_status: false,
+    directory: false,
+    monthly_signups: false,
+    hiring_funnel: false,
+    jobs_without_applicants: false,
+    company_hiring_performance: false,
+  });
+  const [ranReports, setRanReports] = useState<Record<ReportKey, boolean>>({
+    applicants_by_job: false,
+    applications_by_status: false,
+    directory: false,
+    monthly_signups: false,
+    hiring_funnel: false,
+    jobs_without_applicants: false,
+    company_hiring_performance: false,
+  });
 
   const loadDirectoryReport = useCallback(async () => {
     if (!accessToken) return;
@@ -424,6 +464,93 @@ export function ReportsPage() {
 
     return statusOrder.map((status) => ({ status, count: Number(breakdown[status] ?? 0) }));
   }, [applicationsFilteredBase]);
+
+  const funnelFilteredApplications = useMemo(() => {
+    const fromTs = funnelFromDate ? new Date(`${funnelFromDate}T00:00:00`).getTime() : NaN;
+    const toTs = funnelToDate ? new Date(`${funnelToDate}T23:59:59`).getTime() : NaN;
+
+    return allApplications.filter((app) => {
+      if (funnelFilterJobId && String(app.job_id) !== funnelFilterJobId) return false;
+      const appliedTs = app.created_at ? new Date(String(app.created_at)).getTime() : NaN;
+      if (Number.isFinite(fromTs) && (!Number.isFinite(appliedTs) || appliedTs < fromTs)) return false;
+      if (Number.isFinite(toTs) && (!Number.isFinite(appliedTs) || appliedTs > toTs)) return false;
+      return true;
+    });
+  }, [allApplications, funnelFilterJobId, funnelFromDate, funnelToDate]);
+
+  const funnelRows = useMemo(() => {
+    const stages = ["applied", "screening", "longlisted", "shortlisted", "interview", "assessment", "hired"];
+    const total = funnelFilteredApplications.length;
+    const counts = stages.map((stage) => {
+      const count = funnelFilteredApplications.filter((app) => normalizeApplicationStatus(app.workflow_status ?? app.status) === stage).length;
+      const conversion = total > 0 ? `${((count / total) * 100).toFixed(1)}%` : "0.0%";
+      return { stage: titleStatus(stage), count, conversion };
+    });
+    return { total, rows: counts };
+  }, [funnelFilteredApplications]);
+
+  const jobsWithoutApplicantsRows = useMemo(() => {
+    const searchQuery = jobsWithoutApplicantsSearch.trim().toLowerCase();
+    const appsByJob = new Map<string, number>();
+    for (const app of allApplications) {
+      const jobId = String(app.job_id ?? "").trim();
+      if (!jobId) continue;
+      appsByJob.set(jobId, (appsByJob.get(jobId) ?? 0) + 1);
+    }
+
+    return allJobs
+      .filter((job) => {
+        const jobId = String(job.id ?? "").trim();
+        if (!jobId) return false;
+        if ((appsByJob.get(jobId) ?? 0) > 0) return false;
+        if (!searchQuery) return true;
+        const title = String(job.title ?? "").toLowerCase();
+        const company = String(job.company ?? job.company_name ?? "").toLowerCase();
+        return title.includes(searchQuery) || company.includes(searchQuery);
+      })
+      .map((job) => ({
+        id: String(job.id ?? ""),
+        title: String(job.title ?? "—"),
+        company: String(job.company ?? job.company_name ?? "—"),
+        status: titleStatus(String(job.status ?? "unknown")),
+        createdAt: formatDate(job.created_at),
+      }));
+  }, [allJobs, allApplications, jobsWithoutApplicantsSearch]);
+
+  const companyHiringPerformanceRows = useMemo(() => {
+    const searchQuery = companyPerformanceSearch.trim().toLowerCase();
+    const jobsById = new Map<string, JobListItem>();
+    for (const job of allJobs) jobsById.set(String(job.id ?? ""), job);
+
+    const map = new Map<string, { company: string; jobs: Set<string>; applicants: number; hired: number; rejected: number }>();
+
+    for (const app of allApplications) {
+      const job = jobsById.get(String(app.job_id ?? ""));
+      const company = String(job?.company ?? job?.company_name ?? "Unknown Company");
+      const key = company.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { company, jobs: new Set<string>(), applicants: 0, hired: 0, rejected: 0 });
+      }
+      const bucket = map.get(key)!;
+      bucket.jobs.add(String(app.job_id ?? ""));
+      bucket.applicants += 1;
+      const normalized = normalizeApplicationStatus(app.workflow_status ?? app.status);
+      if (normalized === "hired") bucket.hired += 1;
+      if (normalized === "rejected") bucket.rejected += 1;
+    }
+
+    return Array.from(map.values())
+      .filter((row) => !searchQuery || row.company.toLowerCase().includes(searchQuery))
+      .sort((a, b) => b.applicants - a.applicants)
+      .map((row) => ({
+        company: row.company,
+        jobs: row.jobs.size,
+        applicants: row.applicants,
+        hired: row.hired,
+        rejected: row.rejected,
+        hireRate: row.applicants > 0 ? `${((row.hired / row.applicants) * 100).toFixed(1)}%` : "0.0%",
+      }));
+  }, [allJobs, allApplications, companyPerformanceSearch]);
 
   const filteredApplicationsBySelectedStatus = useMemo(() => {
     if (!selectedStatus) return [];
@@ -702,6 +829,9 @@ export function ReportsPage() {
     const reportRows = buildDirectoryExportRows();
     const workbook = XLSX.utils.book_new();
 
+    const reportSheet = XLSX.utils.json_to_sheet(reportRows);
+    XLSX.utils.book_append_sheet(workbook, reportSheet, "Records");
+
     const summarySheet = XLSX.utils.json_to_sheet([
       { Metric: "Report Type", Value: reportType === "job_seekers" ? "Job Seekers" : "Companies" },
       { Metric: "Generated At", Value: formatDate(lastGeneratedAt) },
@@ -712,9 +842,6 @@ export function ReportsPage() {
       { Metric: "Unverified", Value: metrics.unverifiedUsers },
     ]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-
-    const reportSheet = XLSX.utils.json_to_sheet(reportRows);
-    XLSX.utils.book_append_sheet(workbook, reportSheet, "Directory Records");
 
     const monthlySheet = XLSX.utils.json_to_sheet(registrationByMonth.map((item) => ({
       Month: item.month,
@@ -762,13 +889,16 @@ export function ReportsPage() {
     if (rows.length === 0) return;
 
     const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applicants");
+
     const summary = XLSX.utils.json_to_sheet([
+      { Metric: "Report", Value: "Applicants Report By Job" },
       { Metric: "Job", Value: selectedJobTitle || selectedJobId },
-      { Metric: "Applicants", Value: jobApplicantRows.length },
+      { Metric: "Company", Value: selectedJobCompany || "—" },
+      { Metric: "Total Applicants", Value: filteredJobApplicantRows.length },
       { Metric: "Generated At", Value: formatDate(new Date().toISOString()) },
     ]);
     XLSX.utils.book_append_sheet(workbook, summary, "Summary");
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applicants");
 
     const stamp = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(workbook, `job-applicants-${stamp}.xlsx`);
@@ -867,6 +997,132 @@ export function ReportsPage() {
     doc.save(`applications-${selectedStatus}-${stamp}.pdf`);
   }
 
+  function exportMonthlySignupsExcel() {
+    const rows = registrationByMonth.map((item) => ({ Month: item.month, Count: item.count }));
+    if (rows.length === 0) return;
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Monthly Signups");
+    XLSX.writeFile(workbook, `directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function exportMonthlySignupsPdf() {
+    const rows = registrationByMonth.map((item) => ({ Month: item.month, Count: item.count }));
+    if (rows.length === 0) return;
+    const columns = Object.keys(rows[0]);
+    const body = rows.map((row) => columns.map((column) => String((row as any)[column] ?? "")));
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFillColor(26, 54, 93);
+    doc.rect(0, 0, 297, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text("Directory Monthly Signups", 14, 12);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${formatDate(new Date().toISOString())}`, 14, 20);
+    doc.setTextColor(40, 40, 40);
+    autoTable(doc, {
+      startY: 34,
+      head: [columns],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [26, 54, 93], textColor: [255, 255, 255] },
+    });
+    doc.save(`directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  function exportFunnelExcel() {
+    if (funnelRows.rows.length === 0) return;
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(funnelRows.rows), "Hiring Funnel");
+    XLSX.writeFile(workbook, `hiring-funnel-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function exportFunnelPdf() {
+    if (funnelRows.rows.length === 0) return;
+    const columns = Object.keys(funnelRows.rows[0]);
+    const body = funnelRows.rows.map((row) => columns.map((column) => String((row as any)[column] ?? "")));
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFillColor(31, 111, 235);
+    doc.rect(0, 0, 297, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text("Hiring Funnel Overview", 14, 12);
+    doc.setFontSize(10);
+    doc.text(`Total Applications: ${funnelRows.total}`, 14, 20);
+    doc.setTextColor(40, 40, 40);
+    autoTable(doc, {
+      startY: 34,
+      head: [columns],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 235], textColor: [255, 255, 255] },
+    });
+    doc.save(`hiring-funnel-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  function exportJobsWithoutApplicantsExcel() {
+    if (jobsWithoutApplicantsRows.length === 0) return;
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(jobsWithoutApplicantsRows), "Jobs Without Applicants");
+    XLSX.writeFile(workbook, `jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function exportJobsWithoutApplicantsPdf() {
+    if (jobsWithoutApplicantsRows.length === 0) return;
+    const columns = Object.keys(jobsWithoutApplicantsRows[0]);
+    const body = jobsWithoutApplicantsRows.map((row) => columns.map((column) => String((row as any)[column] ?? "")));
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFillColor(73, 95, 152);
+    doc.rect(0, 0, 297, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text("Jobs Without Applicants", 14, 12);
+    doc.setFontSize(10);
+    doc.text(`Records: ${jobsWithoutApplicantsRows.length}`, 14, 20);
+    doc.setTextColor(40, 40, 40);
+    autoTable(doc, {
+      startY: 34,
+      head: [columns],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [73, 95, 152], textColor: [255, 255, 255] },
+    });
+    doc.save(`jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  function exportCompanyPerformanceExcel() {
+    if (companyHiringPerformanceRows.length === 0) return;
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(companyHiringPerformanceRows), "Company Performance");
+    XLSX.writeFile(workbook, `company-hiring-performance-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function exportCompanyPerformancePdf() {
+    if (companyHiringPerformanceRows.length === 0) return;
+    const columns = Object.keys(companyHiringPerformanceRows[0]);
+    const body = companyHiringPerformanceRows.map((row) => columns.map((column) => String((row as any)[column] ?? "")));
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFillColor(26, 54, 93);
+    doc.rect(0, 0, 297, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text("Company Hiring Performance", 14, 12);
+    doc.setFontSize(10);
+    doc.text(`Records: ${companyHiringPerformanceRows.length}`, 14, 20);
+    doc.setTextColor(40, 40, 40);
+    autoTable(doc, {
+      startY: 34,
+      head: [columns],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [26, 54, 93], textColor: [255, 255, 255] },
+    });
+    doc.save(`company-hiring-performance-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
   useEffect(() => {
     setStatusPageByKey({});
   }, [applicationFilterJobId, applicationFilterSearch, applicationFilterFromDate, applicationFilterToDate, allApplications]);
@@ -901,6 +1157,40 @@ export function ReportsPage() {
     );
   }
 
+  function toggleReport(report: ReportKey) {
+    setOpenReports((prev) => ({ ...prev, [report]: !prev[report] }));
+  }
+
+  function reportButtonClass(report: ReportKey) {
+    const idx = REPORT_ORDER.indexOf(report);
+    return idx % 2 === 0 ? "btn btnPrimary btnSm" : "btn btnGhost btnSm";
+  }
+
+  function renderCollapsedArrow(report: ReportKey) {
+    return (
+      <div className="reportsExpandWrap">
+        <button
+          type="button"
+          className="reportsExpandBracket"
+          aria-label="Expand report"
+          onClick={() => toggleReport(report)}
+        >
+          <span className="reportsExpandGlyph">⌄</span>
+        </button>
+      </div>
+    );
+  }
+
+  async function runReport(report: ReportKey) {
+    if (report === "directory") {
+      await loadDirectoryReport();
+    }
+    if (report === "applications_by_status" || report === "hiring_funnel" || report === "jobs_without_applicants" || report === "company_hiring_performance") {
+      await loadAdminStatsAndApplications();
+    }
+    setRanReports((prev) => ({ ...prev, [report]: true }));
+  }
+
   if (loading) {
     return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Reports &amp; Statistics</h1></div><p className="pageText">Loading…</p></div>);
   }
@@ -917,36 +1207,53 @@ export function ReportsPage() {
   return (
     <div className="page">
       <div className="companiesHeader">
-        <h1 className="pageTitle">Reports &amp; Statistics</h1>
+        <h1 className="pageTitle" style={{ fontSize: "2rem", fontWeight: 800, color: "var(--heading)", letterSpacing: "0.02em" }}>Reports &amp; Statistics</h1>
       </div>
 
       {error ? <div className="errorBox">{error}</div> : null}
 
       {canViewApplicantsReport ? (
         <>
-          <div className="dropPanel" style={{ marginTop: 12, padding: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <SectionTitle>Applicants Report By Specific Job</SectionTitle>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-              <button
-                type="button"
-                className="btn btnPrimary btnSm"
-                disabled={filteredJobApplicantRows.length === 0}
-                onClick={exportApplicantsPdf}
-              >
-                Export Applicants PDF
-              </button>
-              <button
-                type="button"
-                className="btn btnPrimary btnSm"
-                disabled={filteredJobApplicantRows.length === 0}
-                onClick={exportApplicantsExcel}
-              >
-                Export Applicants Excel
-              </button>
+          <div className={`dropPanel reportsCard ${openReports.applicants_by_job ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SectionTitle>Applicants Report By Specific Job</SectionTitle>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={reportButtonClass("applicants_by_job")}
+                  onClick={() => toggleReport("applicants_by_job")}
+                >
+                  {openReports.applicants_by_job ? "Collapse" : "Expand"}
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applicants_by_job")}
+                  onClick={() => void runReport("applicants_by_job")}
+                >
+                  Run Report
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applicants_by_job")}
+                  disabled={filteredJobApplicantRows.length === 0}
+                  onClick={exportApplicantsPdf}
+                >
+                  Export Applicants PDF
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applicants_by_job")}
+                  disabled={filteredJobApplicantRows.length === 0}
+                  onClick={exportApplicantsExcel}
+                >
+                  Export Applicants Excel
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+
+            {openReports.applicants_by_job ? (
+              <>
+                <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
             <div style={{ minWidth: 360, flex: "1 1 360px" }}>
               <label className="fieldLabel">Select Job (Type to search)</label>
               <div style={{ position: "relative" }}>
@@ -1047,16 +1354,20 @@ export function ReportsPage() {
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
               <button
                 type="button"
-                className="btn btnPrimary btnSm"
+                className={reportButtonClass("applicants_by_job")}
                 disabled={!selectedJobId || loadingJobApplicants}
                 onClick={() => void loadApplicantsForSelectedJob()}
               >
                 {loadingJobApplicants ? "Loading..." : "Generate Applicants Report"}
               </button>
             </div>
-          </div>
+                </div>
 
-          <div className="tableWrap">
+                {!ranReports.applicants_by_job ? (
+                  <p className="pageText">Click Run Report, choose a job, then click Generate Applicants Report.</p>
+                ) : null}
+
+                <div className="tableWrap">
             <table className="table companiesTable">
               <thead>
                 <tr>
@@ -1108,39 +1419,61 @@ export function ReportsPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          {renderPager(
-            pagedApplicantsRows.page,
-            pagedApplicantsRows.pages,
-            pagedApplicantsRows.total,
-            setApplicantsPage,
-            "Applicants report pagination",
-          )}
+                </div>
+                {renderPager(
+                  pagedApplicantsRows.page,
+                  pagedApplicantsRows.pages,
+                  pagedApplicantsRows.total,
+                  setApplicantsPage,
+                  "Applicants report pagination",
+                )}
+              </>
+            ) : renderCollapsedArrow("applicants_by_job")}
           </div>
 
-          <div className="dropPanel" style={{ marginTop: 12, padding: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <SectionTitle>Applications by Status</SectionTitle>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-              <button
-                type="button"
-                className="btn btnPrimary btnSm"
-                disabled={!selectedStatus || filteredApplicationsBySelectedStatus.length === 0}
-                onClick={exportStatusPdf}
-              >
-                Export Status PDF
-              </button>
-              <button
-                type="button"
-                className="btn btnPrimary btnSm"
-                disabled={!selectedStatus || filteredApplicationsBySelectedStatus.length === 0}
-                onClick={exportStatusExcel}
-              >
-                Export Status Excel
-              </button>
+          <div className={`dropPanel reportsCard ${openReports.applications_by_status ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SectionTitle>Applications by Status</SectionTitle>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={reportButtonClass("applications_by_status")}
+                  onClick={() => toggleReport("applications_by_status")}
+                >
+                  {openReports.applications_by_status ? "Collapse" : "Expand"}
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applications_by_status")}
+                  onClick={() => void runReport("applications_by_status")}
+                >
+                  Run Report
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applications_by_status")}
+                  disabled={!selectedStatus || filteredApplicationsBySelectedStatus.length === 0}
+                  onClick={exportStatusPdf}
+                >
+                  Export Status PDF
+                </button>
+                <button
+                  type="button"
+                  className={reportButtonClass("applications_by_status")}
+                  disabled={!selectedStatus || filteredApplicationsBySelectedStatus.length === 0}
+                  onClick={exportStatusExcel}
+                >
+                  Export Status Excel
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+
+            {openReports.applications_by_status ? (
+              <>
+                {!ranReports.applications_by_status ? (
+                  <p className="pageText">Click Run Report to load latest status analytics.</p>
+                ) : null}
+                <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
             <div style={{ minWidth: 280, flex: "1 1 280px" }}>
               <label className="fieldLabel">Filter by Job</label>
               <select className="input" value={applicationFilterJobId} onChange={(e) => setApplicationFilterJobId(e.target.value)}>
@@ -1167,8 +1500,8 @@ export function ReportsPage() {
               <label className="fieldLabel">Applied To</label>
               <input className="input" type="date" value={applicationFilterToDate} onChange={(e) => setApplicationFilterToDate(e.target.value)} />
             </div>
-          </div>
-          <div className="tableWrap">
+                </div>
+                <div className="tableWrap">
             <table className="table companiesTable">
               <thead>
                 <tr>
@@ -1196,7 +1529,7 @@ export function ReportsPage() {
                           <td className="tdRight">
                             <button
                               type="button"
-                              className="btn btnPrimary btnSm"
+                              className={reportButtonClass("applications_by_status")}
                               onClick={() => onClickStatus(row.status)}
                             >
                               {isOpen ? "Hide" : "View"}
@@ -1259,7 +1592,9 @@ export function ReportsPage() {
                 )}
               </tbody>
             </table>
-          </div>
+                </div>
+              </>
+            ) : renderCollapsedArrow("applications_by_status")}
           </div>
         </>
       ) : (
@@ -1268,185 +1603,372 @@ export function ReportsPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <SectionTitle>Company & Job Seeker Report</SectionTitle>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-          <button type="button" className="btn btnPrimary btnSm" onClick={loadDirectoryReport} disabled={loading}>Generate Directory Report</button>
-          <button type="button" className="btn btnPrimary btnSm" onClick={exportDirectoryPdf} disabled={loading || rows.length === 0}>Export Directory PDF</button>
-          <button type="button" className="btn btnPrimary btnSm" onClick={exportDirectoryExcel} disabled={loading || rows.length === 0}>Export Directory Excel</button>
+      <div className={`dropPanel reportsCard ${openReports.directory ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SectionTitle>Company &amp; Job Seeker Directory Report</SectionTitle>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <button type="button" className={reportButtonClass("directory")} onClick={() => toggleReport("directory")}>{openReports.directory ? "Collapse" : "Expand"}</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={() => void runReport("directory")} disabled={loading}>Run Report</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryPdf} disabled={loading || rows.length === 0}>Export Directory PDF</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryExcel} disabled={loading || rows.length === 0}>Export Directory Excel</button>
+          </div>
         </div>
-      </div>
 
-      <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-        <div style={{ minWidth: 180, flex: "1 1 180px" }}>
-          <label className="fieldLabel">Report Type</label>
-          <select className="input" value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
-            <option value="job_seekers">Job Seekers</option>
-            <option value="companies">Companies</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 220, flex: "1 1 220px" }}>
-          <label className="fieldLabel">Search</label>
-          <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, email, company" />
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">Status</label>
-          <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All</option>
-            <option value="active">Active</option>
-            <option value="blocked">Blocked</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">Gender</label>
-          <select
-            className="input"
-            value={directoryGenderFilter}
-            onChange={(e) => setDirectoryGenderFilter(e.target.value)}
-            disabled={reportType !== "job_seekers"}
-          >
-            <option value="">All</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">Verified</label>
-          <select className="input" value={verified} onChange={(e) => setVerified(e.target.value as "" | "true" | "false") }>
-            <option value="">All</option>
-            <option value="true">Verified</option>
-            <option value="false">Unverified</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">From Date</label>
-          <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">To Date</label>
-          <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        </div>
-        <div style={{ minWidth: 150, flex: "1 1 150px" }}>
-          <label className="fieldLabel">Sort By</label>
-          <select className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
-            <option value="created_at">Created Date</option>
-            <option value="last_login">Last Login</option>
-            <option value="email">Email</option>
-            <option value="name">Name</option>
-          </select>
-        </div>
-        <div style={{ minWidth: 120, flex: "1 1 120px" }}>
-          <label className="fieldLabel">Sort Order</label>
-          <select className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)}>
-            <option value="DESC">Descending</option>
-            <option value="ASC">Ascending</option>
-          </select>
-        </div>
-      </div>
+        {openReports.directory ? (
+          <>
+            {!ranReports.directory ? <p className="pageText">Click Run Report to load the directory with your filters.</p> : null}
+            <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+              <div style={{ minWidth: 180, flex: "1 1 180px" }}>
+                <label className="fieldLabel">Report Type</label>
+                <select className="input" value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
+                  <option value="job_seekers">Job Seekers</option>
+                  <option value="companies">Companies</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 220, flex: "1 1 220px" }}>
+                <label className="fieldLabel">Search</label>
+                <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, email, company" />
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Status</label>
+                <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="">All</option>
+                  <option value="active">Active</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Gender</label>
+                <select
+                  className="input"
+                  value={directoryGenderFilter}
+                  onChange={(e) => setDirectoryGenderFilter(e.target.value)}
+                  disabled={reportType !== "job_seekers"}
+                >
+                  <option value="">All</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Verified</label>
+                <select className="input" value={verified} onChange={(e) => setVerified(e.target.value as "" | "true" | "false") }>
+                  <option value="">All</option>
+                  <option value="true">Verified</option>
+                  <option value="false">Unverified</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">From Date</label>
+                <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">To Date</label>
+                <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Sort By</label>
+                <select className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+                  <option value="created_at">Created Date</option>
+                  <option value="last_login">Last Login</option>
+                  <option value="email">Email</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+              <div style={{ minWidth: 120, flex: "1 1 120px" }}>
+                <label className="fieldLabel">Sort Order</label>
+                <select className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)}>
+                  <option value="DESC">Descending</option>
+                  <option value="ASC">Ascending</option>
+                </select>
+              </div>
+            </div>
 
-      {!canManageUsers && reportType === "job_seekers" ? (
-        <div className="errorBox" style={{ marginTop: 12 }}>
-          Job seeker directory reports require MANAGE_USERS permission.
-        </div>
-      ) : null}
+            {!canManageUsers && reportType === "job_seekers" ? (
+              <div className="errorBox" style={{ marginTop: 12 }}>
+                Job seeker directory reports require MANAGE_USERS permission.
+              </div>
+            ) : null}
 
-      <div className="dropPanel" style={{ marginTop: 12, padding: 12 }}>
-        <SectionTitle>Directory Monthly Signups</SectionTitle>
-        <div className="tableWrap">
-          <table className="table companiesTable">
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th className="thRight">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedMonthlyRows.total === 0 ? (
-                <tr><td colSpan={2}>No data available.</td></tr>
-              ) : (
-                pagedMonthlyRows.rows.map((item) => (
-                  <tr key={item.month}>
-                    <td>{item.month}</td>
-                    <td className="tdRight">{item.count}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {renderPager(pagedMonthlyRows.page, pagedMonthlyRows.pages, pagedMonthlyRows.total, setMonthlyPage, "Monthly signups pagination")}
-      </div>
-
-      <div className="dropPanel" style={{ marginTop: 12, padding: 12 }}>
-        <SectionTitle>{reportType === "job_seekers" ? "Job Seekers" : "Companies"} Records</SectionTitle>
-        <div className="tableWrap">
-          <table className="table companiesTable">
-            <thead>
-              <tr>
-                {reportType === "job_seekers" ? (
-                  <>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Gender</th>
-                    <th>Status</th>
-                    <th>Verified</th>
-                    <th>Created</th>
-                    <th>Last Login</th>
-                  </>
-                ) : (
-                  <>
-                    <th>Company</th>
-                    <th>Contact</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Status</th>
-                    <th>Verified</th>
-                    <th>Created</th>
-                    <th>Last Login</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {pagedDirectoryRows.total === 0 ? (
-                <tr><td colSpan={reportType === "job_seekers" ? 8 : 8}>No records found for the selected filters.</td></tr>
-              ) : (
-                pagedDirectoryRows.rows.map((row) => (
-                  <tr key={row.id}>
+            <div className="tableWrap" style={{ marginTop: 12 }}>
+              <table className="table companiesTable">
+                <thead>
+                  <tr>
                     {reportType === "job_seekers" ? (
                       <>
-                        <td>{fullName(row)}</td>
-                        <td>{row.email ?? "—"}</td>
-                        <td>{row.phone ?? "—"}</td>
-                        <td>{titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown")}</td>
-                        <td>{statusLabel(row)}</td>
-                        <td>{row.email_verified ? "Yes" : "No"}</td>
-                        <td>{formatDate(row.created_at)}</td>
-                        <td>{formatDate(row.last_login)}</td>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Gender</th>
+                        <th>Status</th>
+                        <th>Verified</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
                       </>
                     ) : (
                       <>
-                        <td>{row.company_name ?? "—"}</td>
-                        <td>{fullName(row)}</td>
-                        <td>{row.email ?? "—"}</td>
-                        <td>{row.phone ?? "—"}</td>
-                        <td>{statusLabel(row)}</td>
-                        <td>{row.email_verified ? "Yes" : "No"}</td>
-                        <td>{formatDate(row.created_at)}</td>
-                        <td>{formatDate(row.last_login)}</td>
+                        <th>Company</th>
+                        <th>Contact</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th>Verified</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
                       </>
                     )}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {renderPager(pagedDirectoryRows.page, pagedDirectoryRows.pages, pagedDirectoryRows.total, setDirectoryPage, "Directory records pagination")}
+                </thead>
+                <tbody>
+                  {pagedDirectoryRows.total === 0 ? (
+                    <tr><td colSpan={8}>No records found for the selected filters.</td></tr>
+                  ) : (
+                    pagedDirectoryRows.rows.map((row) => (
+                      <tr key={row.id}>
+                        {reportType === "job_seekers" ? (
+                          <>
+                            <td>{fullName(row)}</td>
+                            <td>{row.email ?? "—"}</td>
+                            <td>{row.phone ?? "—"}</td>
+                            <td>{titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown")}</td>
+                            <td>{statusLabel(row)}</td>
+                            <td>{row.email_verified ? "Yes" : "No"}</td>
+                            <td>{formatDate(row.created_at)}</td>
+                            <td>{formatDate(row.last_login)}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{row.company_name ?? "—"}</td>
+                            <td>{fullName(row)}</td>
+                            <td>{row.email ?? "—"}</td>
+                            <td>{row.phone ?? "—"}</td>
+                            <td>{statusLabel(row)}</td>
+                            <td>{row.email_verified ? "Yes" : "No"}</td>
+                            <td>{formatDate(row.created_at)}</td>
+                            <td>{formatDate(row.last_login)}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {renderPager(pagedDirectoryRows.page, pagedDirectoryRows.pages, pagedDirectoryRows.total, setDirectoryPage, "Directory records pagination")}
+          </>
+        ) : renderCollapsedArrow("directory")}
       </div>
+
+      <div className={`dropPanel reportsCard ${openReports.monthly_signups ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SectionTitle>Directory Monthly Signups</SectionTitle>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => toggleReport("monthly_signups")}>{openReports.monthly_signups ? "Collapse" : "Expand"}</button>
+            <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => void runReport("monthly_signups")}>Run Report</button>
+            <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsPdf} disabled={registrationByMonth.length === 0}>Export Monthly PDF</button>
+            <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsExcel} disabled={registrationByMonth.length === 0}>Export Monthly Excel</button>
+          </div>
+        </div>
+        {openReports.monthly_signups ? (
+          <>
+            {!ranReports.monthly_signups ? <p className="pageText">Click Run Report to view signup trends.</p> : null}
+            <div className="tableWrap">
+              <table className="table companiesTable">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th className="thRight">Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedMonthlyRows.total === 0 ? (
+                    <tr><td colSpan={2}>No data available.</td></tr>
+                  ) : (
+                    pagedMonthlyRows.rows.map((item) => (
+                      <tr key={item.month}>
+                        <td>{item.month}</td>
+                        <td className="tdRight">{item.count}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {renderPager(pagedMonthlyRows.page, pagedMonthlyRows.pages, pagedMonthlyRows.total, setMonthlyPage, "Monthly signups pagination")}
+          </>
+        ) : renderCollapsedArrow("monthly_signups")}
+      </div>
+
+      {canViewApplicantsReport ? (
+        <>
+          <div className={`dropPanel reportsCard ${openReports.hiring_funnel ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SectionTitle>Hiring Funnel Overview</SectionTitle>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => toggleReport("hiring_funnel")}>{openReports.hiring_funnel ? "Collapse" : "Expand"}</button>
+                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => void runReport("hiring_funnel")}>Run Report</button>
+                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelPdf} disabled={funnelRows.rows.length === 0}>Export Funnel PDF</button>
+                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelExcel} disabled={funnelRows.rows.length === 0}>Export Funnel Excel</button>
+              </div>
+            </div>
+            {openReports.hiring_funnel ? (
+              <>
+                <div className="dropPanel" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div style={{ minWidth: 280, flex: "1 1 280px" }}>
+                    <label className="fieldLabel">Filter by Job</label>
+                    <select className="input" value={funnelFilterJobId} onChange={(e) => setFunnelFilterJobId(e.target.value)}>
+                      <option value="">All jobs</option>
+                      {allJobs.map((job) => (
+                        <option key={job.id} value={job.id}>{job.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ minWidth: 160, flex: "1 1 160px" }}>
+                    <label className="fieldLabel">Applied From</label>
+                    <input className="input" type="date" value={funnelFromDate} onChange={(e) => setFunnelFromDate(e.target.value)} />
+                  </div>
+                  <div style={{ minWidth: 160, flex: "1 1 160px" }}>
+                    <label className="fieldLabel">Applied To</label>
+                    <input className="input" type="date" value={funnelToDate} onChange={(e) => setFunnelToDate(e.target.value)} />
+                  </div>
+                </div>
+                {!ranReports.hiring_funnel ? <p className="pageText">Click Run Report to refresh funnel metrics.</p> : null}
+                <div className="tableWrap">
+                  <table className="table companiesTable">
+                    <thead>
+                      <tr>
+                        <th>Stage</th>
+                        <th className="thRight">Applicants</th>
+                        <th className="thRight">Conversion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnelRows.rows.map((row) => (
+                        <tr key={row.stage}>
+                          <td>{row.stage}</td>
+                          <td className="tdRight">{row.count}</td>
+                          <td className="tdRight">{row.conversion}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="pageText" style={{ marginTop: 8 }}>Total applications in funnel: {funnelRows.total}</p>
+              </>
+            ) : renderCollapsedArrow("hiring_funnel")}
+          </div>
+
+          <div className={`dropPanel reportsCard ${openReports.jobs_without_applicants ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SectionTitle>Jobs Without Applicants</SectionTitle>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => toggleReport("jobs_without_applicants")}>{openReports.jobs_without_applicants ? "Collapse" : "Expand"}</button>
+                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => void runReport("jobs_without_applicants")}>Run Report</button>
+                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsPdf} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs PDF</button>
+                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsExcel} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs Excel</button>
+              </div>
+            </div>
+            {openReports.jobs_without_applicants ? (
+              <>
+                <div style={{ minWidth: 260, marginBottom: 10 }}>
+                  <label className="fieldLabel">Search Job/Company</label>
+                  <input
+                    className="input"
+                    value={jobsWithoutApplicantsSearch}
+                    onChange={(e) => setJobsWithoutApplicantsSearch(e.target.value)}
+                    placeholder="Type job title or company"
+                  />
+                </div>
+                {!ranReports.jobs_without_applicants ? <p className="pageText">Click Run Report to list open gaps.</p> : null}
+                <div className="tableWrap">
+                  <table className="table companiesTable">
+                    <thead>
+                      <tr>
+                        <th>Job</th>
+                        <th>Company</th>
+                        <th>Status</th>
+                        <th>Created At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobsWithoutApplicantsRows.length === 0 ? (
+                        <tr><td colSpan={4}>All visible jobs currently have applicants.</td></tr>
+                      ) : (
+                        jobsWithoutApplicantsRows.map((row) => (
+                          <tr key={row.id}>
+                            <td>{row.title}</td>
+                            <td>{row.company}</td>
+                            <td>{row.status}</td>
+                            <td>{row.createdAt}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : renderCollapsedArrow("jobs_without_applicants")}
+          </div>
+
+          <div className={`dropPanel reportsCard ${openReports.company_hiring_performance ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SectionTitle>Company Hiring Performance</SectionTitle>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => toggleReport("company_hiring_performance")}>{openReports.company_hiring_performance ? "Collapse" : "Expand"}</button>
+                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => void runReport("company_hiring_performance")}>Run Report</button>
+                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformancePdf} disabled={companyHiringPerformanceRows.length === 0}>Export Performance PDF</button>
+                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformanceExcel} disabled={companyHiringPerformanceRows.length === 0}>Export Performance Excel</button>
+              </div>
+            </div>
+            {openReports.company_hiring_performance ? (
+              <>
+                <div style={{ minWidth: 260, marginBottom: 10 }}>
+                  <label className="fieldLabel">Filter Company</label>
+                  <input
+                    className="input"
+                    value={companyPerformanceSearch}
+                    onChange={(e) => setCompanyPerformanceSearch(e.target.value)}
+                    placeholder="Type company name"
+                  />
+                </div>
+                {!ranReports.company_hiring_performance ? <p className="pageText">Click Run Report to refresh company performance.</p> : null}
+                <div className="tableWrap">
+                  <table className="table companiesTable">
+                    <thead>
+                      <tr>
+                        <th>Company</th>
+                        <th className="thRight">Jobs</th>
+                        <th className="thRight">Applicants</th>
+                        <th className="thRight">Hired</th>
+                        <th className="thRight">Rejected</th>
+                        <th className="thRight">Hire Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companyHiringPerformanceRows.length === 0 ? (
+                        <tr><td colSpan={6}>No company performance rows for current scope.</td></tr>
+                      ) : (
+                        companyHiringPerformanceRows.map((row) => (
+                          <tr key={row.company}>
+                            <td>{row.company}</td>
+                            <td className="tdRight">{row.jobs}</td>
+                            <td className="tdRight">{row.applicants}</td>
+                            <td className="tdRight">{row.hired}</td>
+                            <td className="tdRight">{row.rejected}</td>
+                            <td className="tdRight">{row.hireRate}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : renderCollapsedArrow("company_hiring_performance")}
+          </div>
+        </>
+      ) : null}
 
 
       <p className="pageText" style={{ marginTop: 10 }}>
