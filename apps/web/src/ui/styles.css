@@ -188,21 +188,24 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid var(--stroke);
-  background: transparent;
-  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--stroke) 42%, var(--muted));
+  background: var(--card);
+  color: var(--heading);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 15px;
   font-family: inherit;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   line-height: 1.4;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--stroke) 50%, var(--muted));
+  border-color: color-mix(in srgb, var(--menu-icon) 58%, var(--stroke));
+  background: color-mix(in srgb, var(--accent-soft) 46%, var(--card));
+  color: var(--heading);
 }
 
 .btn:focus-visible {
@@ -222,14 +225,15 @@ a {
 }
 
 .btnGhost {
-  background: var(--card2);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--card2) 72%, var(--card));
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--stroke) 46%, var(--menu-icon));
 }
 
 .btnGhost:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--card2) 80%, var(--stroke));
-  color: var(--text);
-  border-color: var(--stroke);
+  background: color-mix(in srgb, var(--accent-soft) 56%, var(--card));
+  color: var(--heading);
+  border-color: color-mix(in srgb, var(--menu-icon) 62%, var(--stroke));
 }
 
 .fullActionBtn {
@@ -2747,12 +2751,30 @@ input[type="radio"][required] {
 
 .reportsCardCollapsed {
   border-bottom: none;
-  padding-bottom: 8px;
 }
 
 .reportsCardTitle {
   text-align: left;
   width: auto;
+}
+
+.reportsCardHint {
+  width: 100%;
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+  text-align: left;
+}
+
+.reportsCardActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  justify-content: flex-end;
 }
 
 .reportsExpandWrap {
@@ -2803,6 +2825,54 @@ input[type="radio"][required] {
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   z-index: 1;
   margin-top: -1px;
+}
+
+.reportsCardCollapsed .reportsExpandWrap {
+  margin: 10px -12px -13px;
+}
+
+.reportsCardCollapsed .reportsExpandWrap::before,
+.reportsCardCollapsed .reportsExpandWrap::after {
+  top: 0;
+  height: 0;
+  width: calc(50% - 36px);
+  border-bottom: none;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 34%, var(--stroke));
+}
+
+.reportsCardCollapsed .reportsExpandWrap::before {
+  left: 0;
+  border-left: none;
+  border-top-left-radius: 0;
+}
+
+.reportsCardCollapsed .reportsExpandWrap::after {
+  right: 0;
+  border-right: none;
+  border-top-right-radius: 0;
+}
+
+.reportsCardCollapsed .reportsExpandBracket {
+  transform: translateY(-1px);
+}
+
+.pendingApplicationCard {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--stroke));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 86%, var(--accent-soft)) 0%,
+    color-mix(in srgb, var(--card2) 80%, var(--accent-soft)) 100%
+  );
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--menu-icon) 14%, transparent);
+  margin-bottom: 14px;
+}
+
+.pendingApplicationBtn {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .reportsExpandBracket:hover {
@@ -2901,19 +2971,21 @@ input[type="radio"][required] {
 .actionMenuItem {
   width: 100%;
   text-align: left;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--stroke) 68%, transparent);
+  background: color-mix(in srgb, var(--card2) 58%, var(--card));
   border-radius: 8px;
   padding: 7px 10px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--heading);
   font: inherit;
   font-size: 13px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .actionMenuItem:hover {
-  background: var(--card2);
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--card));
+  border-color: color-mix(in srgb, var(--menu-icon) 54%, var(--stroke));
 }
 
 .actionMenuItemDanger {

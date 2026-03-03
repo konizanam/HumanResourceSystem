@@ -36,15 +36,6 @@ type ReportKey =
 const PAGE_SIZE = 100;
 const APP_PAGE_SIZE = 100;
 const REPORT_PAGE_SIZE = 10;
-const REPORT_ORDER: ReportKey[] = [
-  "applicants_by_job",
-  "applications_by_status",
-  "directory",
-  "monthly_signups",
-  "hiring_funnel",
-  "jobs_without_applicants",
-  "company_hiring_performance",
-];
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -1162,8 +1153,21 @@ export function ReportsPage() {
   }
 
   function reportButtonClass(report: ReportKey) {
-    const idx = REPORT_ORDER.indexOf(report);
-    return idx % 2 === 0 ? "btn btnPrimary btnSm" : "btn btnGhost btnSm";
+    void report;
+    return "btn btnPrimary btnSm";
+  }
+
+  function reportSummary(report: ReportKey) {
+    const summaries: Record<ReportKey, string> = {
+      applicants_by_job: "Shows applicant details for a selected job and application stage.",
+      applications_by_status: "Breaks down application totals by status with drill-down records.",
+      directory: "Lists job seeker or company profiles using selected filters.",
+      monthly_signups: "Shows how many new directory users signed up each month.",
+      hiring_funnel: "Summarizes movement and conversion across hiring workflow stages.",
+      jobs_without_applicants: "Highlights active jobs that currently have zero applicants.",
+      company_hiring_performance: "Compares company-level hiring outcomes and hire rates.",
+    };
+    return summaries[report];
   }
 
   function renderCollapsedArrow(report: ReportKey) {
@@ -1217,7 +1221,9 @@ export function ReportsPage() {
           <div className={`dropPanel reportsCard ${openReports.applicants_by_job ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <SectionTitle>Applicants Report By Specific Job</SectionTitle>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              {!openReports.applicants_by_job ? <p className="reportsCardHint">{reportSummary("applicants_by_job")}</p> : null}
+              {openReports.applicants_by_job ? (
+              <div className="reportsCardActions">
                 <button
                   type="button"
                   className={reportButtonClass("applicants_by_job")}
@@ -1249,6 +1255,7 @@ export function ReportsPage() {
                   Export Applicants Excel
                 </button>
               </div>
+              ) : null}
             </div>
 
             {openReports.applicants_by_job ? (
@@ -1434,7 +1441,9 @@ export function ReportsPage() {
           <div className={`dropPanel reportsCard ${openReports.applications_by_status ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <SectionTitle>Applications by Status</SectionTitle>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              {!openReports.applications_by_status ? <p className="reportsCardHint">{reportSummary("applications_by_status")}</p> : null}
+              {openReports.applications_by_status ? (
+              <div className="reportsCardActions">
                 <button
                   type="button"
                   className={reportButtonClass("applications_by_status")}
@@ -1466,6 +1475,7 @@ export function ReportsPage() {
                   Export Status Excel
                 </button>
               </div>
+              ) : null}
             </div>
 
             {openReports.applications_by_status ? (
@@ -1606,12 +1616,15 @@ export function ReportsPage() {
       <div className={`dropPanel reportsCard ${openReports.directory ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <SectionTitle>Company &amp; Job Seeker Directory Report</SectionTitle>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+          {!openReports.directory ? <p className="reportsCardHint">{reportSummary("directory")}</p> : null}
+          {openReports.directory ? (
+          <div className="reportsCardActions">
             <button type="button" className={reportButtonClass("directory")} onClick={() => toggleReport("directory")}>{openReports.directory ? "Collapse" : "Expand"}</button>
             <button type="button" className={reportButtonClass("directory")} onClick={() => void runReport("directory")} disabled={loading}>Run Report</button>
             <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryPdf} disabled={loading || rows.length === 0}>Export Directory PDF</button>
             <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryExcel} disabled={loading || rows.length === 0}>Export Directory Excel</button>
           </div>
+          ) : null}
         </div>
 
         {openReports.directory ? (
@@ -1764,12 +1777,15 @@ export function ReportsPage() {
       <div className={`dropPanel reportsCard ${openReports.monthly_signups ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <SectionTitle>Directory Monthly Signups</SectionTitle>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+          {!openReports.monthly_signups ? <p className="reportsCardHint">{reportSummary("monthly_signups")}</p> : null}
+          {openReports.monthly_signups ? (
+          <div className="reportsCardActions">
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => toggleReport("monthly_signups")}>{openReports.monthly_signups ? "Collapse" : "Expand"}</button>
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => void runReport("monthly_signups")}>Run Report</button>
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsPdf} disabled={registrationByMonth.length === 0}>Export Monthly PDF</button>
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsExcel} disabled={registrationByMonth.length === 0}>Export Monthly Excel</button>
           </div>
+          ) : null}
         </div>
         {openReports.monthly_signups ? (
           <>
@@ -1806,12 +1822,15 @@ export function ReportsPage() {
           <div className={`dropPanel reportsCard ${openReports.hiring_funnel ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <SectionTitle>Hiring Funnel Overview</SectionTitle>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              {!openReports.hiring_funnel ? <p className="reportsCardHint">{reportSummary("hiring_funnel")}</p> : null}
+              {openReports.hiring_funnel ? (
+              <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => toggleReport("hiring_funnel")}>{openReports.hiring_funnel ? "Collapse" : "Expand"}</button>
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => void runReport("hiring_funnel")}>Run Report</button>
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelPdf} disabled={funnelRows.rows.length === 0}>Export Funnel PDF</button>
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelExcel} disabled={funnelRows.rows.length === 0}>Export Funnel Excel</button>
               </div>
+              ) : null}
             </div>
             {openReports.hiring_funnel ? (
               <>
@@ -1863,12 +1882,15 @@ export function ReportsPage() {
           <div className={`dropPanel reportsCard ${openReports.jobs_without_applicants ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <SectionTitle>Jobs Without Applicants</SectionTitle>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              {!openReports.jobs_without_applicants ? <p className="reportsCardHint">{reportSummary("jobs_without_applicants")}</p> : null}
+              {openReports.jobs_without_applicants ? (
+              <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => toggleReport("jobs_without_applicants")}>{openReports.jobs_without_applicants ? "Collapse" : "Expand"}</button>
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => void runReport("jobs_without_applicants")}>Run Report</button>
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsPdf} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs PDF</button>
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsExcel} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs Excel</button>
               </div>
+              ) : null}
             </div>
             {openReports.jobs_without_applicants ? (
               <>
@@ -1915,12 +1937,15 @@ export function ReportsPage() {
           <div className={`dropPanel reportsCard ${openReports.company_hiring_performance ? "reportsCardExpanded" : "reportsCardCollapsed"}`} style={{ marginTop: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-start", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <SectionTitle>Company Hiring Performance</SectionTitle>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              {!openReports.company_hiring_performance ? <p className="reportsCardHint">{reportSummary("company_hiring_performance")}</p> : null}
+              {openReports.company_hiring_performance ? (
+              <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => toggleReport("company_hiring_performance")}>{openReports.company_hiring_performance ? "Collapse" : "Expand"}</button>
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => void runReport("company_hiring_performance")}>Run Report</button>
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformancePdf} disabled={companyHiringPerformanceRows.length === 0}>Export Performance PDF</button>
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformanceExcel} disabled={companyHiringPerformanceRows.length === 0}>Export Performance Excel</button>
               </div>
+              ) : null}
             </div>
             {openReports.company_hiring_performance ? (
               <>

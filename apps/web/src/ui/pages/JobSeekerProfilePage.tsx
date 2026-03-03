@@ -1200,6 +1200,35 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
 
+      {pendingJob ? (
+        <div className="dashCard pendingApplicationCard">
+          <div className="dashCardHeader">
+            <h2 className="dashCardTitle">Pending Job Application</h2>
+          </div>
+
+          <div className="profileReadGrid" style={{ marginTop: 6 }}>
+            <ReadField label="Job" value={pendingJob.title} />
+            <ReadField label="Company" value={pendingJob.company ?? "—"} />
+            <ReadField label="Location" value={pendingJob.location ?? "—"} />
+            <ReadField
+              label="Due Date"
+              value={pendingJob.application_deadline ? new Date(pendingJob.application_deadline).toLocaleDateString("en-GB") : "—"}
+            />
+          </div>
+
+          <div className="dashCardFooter" style={{ gap: 8 }}>
+            <button
+              className="btn btnPrimary pendingApplicationBtn"
+              type="button"
+              onClick={() => void onCompletePendingApplication()}
+              disabled={applyingPending || saving}
+            >
+              {applyingPending ? "Applying..." : "Complete job application"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Profile Stepper Nav ─────────────────── */}
       <div className="profileStepperNav">
         {PROFILE_STEPS.map((label, i) => (
@@ -1342,34 +1371,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         )}
       </div>
 
-      {pendingJob ? (
-        <div className="dashCard" style={{ marginTop: 16 }}>
-          <div className="dashCardHeader">
-            <h2 className="dashCardTitle">Pending Job Application</h2>
-          </div>
-
-          <div className="profileReadGrid" style={{ marginTop: 6 }}>
-            <ReadField label="Job" value={pendingJob.title} />
-            <ReadField label="Company" value={pendingJob.company ?? "—"} />
-            <ReadField label="Location" value={pendingJob.location ?? "—"} />
-            <ReadField
-              label="Due Date"
-              value={pendingJob.application_deadline ? new Date(pendingJob.application_deadline).toLocaleDateString("en-GB") : "—"}
-            />
-          </div>
-
-          <div className="dashCardFooter" style={{ gap: 8 }}>
-            <button
-              className="btn btnGhost btnSm stepperSaveBtn"
-              type="button"
-              onClick={() => void onCompletePendingApplication()}
-              disabled={applyingPending || saving}
-            >
-              {applyingPending ? "Applying..." : "Complete job application"}
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

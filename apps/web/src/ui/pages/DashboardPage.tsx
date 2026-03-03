@@ -1018,8 +1018,8 @@ export function DashboardPage() {
                     <h2 className="dashCardTitle">Recent Activity</h2>
                     <span className="dashCardMeta">System trends</span>
                   </div>
-                  <div>
-                    <table className="table companiesTable">
+                  <div className="tableWrap">
+                    <table className="table" style={{ minWidth: 0 }}>
                       <thead>
                         <tr>
                           <th>Metric</th>
