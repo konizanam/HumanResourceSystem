@@ -1611,6 +1611,11 @@ export async function listAdminUsers(
     search?: string;
     role?: string;
     status?: string;
+    verified?: boolean;
+    from_date?: string;
+    to_date?: string;
+    sort_by?: "created_at" | "last_login" | "email" | "name";
+    sort_order?: "ASC" | "DESC";
   },
 ): Promise<{
   users: AdminUser[];
@@ -1623,6 +1628,11 @@ export async function listAdminUsers(
   if (params?.search) url.searchParams.set("search", params.search);
   if (params?.role) url.searchParams.set("role", params.role);
   if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.verified !== undefined) url.searchParams.set("verified", String(params.verified));
+  if (params?.from_date) url.searchParams.set("from_date", params.from_date);
+  if (params?.to_date) url.searchParams.set("to_date", params.to_date);
+  if (params?.sort_by) url.searchParams.set("sort_by", params.sort_by);
+  if (params?.sort_order) url.searchParams.set("sort_order", params.sort_order);
 
   const res = await fetch(url, { headers: authHeaders(token) });
   const body = await safeJson(res);

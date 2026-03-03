@@ -148,32 +148,27 @@ export function PermissionsPage() {
         </div>
       )}
 
-      {/* Grouped table */}
+      {/* Grouped cards */}
       {moduleKeys.length === 0 ? (
         <div className="emptyState">No permissions found.</div>
       ) : (
         moduleKeys.map((mod) => (
           <div key={mod} style={{ marginBottom: 24 }}>
             <h3 style={{ margin: "0 0 8px 0", fontSize: "1rem", fontWeight: 600 }}>{mod}</h3>
-            <div className="tableWrap">
-              <table className="table companiesTable">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Description</th>
-                    <th>Action Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredGrouped[mod].map((p) => (
-                    <tr key={p.id}>
-                      <td className="tdStrong">{p.name}</td>
-                      <td>{p.description ?? "—"}</td>
-                      <td><span className="chipBadge">{p.action_type}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+              {filteredGrouped[mod].map((p) => (
+                <div key={p.id} className="dropPanel" style={{ padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+                    <div className="tdStrong" style={{ wordBreak: "break-word" }}>{p.name}</div>
+                    <span className="chipBadge">{p.action_type}</span>
+                  </div>
+                  <div className="readLabel" style={{ marginBottom: 4 }}>Description</div>
+                  <div className="pageText" style={{ margin: 0 }}>{p.description ?? "—"}</div>
+                  <div style={{ marginTop: 8 }}>
+                    <span className="chipBadge">{p.module_name}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ))

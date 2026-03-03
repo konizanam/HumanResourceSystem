@@ -270,7 +270,10 @@ export function App() {
         <Route
           path="reports"
           element={
-            <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
+            <PermissionGate
+              allow={(hasPermission) => hasPermission("MANAGE_USERS", "VIEW_APPLICANTS_REPORT")}
+              requiredPermissions={["MANAGE_USERS", "VIEW_APPLICANTS_REPORT"]}
+            >
               <ReportsPage />
             </PermissionGate>
           }

@@ -779,6 +779,29 @@ export function DashboardPage() {
     ];
   }, [adminStats]);
 
+  const adminKpiCards = useMemo(() => {
+    if (!adminStats) return [];
+    const jobs = (adminStats as any).jobs ?? {};
+    const applications = (adminStats as any).applications ?? {};
+    return [
+      { label: "Total Active Jobs", value: Number(jobs.active ?? 0) },
+      { label: "Total Rejected Jobs", value: Number(applications.rejected ?? 0) },
+      { label: "Total Hired", value: Number(applications.hired ?? 0) },
+    ];
+  }, [adminStats]);
+
+  const adminRecentActivityRows = useMemo(() => {
+    if (!adminStats) return [];
+    return [
+      { metric: "New users today", value: Number(adminStats.users.new_today ?? 0) },
+      { metric: "New users this week", value: Number(adminStats.users.new_this_week ?? 0) },
+      { metric: "New users this month", value: Number(adminStats.users.new_this_month ?? 0) },
+      { metric: "New jobs today", value: Number(adminStats.jobs.new_today ?? 0) },
+      { metric: "New jobs this week", value: Number(adminStats.jobs.new_this_week ?? 0) },
+      { metric: "New applications today", value: Number(adminStats.applications.new_today ?? 0) },
+    ];
+  }, [adminStats]);
+
   const filteredPlatformJobs = useMemo(() => {
     const selectedStatus = platformStatusFilter.trim().toLowerCase();
     if (!selectedStatus || selectedStatus === "all") return platformJobsSnapshot;
@@ -951,6 +974,18 @@ export function DashboardPage() {
               <>
                 <div className="dashCard">
                   <div className="dashCardHeader">
+                    <h2 className="dashCardTitle">Admin Highlights</h2>
+                    <span className="dashCardMeta">Live totals</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    {adminKpiCards.map((card) => (
+                      <StatCard key={card.label} label={card.label} value={card.value} />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="dashCard">
+                  <div className="dashCardHeader">
                     <h2 className="dashCardTitle">User Growth</h2>
                     <span className="dashCardMeta">Today / Week / Month</span>
                   </div>
@@ -976,6 +1011,31 @@ export function DashboardPage() {
                     <span className="dashCardMeta">Composition</span>
                   </div>
                   <BarChart data={adminUsersRoleChart} emptyText="No role data." />
+                </div>
+
+                <div className="dashCard">
+                  <div className="dashCardHeader">
+                    <h2 className="dashCardTitle">Recent Activity</h2>
+                    <span className="dashCardMeta">System trends</span>
+                  </div>
+                  <div>
+                    <table className="table companiesTable">
+                      <thead>
+                        <tr>
+                          <th>Metric</th>
+                          <th className="thRight">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminRecentActivityRows.map((row) => (
+                          <tr key={row.metric}>
+                            <td>{row.metric}</td>
+                            <td className="tdRight">{row.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
             ) : null}
