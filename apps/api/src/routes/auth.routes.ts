@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { query, getClient } from "../db";
-import { findUserByEmail, publicUser } from "../users";
+import { findUserByEmail, findUserById, publicUser } from "../users";
 import { sendTemplatedEmail, apiOrigin, appName, webOrigin, formatLoginDateTime, describeIpLocation } from "../services/emailSender.service";
 import { authenticate } from "../middleware/auth";
 
@@ -373,14 +373,66 @@ authRouter.get("/activate", async (req, res, next) => {
     }
 
     const userId = decoded.sub as string;
-    await query("UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1", [userId]);
+    await query(
+      "UPDATE users SET is_active = TRUE, email_verified = TRUE, updated_at = NOW() WHERE id = $1",
+      [userId]
+    );
+
+    const user = await findUserById(userId);
+    if (!user) {
+      return res.status(404).json({ error: { message: "User not found" } });
+    }
+
+    const pub = publicUser(user);
+    const accessToken = signToken({
+      sub: userId,
+      email: pub.email,
+      name: pub.name,
+      roles: user.roles,
+    });
+
+    await persistUserSession({
+      userId,
+      token: accessToken,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+
+    // Best-effort: send an activation confirmation email.
+    try {
+      await sendTemplatedEmail({
+        templateKey: "account_activated",
+        to: pub.email,
+        data: {
+          app_name: appName(),
+          user_full_name: pub.name || pub.email,
+          login_link: `${webOrigin()}/login`,
+          support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+        },
+      });
+    } catch (e) {
+      console.error(
+        "[Email] Failed to send account activated email:",
+        e instanceof Error ? e.message : e
+      );
+    }
 
     const origin = webOrigin();
     if (origin) {
-      return res.redirect(`${origin}/login?activated=1`);
+      // Put the access token in the URL hash so it is not sent to the server.
+      return res.redirect(
+        `${origin}/login#activated=1&accessToken=${encodeURIComponent(accessToken)}`
+      );
     }
 
-    return res.json({ status: "success", message: "Account activated successfully" });
+    return res.json({
+      status: "success",
+      message: "Account activated successfully",
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: pub,
+    });
   } catch (err) {
     return next(err);
   }
@@ -400,10 +452,8 @@ authRouter.post("/login", async (req, res, next) => {
     const { email, password } = loginSchema.parse(req.body);
     const user = await findUserByEmail(email);
 
-    if (!user || !user.is_active) {
-      return res
-        .status(401)
-        .json({ error: { message: "Invalid credentials" } });
+    if (!user) {
+      return res.status(401).json({ error: { message: "Invalid credentials" } });
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -411,6 +461,46 @@ authRouter.post("/login", async (req, res, next) => {
       return res
         .status(401)
         .json({ error: { message: "Invalid credentials" } });
+    }
+
+    // Account not activated (email not verified)
+    if (!user.email_verified) {
+      // Best-effort: resend activation email (only after verifying credentials).
+      try {
+        const activationToken = signActivationToken({ sub: user.id, email: user.email });
+        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          activationToken
+        )}`;
+
+        await sendTemplatedEmail({
+          templateKey: "registration_activation",
+          to: user.email,
+          data: {
+            app_name: appName(),
+            user_full_name: publicUser(user).name || user.email,
+            activation_link: activationLink,
+          },
+        });
+      } catch (e) {
+        console.error(
+          "[Email] Failed to resend activation email:",
+          e instanceof Error ? e.message : e
+        );
+      }
+
+      return res.status(403).json({
+        error: {
+          message:
+            "Your account is not activated. Please check your email for the activation link.",
+        },
+      });
+    }
+
+    // Account deactivated
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is deactivated. Please contact support." },
+      });
     }
 
     const pub = publicUser(user);
@@ -459,10 +549,8 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
     const { email, password } = twoFactorChallengeSchema.parse(req.body);
     const user = await findUserByEmail(email);
 
-    if (!user || !user.is_active) {
-      return res
-        .status(401)
-        .json({ error: { message: "Invalid credentials" } });
+    if (!user) {
+      return res.status(401).json({ error: { message: "Invalid credentials" } });
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -470,6 +558,44 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
       return res
         .status(401)
         .json({ error: { message: "Invalid credentials" } });
+    }
+
+    if (!user.email_verified) {
+      // Best-effort: resend activation email (only after verifying credentials).
+      try {
+        const activationToken = signActivationToken({ sub: user.id, email: user.email });
+        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          activationToken
+        )}`;
+
+        await sendTemplatedEmail({
+          templateKey: "registration_activation",
+          to: user.email,
+          data: {
+            app_name: appName(),
+            user_full_name: publicUser(user).name || user.email,
+            activation_link: activationLink,
+          },
+        });
+      } catch (e) {
+        console.error(
+          "[Email] Failed to resend activation email:",
+          e instanceof Error ? e.message : e
+        );
+      }
+
+      return res.status(403).json({
+        error: {
+          message:
+            "Your account is not activated. Please check your email for the activation link.",
+        },
+      });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is deactivated. Please contact support." },
+      });
     }
 
     const pub = publicUser(user);

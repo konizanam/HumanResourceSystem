@@ -12,6 +12,30 @@ import {
 
 const THEME_KEY = "hrs-theme";
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getLoginTokenFromLocation(location: { search: string; hash: string }): string | null {
+  const searchParams = new URLSearchParams(location.search);
+  const rawHash = String(location.hash ?? "").replace(/^#/, "");
+  const hashParams = new URLSearchParams(rawHash);
+  return (
+    hashParams.get("accessToken") ||
+    hashParams.get("token") ||
+    searchParams.get("accessToken") ||
+    searchParams.get("token")
+  );
+}
+
 /** Returns the current effective theme without touching data-theme. */
 function getStoredTheme(): "light" | "dark" {
   try {
@@ -152,6 +176,22 @@ export function LoginPage() {
     const from = (location.state as any)?.from;
     return typeof from === "string" && from.trim() ? from : "/app/dashboard";
   }, [location.state]);
+
+  useEffect(() => {
+    const token = getLoginTokenFromLocation(location);
+    if (!token) return;
+
+    const payload = decodeJwtPayload(token);
+    const email = typeof payload?.email === "string" ? payload.email : "";
+    const name = typeof payload?.name === "string" ? payload.name : email;
+    setSession(token, email, name);
+
+    // Clean the URL (remove token) without losing navigation state.
+    navigate(
+      { pathname: location.pathname, search: "", hash: "" },
+      { replace: true, state: location.state }
+    );
+  }, [location, navigate, setSession]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -433,7 +473,7 @@ export function LoginPage() {
             </>
           ) : (
             <>
-              <div className="hintBox" role="note" aria-live="polite">
+              <div className="hintBox hintBoxCentered" role="note" aria-live="polite">
                 Enter the 6-digit authentication code sent to {pending?.userEmail ?? email}.
                 <br />
                 {countdownSeconds > 0

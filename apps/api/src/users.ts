@@ -8,6 +8,7 @@ export type UserRow = {
   email: string;
   password_hash: string;
   is_active: boolean;
+  email_verified: boolean;
 };
 
 /** Public user shape returned to the client (no password). */
@@ -25,6 +26,7 @@ export async function findUserByEmail(email: string): Promise<
 > {
   const { rows } = await query<UserRow & { roles: string[] }>(
     `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.is_active,
+            COALESCE(u.email_verified, FALSE) AS email_verified,
             COALESCE(
               array_agg(r.name) FILTER (WHERE r.name IS NOT NULL),
               '{}'
@@ -46,6 +48,7 @@ export async function findUserById(id: string): Promise<
 > {
   const { rows } = await query<UserRow & { roles: string[] }>(
     `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.is_active,
+            COALESCE(u.email_verified, FALSE) AS email_verified,
             COALESCE(
               array_agg(r.name) FILTER (WHERE r.name IS NOT NULL),
               '{}'

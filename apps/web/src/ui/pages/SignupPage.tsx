@@ -167,6 +167,7 @@ const DEV_PREFILL: Partial<FormData> = {
 export function SignupPage() {
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
+  const CONFIRM_STEP = STEPS.length - 1;
 
   useEffect(() => {
     let cancelled = false;
@@ -256,8 +257,28 @@ export function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [passwordTyped, setPasswordTyped] = useState(false);
+  const [captchaA, setCaptchaA] = useState(0);
+  const [captchaB, setCaptchaB] = useState(0);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
   const [nationalityOpen, setNationalityOpen] = useState(false);
   const [fieldOpen, setFieldOpen] = useState(false);
+
+  useEffect(() => {
+    if (step !== CONFIRM_STEP) {
+      setCaptchaAnswer("");
+      setCaptchaError(null);
+      return;
+    }
+
+    const a = Math.floor(Math.random() * 8) + 2; // 2..9
+    const b = Math.floor(Math.random() * 8) + 1; // 1..8
+    setCaptchaA(a);
+    setCaptchaB(b);
+    setCaptchaAnswer("");
+    setCaptchaError(null);
+  }, [CONFIRM_STEP, step]);
   const [qualificationOpen, setQualificationOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
@@ -461,6 +482,16 @@ export function SignupPage() {
     e.preventDefault();
     setError(null);
 
+    if (step === CONFIRM_STEP) {
+      const expected = captchaA + captchaB;
+      const provided = Number(captchaAnswer.trim());
+      if (!Number.isFinite(provided) || provided !== expected) {
+        setCaptchaError("Please solve the security question to continue.");
+        return;
+      }
+      setCaptchaError(null);
+    }
+
     // on last step, submit
     if (step < STEPS.length - 1) {
       onNext();
@@ -538,7 +569,7 @@ export function SignupPage() {
     switch (step) {
       case 0:
         return (
-          <>
+          <div className="signupStepGrid">
             <label className="field">
               <span className="fieldLabel">First Name</span>
               <input
@@ -619,7 +650,10 @@ export function SignupPage() {
                   className="input"
                   type={showPassword ? "text" : "password"}
                   value={form.password}
-                  onChange={(e) => set("password", e.target.value)}
+                  onChange={(e) => {
+                    if (!passwordTyped) setPasswordTyped(true);
+                    set("password", e.target.value);
+                  }}
                   placeholder="Min 8 chars, upper, lower, number, special"
                   autoComplete="new-password"
                   required
@@ -633,7 +667,7 @@ export function SignupPage() {
                   <EyeIcon open={showPassword} />
                 </button>
               </div>
-              {form.password.length > 0 && (
+              {passwordTyped && form.password.length > 0 && (
                 <ul className="passwordRules" aria-label="Password requirements">
                   <li
                     className={
@@ -880,7 +914,7 @@ export function SignupPage() {
                 <label htmlFor="disabilityStatus">I have a disability</label>
               </div>
             </label>
-          </>
+          </div>
         );
 
       case 1:
@@ -1142,6 +1176,12 @@ export function SignupPage() {
         );
 
       case 3:
+        const expectedCaptcha = captchaA + captchaB;
+        const trimmedCaptcha = captchaAnswer.trim();
+        const parsedCaptcha = Number(trimmedCaptcha);
+        const captchaHasValue = trimmedCaptcha.length > 0;
+        const captchaIsCorrect = captchaHasValue && Number.isFinite(parsedCaptcha) && parsedCaptcha === expectedCaptcha;
+        const captchaIsIncorrect = captchaHasValue && (!Number.isFinite(parsedCaptcha) || parsedCaptcha !== expectedCaptcha);
         return (
           <div className="confirmSection">
             <h3 className="confirmTitle">Review Your Information</h3>
@@ -1208,6 +1248,42 @@ export function SignupPage() {
                 <span className="confirmLabel">Role</span>
                 <span className="confirmValue chipBadge">Job Seeker</span>
               </div>
+            </div>
+
+            <div className="confirmCaptcha" role="group" aria-label="Security check">
+              <div className="confirmCaptchaHeader">
+                <div className="confirmCaptchaTitle">Security check</div>
+                <div className="confirmCaptchaEquation" aria-label="Solve the equation">
+                  {captchaA} + {captchaB} = ?
+                </div>
+              </div>
+              <label className="field">
+                <span className="fieldLabel">Answer</span>
+                <div className="captchaInputRow">
+                  <input
+                    className={"input" + (captchaError ? " inputError" : "")}
+                  inputMode="numeric"
+                  value={captchaAnswer}
+                  onChange={(e) => {
+                    setCaptchaAnswer(e.target.value);
+                    if (captchaError) setCaptchaError(null);
+                  }}
+                  placeholder="Enter the result"
+                  aria-invalid={captchaError ? "true" : "false"}
+                  required
+                  />
+                  {captchaIsCorrect ? (
+                    <span className="captchaStatus captchaStatusOk" aria-label="Answer is correct">
+                      ✓
+                    </span>
+                  ) : captchaIsIncorrect ? (
+                    <span className="captchaStatus captchaStatusBad" aria-label="Answer is incorrect">
+                      ✕
+                    </span>
+                  ) : null}
+                </div>
+                {captchaError ? <span className="fieldError">{captchaError}</span> : null}
+              </label>
             </div>
           </div>
         );

@@ -1558,6 +1558,7 @@ export function JobsPage() {
                 const companyName = resolveJobCompanyName(job);
                 const categoryName = resolveJobCategoryName(job);
                 const isOpen = openJobId === job.id;
+                const alreadyApplied = appliedJobIds.includes(job.id);
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
 
                 return (
@@ -1582,6 +1583,16 @@ export function JobsPage() {
                     </div>
 
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
+                      {canApplyJob ? (
+                        <button
+                          type="button"
+                          className={alreadyApplied ? "btn btnSm jobActionBtn jobActionBtnApplied" : "btn btnPrimary btnSm jobActionBtn"}
+                          onClick={() => onStartApply(job)}
+                          disabled={saving || alreadyApplied}
+                        >
+                          {alreadyApplied ? "Applied" : "Apply"}
+                        </button>
+                      ) : null}
                       {!isOpen ? (
                         <button
                           type="button"
@@ -1652,6 +1663,17 @@ export function JobsPage() {
                           <RichTextView value={job.description} className="readValue" />
                         </div>
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                          {canApplyJob ? (
+                            <button
+                              type="button"
+                              className={alreadyApplied ? "btn btnSm jobActionBtn jobActionBtnApplied" : "btn btnPrimary btnSm jobActionBtn"}
+                              onClick={() => onStartApply(job)}
+                              disabled={saving || alreadyApplied}
+                              style={{ marginRight: 8 }}
+                            >
+                              {alreadyApplied ? "Applied" : "Apply"}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="btn btnSm jobActionBtn jobActionBtnDetails"

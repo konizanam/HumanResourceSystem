@@ -279,6 +279,13 @@ function renderTokens(input: string, data: Record<string, string>, opts?: { html
       continue;
     }
 
+    if (opts?.html && key === 'login_link') {
+      const url = String(rawValue ?? '').trim();
+      const block = url ? buttonBlockHtml('Sign In', url) : '';
+      out = out.split(token).join(block);
+      continue;
+    }
+
     if (opts?.html && key === 'otp_code') {
       out = out.split(token).join(otpCodeHtml(String(rawValue ?? '')));
       continue;

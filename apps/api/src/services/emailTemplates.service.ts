@@ -172,6 +172,21 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
       'support_email',
     ],
   },
+  account_activated: {
+    key: 'account_activated',
+    title: 'Account Activated',
+    description: 'Sent when a user successfully activates their account via email activation link.',
+    subject: 'Your {{app_name}} account is now active',
+    body_text:
+      'Dear {{user_full_name}},\n\n'
+      + 'Your account has been activated successfully. You can now sign in using the link below:\n'
+      + '{{login_link}}\n\n'
+      + 'If you did not activate this account, please contact support at {{support_email}}.\n\n'
+      + 'Regards,\n'
+      + '{{app_name}} Team',
+    body_html: '',
+    placeholders: ['app_name', 'user_full_name', 'login_link', 'support_email'],
+  },
 };
 
 function escapeHtml(text: string): string {
