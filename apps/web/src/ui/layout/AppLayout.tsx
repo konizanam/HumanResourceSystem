@@ -379,21 +379,22 @@ export function AppLayout({
       try {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
+        const settingsName = String(settings.system_name ?? "").trim();
         const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        let resolvedName = settingsName;
         if (mainCompanyId) {
           try {
             const company = await getPublicCompanyById(mainCompanyId);
             if (!cancelled) {
               const companyName = String(company?.name ?? "").trim();
-              setSystemName(companyName);
+              resolvedName = companyName || settingsName;
             }
           } catch {
-            if (!cancelled) {
-              setSystemName("");
-            }
+            resolvedName = settingsName;
           }
-        } else {
-          setSystemName("");
+        }
+        if (!cancelled) {
+          setSystemName(resolvedName);
         }
         setBrandingLogoUrl(
           getMainCompanyBrandingLogoUrl(settings.main_company_id) || String(settings.branding_logo_url ?? ""),

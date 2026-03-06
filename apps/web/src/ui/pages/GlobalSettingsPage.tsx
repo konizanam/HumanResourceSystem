@@ -4,6 +4,7 @@ import {
   updateCompany,
   getCompanyApprovalMode,
   getSystemSettings,
+  getPublicCompanyById,
   type Company,
   type CompanyApprovalMode,
   updateCompanyApprovalMode,
@@ -121,7 +122,26 @@ export function GlobalSettingsPage() {
           };
         }),
       ]);
-      setCompanies(companies);
+      const preferredId = String(settings.main_company_id ?? "").trim();
+      let companiesForSelection = companies;
+      let selectedCompany =
+        (preferredId ? companies.find((c) => String(c.id) === preferredId) : null) ?? null;
+
+      if (preferredId && !selectedCompany) {
+        try {
+          const mainCompany = await getPublicCompanyById(preferredId);
+          selectedCompany = mainCompany;
+          companiesForSelection = [mainCompany, ...companies.filter((c) => String(c.id) !== preferredId)];
+        } catch {
+          // Keep list as-is and fall back below.
+        }
+      }
+
+      if (!selectedCompany) {
+        selectedCompany = companiesForSelection[0] ?? null;
+      }
+
+      setCompanies(companiesForSelection);
       setMode(settings.company_approval_mode);
       setAppColor(settings.app_color || "#6366f1");
       applyAppThemeColor(settings.app_color || "#6366f1");
@@ -131,11 +151,6 @@ export function GlobalSettingsPage() {
         ...(settings.application_status_notifications ?? {}),
       };
       setApplicationStatusNotifications(nextNotifications);
-
-      const preferredId = String(settings.main_company_id ?? "").trim();
-      const selectedCompany =
-        (preferredId ? companies.find((c) => String(c.id) === preferredId) : null) ??
-        (companies[0] ?? null);
 
       setLoadedMainCompanyId(preferredId || null);
       setMainCompanyId(selectedCompany?.id ?? "");

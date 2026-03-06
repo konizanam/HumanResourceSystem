@@ -305,7 +305,7 @@ export function CompaniesPage() {
     for (const c of filteredCompanies) {
       const status = String(c.status ?? "").trim().toLowerCase();
       if (status === "pending") pending += 1;
-      else if (status === "deactivated") deactivated += 1;
+      else if (status === "deactivated" || status === "inactive") deactivated += 1;
       else if (status === "active" || status === "approved") approved += 1;
 
       const ucRaw = c.user_count;
@@ -733,7 +733,7 @@ export function CompaniesPage() {
 
       setCompanies((prev) =>
         prev.map((c) =>
-          c.id === id ? { ...c, ...updated, status: updated.status ?? "deactivated" } : c,
+          c.id === id ? { ...c, ...updated, status: updated.status ?? "inactive" } : c,
         ),
       );
     } catch (e) {
@@ -1174,9 +1174,12 @@ export function CompaniesPage() {
             const normalizedStatus = status.toLowerCase();
             const isPending = normalizedStatus === "pending";
             const isApproved = normalizedStatus === "active" || normalizedStatus === "approved";
-            const isDeactivated = normalizedStatus === "deactivated";
+            const isDeactivated = normalizedStatus === "deactivated" || normalizedStatus === "inactive";
             const usersMeta = formatCompanyUsers(c);
             const userNames = getCompanyUserNames(c);
+            const jobsCountRaw = c.jobs_count;
+            const jobsCount = typeof jobsCountRaw === "number" ? jobsCountRaw : Number(String(jobsCountRaw ?? "").trim());
+            const hasPostedJobs = Number.isFinite(jobsCount) && jobsCount > 0;
             const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
 
             return (
@@ -1191,12 +1194,14 @@ export function CompaniesPage() {
                       style={
                         isPending
                           ? { background: "#fef3c7", color: "#92400e" }
+                          : isDeactivated
+                            ? { background: "#fee2e2", color: "#991b1b" }
                           : isApproved
                             ? { background: "#dcfce7", color: "#166534" }
                             : undefined
                       }
                     >
-                      {isPending ? "Pending" : isApproved ? "Approved" : status}
+                      {isPending ? "Pending" : isApproved ? "Approved" : isDeactivated ? "Deactivated" : status}
                     </span>
                   ) : null}
                 </div>
@@ -1209,98 +1214,120 @@ export function CompaniesPage() {
                   <ReadField label="Users" value={usersMeta.text || "—"} />
                 </div>
 
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    disabled={saving}
-                    onClick={() => {
-                      if (isOpen && panelMode === "view") setOpenCompanyId(null);
-                      else startView(c);
-                    }}
-                  >
-                    {isOpen && panelMode === "view" ? "Close" : "View"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    disabled={saving}
-                    onClick={() => {
-                      if (isOpen && panelMode === "edit") setOpenCompanyId(null);
-                      else startEdit(c);
-                    }}
-                  >
-                    {isOpen && panelMode === "edit" ? "Close" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    disabled={saving}
-                    onClick={() => {
-                      if (isDeactivated) onActivateCompany(c.id);
-                      else {
-                        clearMessages();
-                        setConfirmDeactivateId(c.id);
-                      }
-                    }}
-                  >
-                    {isDeactivated ? "Activate" : "Deactivate"}
-                  </button>
-                  {userNames.length > 0 ? (
-                    <button
-                      type="button"
-                      className="btn btnGhost btnSm"
-                      disabled={saving}
-                      onClick={() => setUsersModalCompany(c)}
-                      title={usersMeta.title}
-                    >
-                      View Users ({userNames.length})
-                    </button>
-                  ) : null}
-                  {canPostJob ? (
-                    <button
-                      type="button"
-                      className="btn btnGhost btnSm"
-                      disabled={saving}
-                      onClick={() => {
-                        if (isOpen && panelMode === "post-job") {
-                          closePostJobModal();
-                        } else {
-                          openPostJobModal(c);
-                        }
-                      }}
-                    >
-                      {isOpen && panelMode === "post-job" ? "Close" : "Post Job"}
-                    </button>
-                  ) : null}
-                  {canApproveCompany && isPending ? (
-                    <button
-                      type="button"
-                      className="btn btnGhost btnSm stepperSaveBtn"
-                      disabled={saving}
-                      onClick={() => onApproveCompany(c.id)}
-                    >
-                      Approve
-                    </button>
-                  ) : null}
-                  {canViewJobs ? (
-                    <button
-                      type="button"
-                      className="btn btnGhost btnSm"
-                      disabled={saving}
-                      onClick={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
-                    >
-                      View Jobs
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    disabled={saving}
-                    onClick={() => navigate(`/app/audit?target_type=company&target_id=${encodeURIComponent(c.id)}`)}
-                  >
-                    Audit
-                  </button>
+                <div className="companyCardActions">
+                  {isDeactivated ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btnPrimary btnSm jobActionBtn companyCardActionBtn"
+                        disabled={saving}
+                        onClick={() => onActivateCompany(c.id)}
+                      >
+                        Reactivate
+                      </button>
+                      {canViewJobs && hasPostedJobs ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
+                        >
+                          View Jobs
+                        </button>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                        disabled={saving}
+                        onClick={() => {
+                          if (isOpen && panelMode === "view") setOpenCompanyId(null);
+                          else startView(c);
+                        }}
+                      >
+                        {isOpen && panelMode === "view" ? "Close" : "View"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                        disabled={saving}
+                        onClick={() => {
+                          if (isOpen && panelMode === "edit") setOpenCompanyId(null);
+                          else startEdit(c);
+                        }}
+                      >
+                        {isOpen && panelMode === "edit" ? "Close" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                        disabled={saving}
+                        onClick={() => {
+                          clearMessages();
+                          setConfirmDeactivateId(c.id);
+                        }}
+                      >
+                        Deactivate
+                      </button>
+                      {userNames.length > 0 ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => setUsersModalCompany(c)}
+                          title={usersMeta.title}
+                        >
+                          View Users ({userNames.length})
+                        </button>
+                      ) : null}
+                      {canPostJob ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => {
+                            if (isOpen && panelMode === "post-job") {
+                              closePostJobModal();
+                            } else {
+                              openPostJobModal(c);
+                            }
+                          }}
+                        >
+                          {isOpen && panelMode === "post-job" ? "Close" : "Post Job"}
+                        </button>
+                      ) : null}
+                      {canApproveCompany && isPending ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm stepperSaveBtn jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => onApproveCompany(c.id)}
+                        >
+                          Approve
+                        </button>
+                      ) : null}
+                      {canViewJobs && hasPostedJobs ? (
+                        <button
+                          type="button"
+                          className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => navigate(`/app/jobs?company_id=${encodeURIComponent(c.id)}`)}
+                        >
+                          View Jobs
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm jobActionBtn companyCardActionBtn"
+                        disabled={saving}
+                        onClick={() => navigate(`/app/audit?target_type=company&target_id=${encodeURIComponent(c.id)}`)}
+                      >
+                        Audit
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {isOpen ? (

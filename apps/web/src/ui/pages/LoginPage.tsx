@@ -36,6 +36,26 @@ function getLoginTokenFromLocation(location: { search: string; hash: string }): 
   );
 }
 
+function maskEmail(rawEmail: string): string {
+  const value = String(rawEmail ?? "").trim();
+  const atIndex = value.indexOf("@");
+  if (atIndex <= 0 || atIndex === value.length - 1) return value;
+
+  const localPart = value.slice(0, atIndex);
+  const domainPart = value.slice(atIndex + 1);
+  const domainLabels = domainPart.split(".");
+  const domainName = domainLabels.shift() ?? "";
+  const tld = domainLabels.length ? `.${domainLabels.join(".")}` : "";
+
+  const maskSegment = (segment: string): string => {
+    if (segment.length <= 1) return "*";
+    if (segment.length === 2) return `${segment[0]}*`;
+    return `${segment[0]}${"*".repeat(Math.max(1, segment.length - 2))}${segment[segment.length - 1]}`;
+  };
+
+  return `${maskSegment(localPart)}@${maskSegment(domainName)}${tld}`;
+}
+
 /** Returns the current effective theme without touching data-theme. */
 function getStoredTheme(): "light" | "dark" {
   try {
@@ -90,21 +110,22 @@ export function LoginPage() {
       try {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
+        const settingsName = String(settings.system_name ?? "").trim();
         const mainCompanyId = String(settings.main_company_id ?? "").trim();
+        let resolvedName = settingsName;
         if (mainCompanyId) {
           try {
             const company = await getPublicCompanyById(mainCompanyId);
             if (!cancelled) {
               const companyName = String(company?.name ?? "").trim();
-              setSystemName(companyName);
+              resolvedName = companyName || settingsName;
             }
           } catch {
-            if (!cancelled) {
-              setSystemName("");
-            }
+            resolvedName = settingsName;
           }
-        } else {
-          setSystemName("");
+        }
+        if (!cancelled) {
+          setSystemName(resolvedName);
         }
 
         const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
@@ -474,7 +495,7 @@ export function LoginPage() {
           ) : (
             <>
               <div className="hintBox hintBoxCentered" role="note" aria-live="polite">
-                Enter the 6-digit authentication code sent to {pending?.userEmail ?? email}.
+                Enter the 6-digit authentication code sent to {maskEmail(pending?.userEmail ?? email)}.
                 <br />
                 {countdownSeconds > 0
                   ? `Code expires in ${countdownLabel}.`

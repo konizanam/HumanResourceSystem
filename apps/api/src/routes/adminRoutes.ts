@@ -1077,7 +1077,7 @@ router.get('/statistics',
           COUNT(CASE WHEN LOWER(COALESCE(status, '')) IN ('hired', 'accepted') THEN 1 END) as hired,
           COUNT(CASE WHEN LOWER(COALESCE(status, '')) = 'rejected' THEN 1 END) as rejected,
           COUNT(CASE WHEN LOWER(COALESCE(status, '')) = 'withdrawn' THEN 1 END) as withdrawn,
-          COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as new_today
+          COUNT(CASE WHEN applied_at >= CURRENT_DATE THEN 1 END) as new_today
          FROM applications`
       );
 
@@ -1095,7 +1095,7 @@ router.get('/statistics',
           `SELECT 
             (SELECT COUNT(*) FROM users WHERE created_at BETWEEN $1 AND $2) as users_created,
             (SELECT COUNT(*) FROM jobs WHERE created_at BETWEEN $1 AND $2) as jobs_created,
-            (SELECT COUNT(*) FROM applications WHERE created_at BETWEEN $1 AND $2) as applications_created
+            (SELECT COUNT(*) FROM applications WHERE applied_at BETWEEN $1 AND $2) as applications_created
            FROM (SELECT 1) t`,
           [from_date, to_date]
         );

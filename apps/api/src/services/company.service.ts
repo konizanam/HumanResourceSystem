@@ -58,6 +58,7 @@ export class CompanyService {
       companies = await query(
         `SELECT ${safeCompanySelect},
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+          (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id) as jobs_count,
           (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
              FROM company_users cu2
              JOIN users u2 ON u2.id = cu2.user_id
@@ -78,6 +79,7 @@ export class CompanyService {
            c.logo_url,
            (c.logo_data IS NOT NULL) as has_logo,
            COALESCE(c.status, 'active') as status,
+           (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id) as jobs_count,
            c.created_at
          FROM companies c
          WHERE COALESCE(c.status, 'active') = 'active'
@@ -88,6 +90,7 @@ export class CompanyService {
       companies = await query(
         `SELECT ${safeCompanySelect},
           (SELECT COUNT(*) FROM company_users WHERE company_id = c.id) as user_count,
+          (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id) as jobs_count,
           (SELECT STRING_AGG(TRIM(u2.first_name || ' ' || u2.last_name), ', ' ORDER BY u2.first_name, u2.last_name)
              FROM company_users cu2
              JOIN users u2 ON u2.id = cu2.user_id
@@ -320,7 +323,7 @@ export class CompanyService {
 
     const result = await query(
       `UPDATE companies
-         SET status = 'deactivated'
+         SET status = 'inactive'
        WHERE id = $1
        RETURNING id`,
       [companyId]

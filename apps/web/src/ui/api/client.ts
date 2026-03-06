@@ -132,6 +132,7 @@ export type Company = {
   created_by_name?: string | null;
   created_at?: string | null;
   user_count?: number | string | null;
+  jobs_count?: number | string | null;
   user_names?: string | null;
   status?: string | null;
 };

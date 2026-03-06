@@ -804,6 +804,38 @@ input[type="radio"][required] {
   );
 }
 
+.companyCardActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.companyCardActionBtn {
+  min-height: 32px;
+  padding-inline: 12px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--menu-icon) 20%, var(--card));
+  border-color: color-mix(in srgb, var(--menu-icon-active) 56%, var(--stroke));
+  color: color-mix(in srgb, var(--heading) 86%, var(--menu-icon-active));
+}
+
+.companyCardActionBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--menu-icon) 30%, var(--card));
+  border-color: color-mix(in srgb, var(--menu-icon-active) 72%, var(--stroke));
+}
+
+@media (max-width: 560px) {
+  .companyCardActions {
+    justify-content: flex-start;
+  }
+
+  .companyCardActionBtn {
+    flex: 1 1 auto;
+  }
+}
+
 /* =====================================================
    INBOX (Job Alerts / Messages)
    ===================================================== */
