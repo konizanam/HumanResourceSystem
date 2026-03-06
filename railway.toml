@@ -3,5 +3,5 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "caddy run --config /app/Caddyfile --adapter caddyfile"
+startCommand = "echo \"Starting Caddy on port $PORT\" && caddy run --config /app/Caddyfile --adapter caddyfile"
 restartPolicyType = "on_failure"
