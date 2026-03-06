@@ -3,5 +3,5 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "serve -s dist -l tcp://0.0.0.0:$PORT"
+startCommand = "echo '=== dist contents ===' && ls -la dist/ 2>&1 && serve -s dist -l tcp://0.0.0.0:$PORT"
 restartPolicyType = "on_failure"

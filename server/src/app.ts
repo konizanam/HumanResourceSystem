@@ -53,7 +53,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Request logging
 app.use((req: Request, res: Response, next: NextFunction) => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  const origin = req.headers.origin ?? 'no-origin';
+  console.log(`[${timestamp}] ${req.method} ${req.path} | origin: ${origin}`);
+  res.on('finish', () => {
+    console.log(`[${timestamp}] ${req.method} ${req.path} → ${res.statusCode}`);
+  });
   next();
 });
 
