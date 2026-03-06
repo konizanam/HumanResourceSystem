@@ -4,6 +4,7 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import { createHash } from "node:crypto";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import geoip from "geoip-lite";
 import { query, getClient } from "../db";
 import { findUserByEmail, findUserById, publicUser } from "../users";
 import { sendTemplatedEmail, apiOrigin, appName, webOrigin, formatLoginDateTime, describeIpLocation } from "../services/emailSender.service";
@@ -104,10 +105,11 @@ async function sendLoginNotificationEmail(params: {
   userFullName: string;
   ip: string | null;
   userAgent: string | null;
+  location?: string | null;
 }) {
   try {
     const dateTime = formatLoginDateTime(new Date());
-    const location = describeIpLocation(params.ip);
+    const location = String(params.location ?? "").trim() || describeIpLocation(params.ip);
 
     await sendTemplatedEmail({
       templateKey: "login_notification",
@@ -130,6 +132,136 @@ async function sendLoginNotificationEmail(params: {
       e instanceof Error ? e.message : e
     );
   }
+}
+
+function normalizeAlertIp(ip: string | null | undefined): string {
+  const raw = String(ip ?? "").trim();
+  if (!raw) return "unknown";
+  return raw.replace(/^::ffff:/, "").trim().toLowerCase() || "unknown";
+}
+
+async function lastLoginAlertIp(userId: string): Promise<string | null> {
+  const result = await query<{ data: any }>(
+    `SELECT data
+       FROM notifications
+      WHERE user_id = $1
+        AND type = 'system_alert'
+        AND COALESCE(data->>'event', '') = 'login_notification'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (!result.rows.length) return null;
+  const raw = String(result.rows[0]?.data?.login_ip ?? "").trim();
+  return raw || null;
+}
+
+async function createLoginInboxNotification(params: {
+  userId: string;
+  userFullName: string;
+  ip: string | null;
+  userAgent: string;
+  location: string;
+}): Promise<void> {
+  const safeIp = String(params.ip ?? "").trim() || "Unknown";
+  const title = "New Sign-In Detected";
+  const message = `A new login was detected for your account from IP ${safeIp}.`;
+
+  await query(
+    `INSERT INTO notifications (
+      user_id, type, title, message, data, action_url, priority, created_at, updated_at
+    ) VALUES ($1, 'system_alert', $2, $3, $4::jsonb, $5, 'high', NOW(), NOW())`,
+    [
+      params.userId,
+      title,
+      message,
+      JSON.stringify({
+        event: 'login_notification',
+        user_full_name: params.userFullName,
+        login_date_time: formatLoginDateTime(new Date()),
+        login_ip: safeIp,
+        login_location: params.location,
+        login_device: params.userAgent,
+      }),
+      '/app/notifications',
+    ]
+  );
+}
+
+async function notifyLoginChannelsIfIpChanged(params: {
+  userId: string;
+  to: string;
+  userFullName: string;
+  ip: string | null;
+  userAgent: string;
+  location: string;
+}): Promise<void> {
+  const previousIp = await lastLoginAlertIp(params.userId);
+  const currentIpNorm = normalizeAlertIp(params.ip);
+  const previousIpNorm = normalizeAlertIp(previousIp);
+
+  if (previousIp && currentIpNorm === previousIpNorm) {
+    return;
+  }
+
+  await createLoginInboxNotification({
+    userId: params.userId,
+    userFullName: params.userFullName,
+    ip: params.ip,
+    userAgent: params.userAgent,
+    location: params.location,
+  });
+
+  await sendLoginNotificationEmail({
+    to: params.to,
+    userFullName: params.userFullName,
+    ip: params.ip,
+    userAgent: params.userAgent,
+    location: params.location,
+  });
+}
+
+function firstForwardedIp(headerValue: string): string {
+  const first = String(headerValue ?? "").split(",")[0] ?? "";
+  return first.trim();
+}
+
+function normalizeIp(rawIp: string | null | undefined): string | null {
+  const trimmed = String(rawIp ?? "").trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function resolveClientIp(req: any): string | null {
+  const forwarded = firstForwardedIp(String(req?.headers?.["x-forwarded-for"] ?? ""));
+  if (forwarded) return normalizeIp(forwarded);
+
+  const realIp = normalizeIp(String(req?.headers?.["x-real-ip"] ?? ""));
+  if (realIp) return realIp;
+
+  return normalizeIp(req?.ip ?? null);
+}
+
+function resolveLocationFromIp(ip: string | null): string {
+  const fallback = describeIpLocation(ip);
+  const cleanIp = String(ip ?? "").replace(/^::ffff:/, "").trim();
+  if (!cleanIp) return fallback;
+
+  const lookedUp = geoip.lookup(cleanIp);
+  if (!lookedUp) return fallback;
+
+  const city = String(lookedUp.city ?? "").trim();
+  const region = String(lookedUp.region ?? "").trim();
+  const country = String(lookedUp.country ?? "").trim();
+  const parts = [city, region, country].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : fallback;
+}
+
+function resolveDeviceFromUserAgent(userAgentRaw: string | null | undefined): string {
+  const userAgent = String(userAgentRaw ?? "").trim();
+  if (!userAgent) return "Unknown";
+  return userAgent.length > 220 ? `${userAgent.slice(0, 217)}...` : userAgent;
 }
 
 /* ------------------------------------------------------------------ */
@@ -671,8 +803,9 @@ authRouter.post("/2fa/verify", async (req, res, next) => {
       roles: challenge.roles,
     });
 
-    const ipAddress = req.ip ?? null;
-    const userAgent = req.get("user-agent") ?? null;
+    const ipAddress = resolveClientIp(req);
+    const userAgent = resolveDeviceFromUserAgent(req.get("user-agent") ?? null);
+    const location = resolveLocationFromIp(ipAddress);
 
     await persistUserSession({
       userId: challenge.userId,
@@ -686,12 +819,13 @@ authRouter.post("/2fa/verify", async (req, res, next) => {
     res.locals.auditTargetType = "auth";
     res.locals.auditTargetId = challenge.userId;
 
-    // Best-effort: notify user of the new sign-in.
-    void sendLoginNotificationEmail({
+    await notifyLoginChannelsIfIpChanged({
+      userId: challenge.userId,
       to: challenge.email,
       userFullName: challenge.name,
       ip: ipAddress,
       userAgent,
+      location,
     });
 
     return res.json({
@@ -768,12 +902,25 @@ authRouter.post("/refresh", authenticate, async (req, res, next) => {
       ? authHeader.slice("Bearer ".length).trim()
       : null;
 
+    const ipAddress = resolveClientIp(req);
+    const userAgent = resolveDeviceFromUserAgent(req.get("user-agent") ?? null);
+    const location = resolveLocationFromIp(ipAddress);
+
     await persistUserSession({
       userId,
       token: accessToken,
       previousToken,
-      ipAddress: req.ip ?? null,
-      userAgent: req.get("user-agent") ?? null,
+      ipAddress,
+      userAgent,
+    });
+
+    await notifyLoginChannelsIfIpChanged({
+      userId,
+      to: email,
+      userFullName: fullName,
+      ip: ipAddress,
+      userAgent,
+      location,
     });
 
     return res.json({

@@ -18,7 +18,7 @@ function canViewUserProfilePicture(req: any, targetUserId: string): boolean {
     ? req.user.permissions.map((p: unknown) => String(p).toUpperCase())
     : [];
 
-  return permissions.some((p) => ['MANAGE_USERS', 'VIEW_CV_DATABASE', 'VIEW_APPLICATIONS'].includes(p));
+  return permissions.some((p: string) => ['MANAGE_USERS', 'VIEW_CV_DATABASE', 'VIEW_APPLICATIONS'].includes(p));
 }
 
 // Use your existing authenticate middleware
