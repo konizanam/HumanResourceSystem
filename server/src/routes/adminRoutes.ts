@@ -3,6 +3,8 @@ import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { logAdminAction } from '../middleware/adminLogger';
 import { logAudit } from '../helpers/auditLogger';
 
@@ -1430,9 +1432,76 @@ router.post('/jobs/:id/feature',
 
 async function getStorageUsed(): Promise<string> {
   try {
-    // This would need to be implemented based on your storage solution
-    // For example, if using AWS S3, you'd sum up file sizes
-    return '2.3 GB';
+    const bytesFormatter = (bytes: number): string => {
+      if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown';
+      if (bytes === 0) return '0 B';
+
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const exponent = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+      const value = bytes / Math.pow(1024, exponent);
+      const rounded = value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+      return `${rounded} ${units[exponent]}`;
+    };
+
+    const getDirectorySize = async (dirPath: string): Promise<number> => {
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        let total = 0;
+
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            total += await getDirectorySize(fullPath);
+          } else if (entry.isFile()) {
+            const stats = await fs.stat(fullPath);
+            total += Number(stats.size || 0);
+          }
+        }
+
+        return total;
+      } catch {
+        return 0;
+      }
+    };
+
+    const uploadPathCandidates = [
+      path.resolve(process.cwd(), 'uploads'),
+      path.resolve(process.cwd(), '..', 'uploads'),
+      path.resolve(__dirname, '..', '..', 'uploads'),
+    ];
+
+    let uploadsBytes = 0;
+    const seen = new Set<string>();
+
+    for (const candidate of uploadPathCandidates) {
+      const normalized = path.resolve(candidate);
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+
+      try {
+        const stat = await fs.stat(normalized);
+        if (!stat.isDirectory()) continue;
+        uploadsBytes += await getDirectorySize(normalized);
+      } catch {
+        // Ignore missing folders.
+      }
+    }
+
+    let databaseBytes = 0;
+    try {
+      const dbSizeResult = await dbQuery(
+        'SELECT pg_database_size(current_database())::bigint AS bytes'
+      );
+      const raw = (dbSizeResult.rows[0] as any)?.bytes;
+      const parsed = Number(raw ?? 0);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        databaseBytes = parsed;
+      }
+    } catch {
+      // Ignore DB size errors and continue with available file usage.
+    }
+
+    return bytesFormatter(databaseBytes + uploadsBytes);
   } catch (error) {
     return 'Unknown';
   }
