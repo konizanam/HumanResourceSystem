@@ -750,6 +750,7 @@ export type NotificationPreferences = {
   email_notifications: boolean;
   job_alerts: boolean;
   application_updates: boolean;
+  job_seeker_alert_types?: ("application_submitted" | "application_withdrawn")[];
   in_app_notifications?: boolean;
   push_notifications?: boolean;
   message_notifications?: boolean;

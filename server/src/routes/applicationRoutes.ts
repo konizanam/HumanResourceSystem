@@ -46,6 +46,36 @@ async function userHasCompanyAccess(userId: string, companyId: string): Promise<
   return result.rows.length > 0;
 }
 
+async function filterRecipientsByJobSeekerAlertPreference(
+  candidateUserIds: string[],
+  alertType: 'application_submitted' | 'application_withdrawn'
+): Promise<string[]> {
+  const uniqueIds = Array.from(
+    new Set(candidateUserIds.map((id) => String(id ?? '').trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const result = await dbQuery(
+    `SELECT u.id
+       FROM users u
+       LEFT JOIN notification_preferences np ON np.user_id = u.id
+      WHERE u.id = ANY($1::uuid[])
+        AND COALESCE(np.application_updates, true) = true
+        AND (
+          np.job_seeker_alert_types IS NULL
+          OR jsonb_typeof(np.job_seeker_alert_types) <> 'array'
+          OR EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements_text(np.job_seeker_alert_types) alert_type
+             WHERE LOWER(TRIM(alert_type)) = LOWER(TRIM($2))
+          )
+        )`,
+    [uniqueIds, alertType]
+  );
+
+  return result.rows.map((row: any) => String(row.id)).filter(Boolean);
+}
+
 /**
  * @swagger
  * components:
@@ -244,15 +274,21 @@ router.post('/',
         // Notify the employer that a new application was submitted.
         if (jobPosterId) {
           try {
-            await createNotification(
-              jobPosterId,
-              'application_received',
-              'New Application Received',
-              `${applicantName} has applied for ${job.title}`,
-              { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
-              `/app/jobs/${job_id}/applications`,
-              'high'
+            const allowedEmployerRecipients = await filterRecipientsByJobSeekerAlertPreference(
+              [jobPosterId],
+              'application_submitted'
             );
+            if (allowedEmployerRecipients.includes(jobPosterId)) {
+              await createNotification(
+                jobPosterId,
+                'application_received',
+                'New Application Received',
+                `${applicantName} has applied for ${job.title}`,
+                { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
+                `/app/jobs/${job_id}/applications`,
+                'high'
+              );
+            }
           } catch (notificationError) {
             console.error('Failed to create employer notification:', notificationError);
           }
@@ -274,8 +310,13 @@ router.post('/',
             .map((row: any) => String(row.id))
             .filter((id: string) => id && id !== applicant_id && id !== jobPosterId);
 
+          const allowedAdminIds = await filterRecipientsByJobSeekerAlertPreference(
+            adminIds,
+            'application_submitted'
+          );
+
           await Promise.allSettled(
-            adminIds.map((adminId: string) =>
+            allowedAdminIds.map((adminId: string) =>
               createNotification(
                 adminId,
                 'application_received',
@@ -878,6 +919,61 @@ router.delete('/:id',
           targetId: application.user_id,
           details: { job_id: application.job_id, application_id: applicationId },
         });
+
+        try {
+          const applicantResult = await dbQuery(
+            `SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+               FROM users
+              WHERE id = $1
+              LIMIT 1`,
+            [application.user_id]
+          );
+          const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
+
+          const jobResult = await dbQuery(
+            'SELECT id, title, created_by, employer_id FROM jobs WHERE id = $1 LIMIT 1',
+            [application.job_id]
+          );
+          const job = jobResult.rows[0] as any;
+          const jobTitle = String(job?.title ?? 'the selected job').trim() || 'the selected job';
+          const jobPosterId = String(job?.created_by ?? job?.employer_id ?? '').trim();
+
+          const adminsResult = await dbQuery(
+            `SELECT DISTINCT u.id
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN role_permissions rp ON rp.role_id = ur.role_id
+               JOIN permissions p ON p.id = rp.permission_id
+              WHERE p.name = 'MANAGE_USERS'
+                AND u.is_active = TRUE`
+          );
+
+          const adminIds = adminsResult.rows
+            .map((row: any) => String(row.id))
+            .filter((id: string) => id && id !== application.user_id && id !== jobPosterId);
+
+          const candidateIds = [jobPosterId, ...adminIds].filter(Boolean);
+          const allowedRecipientIds = await filterRecipientsByJobSeekerAlertPreference(
+            candidateIds,
+            'application_withdrawn'
+          );
+
+          await Promise.allSettled(
+            allowedRecipientIds.map((recipientId: string) =>
+              createNotification(
+                recipientId,
+                'application_update',
+                'Application Withdrawn',
+                `${applicantName} withdrew an application for ${jobTitle}`,
+                { application_id: applicationId, job_id: application.job_id, applicant_id: application.user_id, applicant_name: applicantName, status: 'WITHDRAWN' },
+                `/app/jobs/${application.job_id}/applications`,
+                'normal'
+              )
+            )
+          );
+        } catch (notificationError) {
+          console.error('Failed to create withdrawal notifications:', notificationError);
+        }
 
         res.json({
           message: 'Application withdrawn successfully',

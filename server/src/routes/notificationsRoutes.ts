@@ -8,6 +8,10 @@ import { getBrandingInfo } from '../services/systemSettings.service';
 
 const router = express.Router();
 
+const JOB_SEEKER_ALERT_TYPE_OPTIONS = ['application_submitted', 'application_withdrawn'] as const;
+const JOB_SEEKER_ALERT_TYPE_SET = new Set<string>(JOB_SEEKER_ALERT_TYPE_OPTIONS);
+const DEFAULT_JOB_SEEKER_ALERT_TYPES = [...JOB_SEEKER_ALERT_TYPE_OPTIONS];
+
 
 
 // Validation middleware
@@ -28,7 +32,13 @@ const validatePreferences = [
   body('company_ids').optional().isArray(),
   body('company_ids.*').optional().isUUID().withMessage('company_ids must contain valid UUID values'),
   body('industry_names').optional().isArray(),
-  body('industry_names.*').optional().isString().trim().notEmpty()
+  body('industry_names.*').optional().isString().trim().notEmpty(),
+  body('job_seeker_alert_types').optional().isArray(),
+  body('job_seeker_alert_types.*')
+    .optional()
+    .isString()
+    .custom((value) => JOB_SEEKER_ALERT_TYPE_SET.has(String(value).trim().toLowerCase()))
+    .withMessage('job_seeker_alert_types contains an unsupported alert type')
 ];
 
 async function ensureNotificationPreferenceColumns(): Promise<void> {
@@ -36,7 +46,8 @@ async function ensureNotificationPreferenceColumns(): Promise<void> {
     `ALTER TABLE notification_preferences
        ADD COLUMN IF NOT EXISTS category_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
        ADD COLUMN IF NOT EXISTS company_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
-       ADD COLUMN IF NOT EXISTS industry_names JSONB NOT NULL DEFAULT '[]'::jsonb`
+       ADD COLUMN IF NOT EXISTS industry_names JSONB NOT NULL DEFAULT '[]'::jsonb,
+       ADD COLUMN IF NOT EXISTS job_seeker_alert_types JSONB NOT NULL DEFAULT '["application_submitted","application_withdrawn"]'::jsonb`
   );
 }
 
@@ -44,11 +55,19 @@ function normalizePreferenceRow(row: any) {
   const categoryIds = Array.isArray(row?.category_ids) ? row.category_ids : [];
   const companyIds = Array.isArray(row?.company_ids) ? row.company_ids : [];
   const industryNames = Array.isArray(row?.industry_names) ? row.industry_names : [];
+  const hasExplicitJobSeekerAlertTypes = Array.isArray(row?.job_seeker_alert_types);
+  const rawJobSeekerAlertTypes = hasExplicitJobSeekerAlertTypes
+    ? row.job_seeker_alert_types
+    : DEFAULT_JOB_SEEKER_ALERT_TYPES;
+  const jobSeekerAlertTypes = rawJobSeekerAlertTypes
+    .map((v: unknown) => String(v).trim().toLowerCase())
+    .filter((v: string) => JOB_SEEKER_ALERT_TYPE_SET.has(v));
   return {
     ...row,
     category_ids: categoryIds.map((v: unknown) => String(v)),
     company_ids: companyIds.map((v: unknown) => String(v)),
     industry_names: industryNames.map((v: unknown) => String(v)),
+    job_seeker_alert_types: Array.from(new Set(jobSeekerAlertTypes)),
   };
 }
 
@@ -962,6 +981,7 @@ router.put('/preferences',
         category_ids,
         company_ids,
         industry_names,
+        job_seeker_alert_types,
       } = req.body;
 
       // Build update query dynamically
@@ -1008,6 +1028,15 @@ router.put('/preferences',
       if (industry_names !== undefined) {
         updateFields.push(`industry_names = $${paramIndex++}::jsonb`);
         values.push(JSON.stringify(industry_names));
+      }
+      if (job_seeker_alert_types !== undefined) {
+        const normalizedTypes = Array.isArray(job_seeker_alert_types)
+          ? job_seeker_alert_types
+            .map((value: unknown) => String(value).trim().toLowerCase())
+            .filter((value: string) => JOB_SEEKER_ALERT_TYPE_SET.has(value))
+          : [];
+        updateFields.push(`job_seeker_alert_types = $${paramIndex++}::jsonb`);
+        values.push(JSON.stringify(Array.from(new Set(normalizedTypes))));
       }
 
       if (updateFields.length === 0) {

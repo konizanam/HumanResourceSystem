@@ -25,6 +25,23 @@ type LoginDetails = {
   login_device: string;
 };
 
+const JOB_SEEKER_ALERT_OPTIONS: Array<{
+  value: "application_submitted" | "application_withdrawn";
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "application_submitted",
+    label: "New applications submitted",
+    description: "Notify when a job seeker submits a new application.",
+  },
+  {
+    value: "application_withdrawn",
+    label: "Application withdrawals",
+    description: "Notify when a job seeker withdraws an application.",
+  },
+];
+
 function parseLoginDetails(item: NotificationItem): LoginDetails | null {
   if (String(item.type ?? "").trim().toLowerCase() !== "system_alert") return null;
 
@@ -151,6 +168,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     "VIEW_APPLICATIONS",
     "MANAGE_USERS",
   );
+  const canApplyAsJobSeeker = hasPermission("APPLY_JOB");
   const showPreferences = Boolean(canUseJobAlerts && mode === "job-alerts" && preferences);
 
   const load = useCallback(async (nextPage?: number) => {
@@ -167,13 +185,19 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
           listJobCategories(accessToken),
           listCompanies(accessToken),
         ]);
+        const normalizedPref: NotificationPreferences = {
+          ...pref,
+          job_seeker_alert_types: Array.isArray(pref.job_seeker_alert_types)
+            ? pref.job_seeker_alert_types
+            : JOB_SEEKER_ALERT_OPTIONS.map((opt) => opt.value),
+        };
         setNotifications([]);
         setPage(1);
         setPagination({ page: 1, limit: pageSize, total: 0, pages: 1 });
         setUnreadTotal(0);
         setCategories(Array.isArray(categoryData.categories) ? categoryData.categories : []);
         setCompanies(Array.isArray(companyData) ? companyData : []);
-        setPreferences(pref);
+        setPreferences(normalizedPref);
       } else {
         const data = await listNotifications(accessToken, { page: safePage, limit: pageSize });
         setNotifications(Array.isArray(data.notifications) ? data.notifications : []);
@@ -302,6 +326,9 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         email_notifications: preferences.email_notifications,
         job_alerts: preferences.job_alerts,
         application_updates: preferences.application_updates,
+        job_seeker_alert_types: Array.isArray(preferences.job_seeker_alert_types)
+          ? preferences.job_seeker_alert_types
+          : JOB_SEEKER_ALERT_OPTIONS.map((opt) => opt.value),
         category_ids: Array.isArray(preferences.category_ids) ? preferences.category_ids : [],
         company_ids: Array.isArray(preferences.company_ids) ? preferences.company_ids : [],
         industry_names: Array.isArray(preferences.industry_names) ? preferences.industry_names : [],
@@ -391,8 +418,41 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">{copy.title}</h1>
-        {mode === "messages" ? (
+        {mode !== "messages" ? (
           <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn btnGhost btnSm"
+              type="button"
+              onClick={() => void load(1)}
+              disabled={saving}
+            >
+              Refresh
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {canUseJobAlerts && mode === "job-alerts" ? (
+        <p className="pageText" style={{ marginTop: 6 }}>
+          {copy.intro}
+        </p>
+      ) : null}
+
+      {error ? <div className="errorBox">{error}</div> : null}
+      {success ? <div className="successBox">{success}</div> : null}
+
+      {mode === "messages" ? (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="chipBadge">Unread: {unreadCount}</span>
             <button
               className="btn btnGhost btnSm"
@@ -411,30 +471,9 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
               Mark all as read
             </button>
           </div>
-        ) : (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btnGhost btnSm"
-              type="button"
-              onClick={() => void load(1)}
-              disabled={saving}
-            >
-              Refresh
-            </button>
-          </div>
-        )}
-      </div>
-
-      {canUseJobAlerts && mode === "job-alerts" ? (
-        <p className="pageText" style={{ marginTop: 6 }}>
-          {copy.intro}
-        </p>
+          {renderMessagesPager()}
+        </div>
       ) : null}
-
-      {error ? <div className="errorBox">{error}</div> : null}
-      {success ? <div className="successBox">{success}</div> : null}
-
-      {mode === "messages" ? <div style={{ marginBottom: 12 }}>{renderMessagesPager()}</div> : null}
 
       <div className="inboxList" role="region" aria-label={`${copy.title} list`}>
         {showPreferences && preferences ? (
@@ -459,30 +498,101 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                   />
                   <span className="fieldLabel">Email notifications</span>
                 </label>
-                <label className="fieldCheckbox">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(preferences.job_alerts)}
-                    onChange={(e) =>
-                      setPreferences((prev) =>
-                        prev ? { ...prev, job_alerts: e.target.checked } : prev,
-                      )
-                    }
-                  />
-                  <span className="fieldLabel">Job alert notifications</span>
-                </label>
-                <label className="fieldCheckbox">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(preferences.application_updates)}
-                    onChange={(e) =>
-                      setPreferences((prev) =>
-                        prev ? { ...prev, application_updates: e.target.checked } : prev,
-                      )
-                    }
-                  />
-                  <span className="fieldLabel">Application update notifications</span>
-                </label>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      border: "1px solid var(--stroke)",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      background: "var(--card)",
+                    }}
+                  >
+                    <label className="fieldCheckbox" style={{ marginBottom: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(preferences.job_alerts)}
+                        disabled={!canApplyAsJobSeeker}
+                        onChange={(e) =>
+                          setPreferences((prev) =>
+                            prev ? { ...prev, job_alerts: e.target.checked } : prev,
+                          )
+                        }
+                      />
+                      <span className="fieldLabel">Job Alerts (As Job Seeker)</span>
+                    </label>
+                    <div className="inboxCardMeta">
+                      Receive new job posting alerts for your selected categories, companies, and industries.
+                    </div>
+                    {!canApplyAsJobSeeker ? (
+                      <div className="inboxCardMeta" style={{ marginTop: 6 }}>
+                        Requires APPLY_JOB permission.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid var(--stroke)",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      background: "var(--card)",
+                    }}
+                  >
+                    <label className="fieldCheckbox" style={{ marginBottom: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(preferences.application_updates)}
+                        onChange={(e) =>
+                          setPreferences((prev) =>
+                            prev ? { ...prev, application_updates: e.target.checked } : prev,
+                          )
+                        }
+                      />
+                      <span className="fieldLabel">Alerts From Job Seekers</span>
+                    </label>
+                    <div className="inboxCardMeta">
+                      Receive alerts when job seekers submit or update applications relevant to your access.
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                      {JOB_SEEKER_ALERT_OPTIONS.map((option) => (
+                        <label key={option.value} className="fieldCheckbox">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(preferences.job_seeker_alert_types?.includes(option.value))}
+                            disabled={!preferences.application_updates}
+                            onChange={(e) =>
+                              setPreferences((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      job_seeker_alert_types: toggleSelection(
+                                        prev.job_seeker_alert_types,
+                                        option.value,
+                                        e.target.checked,
+                                      ) as ("application_submitted" | "application_withdrawn")[],
+                                    }
+                                  : prev,
+                              )
+                            }
+                          />
+                          <span className="fieldLabel">{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="inboxCardMeta" style={{ marginTop: 4 }}>
+                      Select exactly which job seeker alerts you want to receive.
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -497,7 +607,13 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                 {categories.length === 0 ? (
                   <p className="pageText">No categories found.</p>
                 ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    }}
+                  >
                     {categories.map((category) => (
                       <label key={category.id} className="fieldCheckbox">
                         <input
@@ -537,7 +653,13 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                 {companies.length === 0 ? (
                   <p className="pageText">No companies found.</p>
                 ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    }}
+                  >
                     {companies.map((company) => (
                       <label key={company.id} className="fieldCheckbox">
                         <input
@@ -581,7 +703,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                     style={{
                       display: "grid",
                       gap: 6,
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     }}
                   >
                     {industries.map((industry) => (
