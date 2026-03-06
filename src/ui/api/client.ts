@@ -1820,6 +1820,7 @@ export type AdminJob = {
   category?: string;
   experience_level?: string;
   employment_type?: string;
+  work_mode?: "onsite" | "remote" | "hybrid" | string;
   status?: string;
   remote?: boolean;
   is_featured?: boolean;
@@ -1857,6 +1858,7 @@ export type JobApplication = {
   salary_min?: number | null;
   salary_max?: number | null;
   employment_type?: string | null;
+  work_mode?: "onsite" | "remote" | "hybrid" | null;
   remote?: boolean | null;
   application_deadline?: string | null;
 };
@@ -1884,6 +1886,7 @@ export type JobListItem = {
   subcategory?: string | null;
   experience_level?: string | null;
   employment_type?: string | null;
+  work_mode?: "onsite" | "remote" | "hybrid" | string | null;
   status?: string | null;
   remote?: boolean | null;
   requirements?: unknown[] | null;
@@ -1912,6 +1915,7 @@ export type JobUpsertPayload = {
   category: string;
   experience_level: "Entry" | "Intermediate" | "Senior" | "Lead";
   employment_type: "Full-time" | "Part-time" | "Contract" | "Internship";
+  work_mode?: "onsite" | "remote" | "hybrid";
   remote?: boolean;
   requirements?: string[];
   responsibilities?: string[];

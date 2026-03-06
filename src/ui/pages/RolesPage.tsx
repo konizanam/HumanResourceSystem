@@ -65,6 +65,7 @@ function ReadField({ label, value }: { label: string; value: unknown }) {
 /* ------------------------------------------------------------------ */
 
 type PanelMode = "view" | "edit" | "permissions" | "users";
+const ROLE_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
 
 export function RolesPage() {
   const { accessToken } = useAuth();
@@ -78,6 +79,8 @@ export function RolesPage() {
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [search, setSearch] = useState("");
+  const [rolesPage, setRolesPage] = useState(1);
+  const [rolesPageSize, setRolesPageSize] = useState<number>(10);
 
   // Add panel
   const [addOpen, setAddOpen] = useState(false);
@@ -111,6 +114,26 @@ export function RolesPage() {
         (r.description ?? "").toLowerCase().includes(q),
     );
   }, [roles, search]);
+
+  const rolesTotalPages = useMemo(() => {
+    const total = Math.max(1, Math.ceil(filteredRoles.length / rolesPageSize));
+    return total;
+  }, [filteredRoles.length, rolesPageSize]);
+
+  const pagedRoles = useMemo(() => {
+    const start = (rolesPage - 1) * rolesPageSize;
+    return filteredRoles.slice(start, start + rolesPageSize);
+  }, [filteredRoles, rolesPage, rolesPageSize]);
+
+  useEffect(() => {
+    setRolesPage(1);
+  }, [search, rolesPageSize]);
+
+  useEffect(() => {
+    if (rolesPage > rolesTotalPages) {
+      setRolesPage(rolesTotalPages);
+    }
+  }, [rolesPage, rolesTotalPages]);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -318,6 +341,50 @@ export function RolesPage() {
     return filteredUsers.slice(start, start + 5);
   }, [filteredUsers, usersPage]);
 
+  const renderRolesPager = useCallback((ariaLabel: string, marginTop = 0) => (
+    <div className="publicJobsPager" role="navigation" aria-label={ariaLabel} style={marginTop ? { marginTop } : undefined}>
+      <label className="publicJobsPagerSelect">
+        <span>Records:</span>
+        <select
+          className="input"
+          value={rolesPageSize}
+          onChange={(e) => setRolesPageSize(Number(e.target.value))}
+          disabled={loading}
+        >
+          {ROLE_PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        className="btn btnPrimary btnSm"
+        style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+        type="button"
+        disabled={rolesPage <= 1}
+        onClick={() => setRolesPage((p) => Math.max(1, p - 1))}
+      >
+        {"<-"} Previous
+      </button>
+
+      <span className="publicJobsPagerInfo">
+        Page {rolesPage} of {rolesTotalPages} ({filteredRoles.length} roles)
+      </span>
+
+      <button
+        className="btn btnPrimary btnSm"
+        style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+        type="button"
+        disabled={rolesPage >= rolesTotalPages}
+        onClick={() => setRolesPage((p) => Math.min(rolesTotalPages, p + 1))}
+      >
+        Next {"->"}
+      </button>
+    </div>
+  ), [filteredRoles.length, loading, rolesPage, rolesPageSize, rolesTotalPages]);
+
   /* -- Render -- */
   if (loading) {
     return (
@@ -395,6 +462,7 @@ export function RolesPage() {
       )}
 
       {/* Table */}
+      {renderRolesPager("Roles pagination top")}
       <div className="tableWrap" role="region" aria-label="Roles table">
         <table className="table companiesTable">
           <thead>
@@ -411,7 +479,7 @@ export function RolesPage() {
             {filteredRoles.length === 0 ? (
               <tr><td colSpan={6}><div className="emptyState">No roles found.</div></td></tr>
             ) : (
-              filteredRoles.map((role) => {
+              pagedRoles.map((role) => {
                 const isOpen = openRoleId === role.id;
                 return (
                   <RoleRow
@@ -660,6 +728,7 @@ export function RolesPage() {
           </tbody>
         </table>
       </div>
+      {renderRolesPager("Roles pagination", 16)}
 
       <ConfirmModal
         open={Boolean(confirmDeleteId)}

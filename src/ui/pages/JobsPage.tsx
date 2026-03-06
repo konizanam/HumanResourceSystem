@@ -123,6 +123,7 @@ type JobFormState = {
   category: string;
   employment_type: JobUpsertPayload["employment_type"];
   experience_level: JobUpsertPayload["experience_level"];
+  work_mode: "onsite" | "remote" | "hybrid";
   location: string;
   remote: boolean;
   salary_min: string;
@@ -138,6 +139,7 @@ const EMPTY_FORM: JobFormState = {
   category: "",
   employment_type: "Full-time",
   experience_level: "Entry",
+  work_mode: "onsite",
   location: "",
   remote: false,
   salary_min: "",
@@ -147,6 +149,18 @@ const EMPTY_FORM: JobFormState = {
 };
 
 function mapJobToForm(job: JobListItem): JobFormState {
+  const rawWorkMode = String((job as any).work_mode ?? "").trim().toLowerCase();
+  const normalizedWorkMode: "onsite" | "remote" | "hybrid" =
+    rawWorkMode === "hybrid"
+      ? "hybrid"
+      : rawWorkMode === "remote"
+        ? "remote"
+        : rawWorkMode === "onsite"
+          ? "onsite"
+          : Boolean(job.remote)
+            ? "remote"
+            : "onsite";
+
   const rawExperienceLevel = String(job.experience_level ?? "").trim().toLowerCase();
   const normalizedExperienceLevel: JobUpsertPayload["experience_level"] =
     rawExperienceLevel === "intermediate"
@@ -172,8 +186,9 @@ function mapJobToForm(job: JobListItem): JobFormState {
     category: String(job.category ?? ""),
     employment_type: (job.employment_type as JobUpsertPayload["employment_type"]) || "Full-time",
     experience_level: normalizedExperienceLevel,
+    work_mode: normalizedWorkMode,
     location: String(job.location ?? ""),
-    remote: Boolean(job.remote),
+    remote: normalizedWorkMode !== "onsite",
     salary_min: job.salary_min != null ? String(job.salary_min) : "",
     salary_max: job.salary_max != null ? String(job.salary_max) : "",
     application_deadline: job.application_deadline ? String(job.application_deadline).slice(0, 10) : "",
@@ -189,8 +204,9 @@ function mapFormToPayload(form: JobFormState): JobUpsertPayload {
     category: form.category.trim(),
     employment_type: form.employment_type,
     experience_level: form.experience_level,
+    work_mode: form.work_mode,
     location: form.location.trim(),
-    remote: form.remote,
+    remote: form.work_mode !== "onsite",
     salary_min: Number(form.salary_min),
     salary_max: Number(form.salary_max),
     salary_currency: "NAD",
@@ -232,7 +248,7 @@ export function JobsPage() {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterEmploymentType, setFilterEmploymentType] = useState("");
   const [filterExperienceLevel, setFilterExperienceLevel] = useState("");
-  const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite">("all");
+  const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite" | "hybrid">("all");
   const [filterLocation, setFilterLocation] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [applicationCounts, setApplicationCounts] = useState<Record<string, number>>({});
@@ -317,6 +333,12 @@ export function JobsPage() {
     if (fromSubcategory) return fromSubcategory;
     return "—";
   }, [categoryNameById]);
+
+  const resolveJobWorkMode = useCallback((job: JobListItem): "onsite" | "remote" | "hybrid" => {
+    const raw = String((job as any).work_mode ?? "").trim().toLowerCase();
+    if (raw === "onsite" || raw === "remote" || raw === "hybrid") return raw;
+    return Boolean(job.remote) ? "remote" : "onsite";
+  }, []);
 
   const currentUserId = useMemo(() => {
     if (!accessToken) return "";
@@ -517,9 +539,8 @@ export function JobsPage() {
       }
 
       if (filterRemote !== "all") {
-        const isRemote = Boolean(job.remote);
-        if (filterRemote === "remote" && !isRemote) return false;
-        if (filterRemote === "onsite" && isRemote) return false;
+        const workMode = resolveJobWorkMode(job);
+        if (workMode !== filterRemote) return false;
       }
 
       if (filterLocation) {
@@ -529,7 +550,7 @@ export function JobsPage() {
 
       return true;
     });
-  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, resolveJobCategoryName, resolveJobCompanyName, search]);
+  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, resolveJobCategoryName, resolveJobCompanyName, resolveJobWorkMode, search]);
 
   const seekerFilterOptions = useMemo(() => {
     const categories = new Set<string>();
@@ -614,7 +635,8 @@ export function JobsPage() {
       else if (status === "draft" || status === "pending") draftJobs += 1;
       else if (status === "closed" || status === "inactive" || status === "expired") closedJobs += 1;
 
-      if (Boolean(job.remote)) remoteJobs += 1;
+      const workMode = resolveJobWorkMode(job);
+      if (workMode === "remote" || workMode === "hybrid") remoteJobs += 1;
 
       const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
       if (Number.isFinite(applications)) totalApplications += applications;
@@ -626,7 +648,7 @@ export function JobsPage() {
       return [
         { label: "Jobs on Page", value: displayedJobs.length },
         { label: "Open Jobs", value: openJobs },
-        { label: "Remote Jobs", value: remoteJobs },
+        { label: "Remote/Hybrid Jobs", value: remoteJobs },
         { label: "Applied", value: appliedJobs },
         { label: "Not Applied", value: Math.max(0, displayedJobs.length - appliedJobs) },
       ];
@@ -639,7 +661,7 @@ export function JobsPage() {
       { label: "Closed Jobs", value: closedJobs },
       { label: "Applications", value: totalApplications },
     ];
-  }, [appliedJobIds, applicationCounts, isJobSeekerView, seekerVisibleJobs, visibleJobs]);
+  }, [appliedJobIds, applicationCounts, isJobSeekerView, resolveJobWorkMode, seekerVisibleJobs, visibleJobs]);
 
   const activeCompany = useMemo(
     () => companies.find((company) => company.id === companyIdFromUrl) ?? null,
@@ -787,8 +809,9 @@ export function JobsPage() {
         subcategory: selectedSubcategory.trim(),
         employment_type: form.employment_type,
         experience_level: form.experience_level,
+        work_mode: form.work_mode,
         location: form.location.trim(),
-        remote: form.remote,
+        remote: form.work_mode !== "onsite",
         salary_min: Number(form.salary_min),
         salary_max: Number(form.salary_max),
         salary_currency: "NAD",
@@ -906,10 +929,14 @@ export function JobsPage() {
                 <option value="draft">Draft</option>
               </select>
             </div>
-            <label className="field fieldCheckbox">
-              <input type="checkbox" checked={form.remote} onChange={(e) => setForm((p) => ({ ...p, remote: e.target.checked }))} />
-              <span className="fieldLabel">Remote</span>
-            </label>
+            <div className="field">
+              <label className="fieldLabel">Work Mode</label>
+              <select className="input" value={form.work_mode} onChange={(e) => setForm((p) => ({ ...p, work_mode: e.target.value as "onsite" | "remote" | "hybrid" }))}>
+                <option value="onsite">On-site</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </div>
             <div className="field fieldFull">
               <label className="fieldLabel">Description</label>
               <RichTextEditor
@@ -1181,10 +1208,14 @@ export function JobsPage() {
                   <option value="Entry">Entry</option><option value="Intermediate">Intermediate</option><option value="Senior">Senior</option><option value="Lead">Lead</option>
                 </select>
               </div>
-              <label className="field fieldCheckbox">
-                <input type="checkbox" checked={form.remote} onChange={(e) => setForm((p) => ({ ...p, remote: e.target.checked }))} />
-                <span className="fieldLabel">Remote</span>
-              </label>
+              <div className="field">
+                <label className="fieldLabel">Work Mode</label>
+                <select className="input" value={form.work_mode} onChange={(e) => setForm((p) => ({ ...p, work_mode: e.target.value as "onsite" | "remote" | "hybrid" }))}>
+                  <option value="onsite">On-site</option>
+                  <option value="remote">Remote</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </div>
               <div className="field fieldFull">
                 <label className="fieldLabel">Description</label>
                 <RichTextEditor
@@ -1329,10 +1360,11 @@ export function JobsPage() {
                     </select>
                   </div>
                   <div className="field" style={{ marginBottom: 0 }}>
-                    <label className="fieldLabel">Remote</label>
-                    <select className="input" value={filterRemote} onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite")}>
+                    <label className="fieldLabel">Work Mode</label>
+                    <select className="input" value={filterRemote} onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite" | "hybrid")}>
                       <option value="all">All</option>
                       <option value="remote">Remote</option>
+                      <option value="hybrid">Hybrid</option>
                       <option value="onsite">On Site</option>
                     </select>
                   </div>
@@ -1411,7 +1443,16 @@ export function JobsPage() {
                       </div>
                       <ReadField label="Category" value={categoryName} />
                       <ReadField label="Location" value={job.location ?? "—"} />
-                      <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
+                      <ReadField
+                        label="Work Mode"
+                        value={
+                          resolveJobWorkMode(job) === "hybrid"
+                            ? "Hybrid"
+                            : resolveJobWorkMode(job) === "remote"
+                              ? "Remote"
+                              : "On-site"
+                        }
+                      />
                       <ReadField
                         label="Due Date"
                         value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString("en-GB") : "—"}
@@ -1639,7 +1680,16 @@ export function JobsPage() {
                           <ReadField label="Employment Type" value={job.employment_type} />
                           <ReadField label="Experience Level" value={job.experience_level} />
                           <ReadField label="Location" value={job.location} />
-                          <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
+                          <ReadField
+                            label="Work Mode"
+                            value={
+                              resolveJobWorkMode(job) === "hybrid"
+                                ? "Hybrid"
+                                : resolveJobWorkMode(job) === "remote"
+                                  ? "Remote"
+                                  : "On-site"
+                            }
+                          />
                           <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
                           <ReadField label="Deadline" value={job.application_deadline ? new Date(job.application_deadline).toLocaleString("en-GB") : "—"} />
                           <ReadField label="Status" value={job.status} />

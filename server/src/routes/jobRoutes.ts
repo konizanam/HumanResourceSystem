@@ -49,6 +49,11 @@ const validateJob = [
     })
     .isIn(['Full-time', 'Part-time', 'Contract', 'Internship'])
     .withMessage('Invalid employment type'),
+  body('work_mode')
+    .optional()
+    .customSanitizer((value) => String(value ?? '').trim().toLowerCase())
+    .isIn(['onsite', 'remote', 'hybrid'])
+    .withMessage('Invalid work mode'),
   body('remote').optional().isBoolean().toBoolean(),
   body('requirements').optional().isArray(),
   body('responsibilities').optional().isArray(),
@@ -178,6 +183,14 @@ function normalizeJobStatus(statusRaw: unknown): string {
   if (normalized === 'draft') return 'DRAFT';
 
   return raw;
+}
+
+function normalizeWorkMode(workModeRaw: unknown, remoteFallback?: unknown): 'onsite' | 'remote' | 'hybrid' {
+  const normalized = String(workModeRaw ?? '').trim().toLowerCase();
+  if (normalized === 'onsite' || normalized === 'remote' || normalized === 'hybrid') {
+    return normalized;
+  }
+  return Boolean(remoteFallback) ? 'remote' : 'onsite';
 }
 
 // GET /api/jobs - List all jobs (with employer access)
@@ -709,13 +722,15 @@ router.post('/',
         title, description, company, location,
         salary_min, salary_max, salary_currency = 'USD',
         category, category_id, company_id, subcategory, experience_level, employment_type,
-        remote = false, requirements = [], responsibilities = [],
+        work_mode, remote = false, requirements = [], responsibilities = [],
         benefits = [], application_deadline, status = 'active'
       } = req.body;
 
       const jobsColumns = await getJobsColumns();
       const ownerColumn = jobsColumns.has('employer_id') ? 'employer_id' : jobsColumns.has('created_by') ? 'created_by' : null;
       const statusValue = normalizeJobStatus(status);
+      const workModeValue = normalizeWorkMode(work_mode, remote);
+      const remoteValue = workModeValue === 'remote' || workModeValue === 'hybrid';
 
       const resolvedCompanyId = await resolveCompanyId({ company_id, company });
       const resolvedCategoryId = await resolveCategoryId({ category_id, category });
@@ -748,7 +763,8 @@ router.post('/',
       if (jobsColumns.has('subcategory_id')) pushParam('subcategory_id', resolvedSubcategoryId);
       if (jobsColumns.has('experience_level')) pushParam('experience_level', experience_level);
       if (jobsColumns.has('employment_type')) pushParam('employment_type', employment_type);
-      if (jobsColumns.has('remote')) pushParam('remote', remote);
+      if (jobsColumns.has('work_mode')) pushParam('work_mode', workModeValue);
+      if (jobsColumns.has('remote')) pushParam('remote', remoteValue);
       if (jobsColumns.has('requirements')) pushParam('requirements', JSON.stringify(requirements));
       if (jobsColumns.has('responsibilities')) pushParam('responsibilities', JSON.stringify(responsibilities));
       if (jobsColumns.has('benefits')) pushParam('benefits', JSON.stringify(benefits));
@@ -876,12 +892,14 @@ router.put('/:id',
         title, description, company, location,
         salary_min, salary_max, salary_currency,
         category, category_id, company_id, subcategory, experience_level, employment_type,
-        remote, requirements, responsibilities, benefits,
+        work_mode, remote, requirements, responsibilities, benefits,
         application_deadline, status
       } = req.body;
 
       const jobsColumns = await getJobsColumns();
       const statusValue = normalizeJobStatus(status);
+      const workModeValue = normalizeWorkMode(work_mode, remote);
+      const remoteValue = workModeValue === 'remote' || workModeValue === 'hybrid';
 
       const resolvedCompanyId = await resolveCompanyId({ company_id, company });
       const resolvedCategoryId = await resolveCategoryId({ category_id, category });
@@ -915,7 +933,8 @@ router.put('/:id',
       }
       if (jobsColumns.has('experience_level')) pushSet('experience_level', experience_level);
       if (jobsColumns.has('employment_type')) pushSet('employment_type', employment_type);
-      if (jobsColumns.has('remote')) pushSet('remote', remote);
+      if (jobsColumns.has('work_mode')) pushSet('work_mode', workModeValue);
+      if (jobsColumns.has('remote')) pushSet('remote', remoteValue);
       if (jobsColumns.has('requirements')) pushSet('requirements', JSON.stringify(requirements));
       if (jobsColumns.has('responsibilities')) pushSet('responsibilities', JSON.stringify(responsibilities));
       if (jobsColumns.has('benefits')) pushSet('benefits', JSON.stringify(benefits));

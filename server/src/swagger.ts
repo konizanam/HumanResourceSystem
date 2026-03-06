@@ -38,6 +38,11 @@ export function createOpenApiSpec() {
               enum: ["Full-time", "Part-time", "Contract", "Internship"],
               description: "Type of employment"
             },
+            work_mode: {
+              type: "string",
+              enum: ["onsite", "remote", "hybrid"],
+              description: "Work mode (onsite, remote, or hybrid)"
+            },
             remote: { type: "boolean", default: false, description: "Whether the job is remote" },
             requirements: { type: "array", items: { type: "string" }, description: "Job requirements" },
             responsibilities: { type: "array", items: { type: "string" }, description: "Job responsibilities" },
@@ -1345,6 +1350,7 @@ export function createOpenApiSpec() {
                     category: { type: "string" },
                     experience_level: { type: "string", enum: ["Entry", "Intermediate", "Senior", "Lead"] },
                     employment_type: { type: "string", enum: ["Full-time", "Part-time", "Contract", "Internship"] },
+                    work_mode: { type: "string", enum: ["onsite", "remote", "hybrid"] },
                     remote: { type: "boolean", default: false },
                     requirements: { type: "array", items: { type: "string" } },
                     responsibilities: { type: "array", items: { type: "string" } },
@@ -1434,6 +1440,12 @@ export function createOpenApiSpec() {
               name: "employment_type",
               schema: { type: "string", enum: ["Full-time", "Part-time", "Contract", "Internship"] },
               description: "Type of employment"
+            },
+            {
+              in: "query",
+              name: "work_mode",
+              schema: { type: "string", enum: ["onsite", "remote", "hybrid"] },
+              description: "Filter by work mode"
             },
             {
               in: "query",
@@ -1662,6 +1674,7 @@ export function createOpenApiSpec() {
                     category: { type: "string" },
                     experience_level: { type: "string", enum: ["Entry", "Intermediate", "Senior", "Lead"] },
                     employment_type: { type: "string", enum: ["Full-time", "Part-time", "Contract", "Internship"] },
+                    work_mode: { type: "string", enum: ["onsite", "remote", "hybrid"] },
                     remote: { type: "boolean" },
                     requirements: { type: "array", items: { type: "string" } },
                     responsibilities: { type: "array", items: { type: "string" } },

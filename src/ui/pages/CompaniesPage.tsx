@@ -36,6 +36,7 @@ type CompanyJobFormState = {
   salary_min: string;
   salary_max: string;
   employment_type: JobUpsertPayload["employment_type"];
+  work_mode: "onsite" | "remote" | "hybrid";
   location: string;
   remote: boolean;
   application_deadline: string;
@@ -92,6 +93,7 @@ const EMPTY_COMPANY_JOB_FORM: CompanyJobFormState = {
   salary_min: "",
   salary_max: "",
   employment_type: "Full-time",
+  work_mode: "onsite",
   location: "",
   remote: false,
   application_deadline: "",
@@ -539,7 +541,8 @@ export function CompaniesPage() {
         salary_currency: "NAD",
         employment_type: postJobForm.employment_type,
         experience_level: "Entry",
-        remote: postJobForm.remote,
+        work_mode: postJobForm.work_mode,
+        remote: postJobForm.work_mode !== "onsite",
         requirements: [],
         responsibilities: [],
         benefits: [],
@@ -1623,14 +1626,18 @@ function CompanyPostJobPanel({
             </select>
           </div>
 
-          <label className="field fieldCheckbox">
-            <input
-              type="checkbox"
-              checked={form.remote}
-              onChange={(e) => onChange((prev) => ({ ...prev, remote: e.target.checked }))}
-            />
-            <span className="fieldLabel">Is Remote</span>
-          </label>
+          <div className="field">
+            <label className="fieldLabel">Work Mode *</label>
+            <select
+              className="input"
+              value={form.work_mode}
+              onChange={(e) => onChange((prev) => ({ ...prev, work_mode: e.target.value as "onsite" | "remote" | "hybrid" }))}
+            >
+              <option value="onsite">On-site</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
 
           <div className="field fieldFull">
             <label className="fieldLabel">Description *</label>

@@ -155,7 +155,7 @@ export function PublicJobsPage() {
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterEmploymentType, setFilterEmploymentType] = useState<string>("");
   const [filterExperienceLevel, setFilterExperienceLevel] = useState<string>("");
-  const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite">("all");
+  const [filterRemote, setFilterRemote] = useState<"all" | "remote" | "onsite" | "hybrid">("all");
   const [filterLocation, setFilterLocation] = useState<string>("");
   const [filterSearch, setFilterSearch] = useState<string>("");
 
@@ -523,6 +523,12 @@ export function PublicJobsPage() {
     return "—";
   }, [categoryNameById]);
 
+  const resolvePublicJobWorkMode = useCallback((job: JobListItem): "onsite" | "remote" | "hybrid" => {
+    const raw = String((job as any).work_mode ?? "").trim().toLowerCase();
+    if (raw === "onsite" || raw === "remote" || raw === "hybrid") return raw;
+    return Boolean(job.remote) ? "remote" : "onsite";
+  }, []);
+
   const visibleJobs = useMemo(() => {
     const list = Array.isArray(jobs) ? jobs : [];
     const categoryFilter = filterCategory.trim().toLowerCase();
@@ -547,9 +553,8 @@ export function PublicJobsPage() {
       }
 
       if (filterRemote !== "all") {
-        const isRemote = Boolean(job.remote);
-        if (filterRemote === "remote" && !isRemote) return false;
-        if (filterRemote === "onsite" && isRemote) return false;
+        const workMode = resolvePublicJobWorkMode(job);
+        if (filterRemote !== workMode) return false;
       }
 
       if (locationFilter) {
@@ -568,7 +573,7 @@ export function PublicJobsPage() {
     const next = [...filtered];
     const [picked] = next.splice(idx, 1);
     return picked ? [picked, ...next] : filtered;
-  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, openJobId, resolvePublicJobCategoryName]);
+  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, openJobId, resolvePublicJobCategoryName, resolvePublicJobWorkMode]);
 
   const filterOptions = useMemo(() => {
     const list = Array.isArray(jobs) ? jobs : [];
@@ -729,12 +734,13 @@ export function PublicJobsPage() {
                 <select
                   className="input"
                   value={filterRemote}
-                  onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite")}
+                  onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite" | "hybrid")}
                   disabled={loading}
                 >
                   <option value="all">All</option>
                   <option value="remote">Remote only</option>
                   <option value="onsite">On-site only</option>
+                  <option value="hybrid">Hybrid only</option>
                 </select>
               </div>
 
@@ -780,6 +786,7 @@ export function PublicJobsPage() {
                     : `/jobs/${encodeURIComponent(String(job.id))}`;
                 const companyName = resolvePublicJobCompanyName(job);
                 const categoryName = resolvePublicJobCategoryName(job);
+                const workMode = resolvePublicJobWorkMode(job);
                 const shareText = `${job.title}${companyName && companyName !== "—" ? ` - ${companyName}` : ""}`;
                 const facebookShareHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareHref)}&quote=${encodeURIComponent(shareText)}`;
                 const xShareHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareHref)}`;
@@ -809,7 +816,7 @@ export function PublicJobsPage() {
                       </div>
                       <ReadField label="Category" value={categoryName} />
                       <ReadField label="Location" value={job.location ?? "—"} />
-                      <ReadField label="Remote" value={job.remote ? "Yes" : "No"} />
+                      <ReadField label="Work Mode" value={workMode.charAt(0).toUpperCase() + workMode.slice(1)} />
                       <ReadField label="Due Date" value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString("en-GB") : "—"} />
                       <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
                     </div>
