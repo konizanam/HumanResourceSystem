@@ -920,9 +920,22 @@ export function DashboardPage() {
       { label: "Total Jobs (filtered)", value: jobsForCards.length || platformStats.totalJobs },
       { label: "Active Jobs", value: activeJobs },
       { label: "Total Companies", value: platformStats.companies },
+      {
+        label: "Total Job Seekers",
+        value: canViewAdminDashboard && adminStats
+          ? Number(adminStats.users.job_seekers ?? 0)
+          : "—",
+      },
       { label: `Jobs Posted (${platformWindowDays} days)`, value: jobsInWindow },
     ];
-  }, [filteredPlatformJobs, platformStats.companies, platformStats.totalJobs, platformWindowDays]);
+  }, [
+    adminStats,
+    canViewAdminDashboard,
+    filteredPlatformJobs,
+    platformStats.companies,
+    platformStats.totalJobs,
+    platformWindowDays,
+  ]);
 
   const platformJobsStatusChart = useMemo(() => {
     const breakdown = (filteredPlatformJobs ?? []).reduce<Record<string, number>>((acc, job) => {
