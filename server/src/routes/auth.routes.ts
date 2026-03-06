@@ -80,8 +80,6 @@ function createTwoFactorChallenge(input: {
     expiresAt,
   });
 
-  console.log(`[2FA] Verification code for ${input.email}: ${code}`);
-
   return {
     challengeId,
     code,
@@ -1002,12 +1000,6 @@ authRouter.post("/forgot-password", async (req, res, next) => {
            password_reset_requested_at = NOW()
        WHERE id = $3`,
       [resetToken, expiresAt.toISOString(), user.id]
-    );
-
-    // In production, send an email with the reset link.
-    // For development, log the token.
-    console.log(
-      `[DEV] Password reset token for ${email}: ${resetToken}`
     );
 
     return res.json({

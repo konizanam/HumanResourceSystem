@@ -93,7 +93,8 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
 
-  const PAGE_SIZE = 5;
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
+  const [pageSize, setPageSize] = useState(5);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -101,7 +102,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
   const [success, setSuccess] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 5, total: 0, pages: 1 });
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<NotificationItem | null>(null);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
@@ -168,18 +169,18 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         ]);
         setNotifications([]);
         setPage(1);
-        setPagination({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+        setPagination({ page: 1, limit: pageSize, total: 0, pages: 1 });
         setUnreadTotal(0);
         setCategories(Array.isArray(categoryData.categories) ? categoryData.categories : []);
         setCompanies(Array.isArray(companyData) ? companyData : []);
         setPreferences(pref);
       } else {
-        const data = await listNotifications(accessToken, { page: safePage, limit: PAGE_SIZE });
+        const data = await listNotifications(accessToken, { page: safePage, limit: pageSize });
         setNotifications(Array.isArray(data.notifications) ? data.notifications : []);
         setPage(Number(data.pagination?.page ?? safePage));
         setPagination({
           page: Number(data.pagination?.page ?? safePage),
-          limit: Number(data.pagination?.limit ?? PAGE_SIZE),
+          limit: Number(data.pagination?.limit ?? pageSize),
           total: Number(data.pagination?.total ?? 0),
           pages: Number(data.pagination?.pages ?? 1),
         });
@@ -193,7 +194,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, copy.loadError, mode]);
+  }, [accessToken, copy.loadError, mode, page, pageSize]);
 
   useEffect(() => {
     void load(1);
@@ -328,10 +329,28 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
   }
 
   const renderMessagesPager = useCallback(() => {
-    if (mode !== "messages" || pagination.pages <= 1) return null;
+    if (mode !== "messages") return null;
 
     return (
       <div className="publicJobsPager" role="navigation" aria-label="Messages pagination">
+        <label className="publicJobsPagerSelect">
+          Records
+          <select
+            className="input"
+            value={String(pageSize)}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next) || next <= 0) return;
+              setPage(1);
+              setPageSize(next);
+            }}
+            disabled={saving || loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
         <button
           className="btn btnPrimary btnSm"
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -355,7 +374,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         </button>
       </div>
     );
-  }, [load, loading, mode, page, pagination.pages, pagination.total, saving]);
+  }, [PAGE_SIZE_OPTIONS, load, loading, mode, page, pageSize, pagination.pages, pagination.total, saving]);
 
   if (loading && notifications.length === 0) {
     return (

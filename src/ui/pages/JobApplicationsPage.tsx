@@ -100,7 +100,7 @@ function readValue(source: Record<string, unknown> | null | undefined, ...keys: 
 }
 
 export function JobApplicationsPage() {
-  const PAGE_LIMIT = 5;
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
   const { jobId = "" } = useParams();
   const navigate = useNavigate();
@@ -116,6 +116,7 @@ export function JobApplicationsPage() {
   const [stageOverrides, setStageOverrides] = useState<Record<string, StageKey>>({});
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
 
   const [openProfileId, setOpenProfileId] = useState<string | null>(null);
   const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null>>({});
@@ -233,10 +234,10 @@ export function JobApplicationsPage() {
 
   const pagination = useMemo(() => {
     const total = mainListApplications.length;
-    const pages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
+    const pages = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(page, pages);
-    return { page: safePage, pages, total, limit: PAGE_LIMIT };
-  }, [mainListApplications.length, page]);
+    return { page: safePage, pages, total, limit: pageSize };
+  }, [mainListApplications.length, page, pageSize]);
 
   useEffect(() => {
     if (page > pagination.pages) {
@@ -546,6 +547,24 @@ export function JobApplicationsPage() {
         </div>
 
         <div className="publicJobsPager" role="navigation" aria-label="Applicants pagination top">
+          <label className="publicJobsPagerSelect">
+            Records
+            <select
+              className="input"
+              value={String(pageSize)}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next) || next <= 0) return;
+                setPage(1);
+                setPageSize(next);
+              }}
+              disabled={loading}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
           <button
             className="btn btnPrimary btnSm"
             style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -648,6 +667,24 @@ export function JobApplicationsPage() {
       </div>
 
       <div className="publicJobsPager" role="navigation" aria-label="Applicants pagination" style={{ marginTop: 16 }}>
+        <label className="publicJobsPagerSelect">
+          Records
+          <select
+            className="input"
+            value={String(pageSize)}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next) || next <= 0) return;
+              setPage(1);
+              setPageSize(next);
+            }}
+            disabled={loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
         <button
           className="btn btnPrimary btnSm"
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}

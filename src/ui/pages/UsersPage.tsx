@@ -71,6 +71,7 @@ function StatusBadge({ blocked, active }: { blocked?: boolean; active?: boolean 
 /* ------------------------------------------------------------------ */
 
 export function UsersPage() {
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const canManageUsers = hasPermission("MANAGE_USERS");
@@ -476,8 +477,25 @@ export function UsersPage() {
       </div>
 
       {/* Pagination */}
-      {pagination.pages > 1 && (
+      {pagination.total > 0 && (
         <div className="publicJobsPager" role="navigation" aria-label="Users pagination" style={{ marginTop: 16 }}>
+          <label className="publicJobsPagerSelect">
+            Records
+            <select
+              className="input"
+              value={String(pagination.limit)}
+              onChange={(e) => {
+                const nextLimit = Number(e.target.value);
+                if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
+                setPagination((prev) => ({ ...prev, page: 1, limit: nextLimit }));
+              }}
+              disabled={loading}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
           <button
             className="btn btnPrimary btnSm"
             style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}

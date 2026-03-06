@@ -983,15 +983,6 @@ export function JobsPage() {
     return {
       complete: reasons.length === 0,
       reasons,
-      debug: {
-        rootKeys: Object.keys(profileObj),
-        detailsKeys: details ? Object.keys(details) : [],
-        educationCount: Array.isArray(education) ? education.length : 0,
-        idDocumentUrl,
-        hasCv,
-        firstName,
-        lastName,
-      },
     };
   }
 
@@ -1005,19 +996,12 @@ export function JobsPage() {
         getJobSeekerFullProfile(accessToken),
         listJobSeekerResumes(accessToken),
       ]);
-      console.log("[JobsPage] /job-seeker/full-profile response:", profile);
       const hasCv = Boolean(resumes.primary_resume || (Array.isArray(resumes.resumes) && resumes.resumes.length > 0));
       const completeness = getApplyProfileCompleteness(profile, hasCv);
       if (!completeness.complete) {
-        console.log(
-          "[JobsPage] Profile marked incomplete for apply:",
-          completeness.reasons,
-          completeness.debug,
-        );
         setProfileIncompleteModalOpen(true);
         return;
       }
-      console.log("[JobsPage] Profile marked complete for apply:", completeness.debug);
       setApplyConfirmJob(job);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to validate profile completeness");

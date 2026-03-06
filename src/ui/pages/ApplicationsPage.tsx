@@ -32,7 +32,7 @@ function resolveCompanyName(job: JobListItem, companyNameById?: Record<string, s
 }
 
 export function ApplicationsPage() {
-  const PAGE_LIMIT = 5;
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const navigate = useNavigate();
@@ -42,7 +42,8 @@ export function ApplicationsPage() {
   const [companyNameById, setCompanyNameById] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_LIMIT, total: 0, pages: 1 });
+  const [pageSize, setPageSize] = useState(5);
+  const [pagination, setPagination] = useState({ page: 1, limit: 5, total: 0, pages: 1 });
 
   const isAdminView = hasPermission("MANAGE_USERS");
 
@@ -81,12 +82,12 @@ export function ApplicationsPage() {
       setError(null);
       const data = await listJobs(accessToken, {
         page: nextPage,
-        limit: PAGE_LIMIT,
+        limit: pageSize,
         my_jobs: !isAdminView,
       });
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
       const resolvedPage = Number(data.pagination?.page ?? nextPage);
-      const resolvedLimit = Number(data.pagination?.limit ?? PAGE_LIMIT);
+      const resolvedLimit = Number(data.pagination?.limit ?? pageSize);
       const resolvedTotal = Number(data.pagination?.total ?? (Array.isArray(data.jobs) ? data.jobs.length : 0));
       const resolvedPages = Number(data.pagination?.pages ?? Math.max(1, Math.ceil(resolvedTotal / resolvedLimit)));
       setPage(resolvedPage);
@@ -96,7 +97,7 @@ export function ApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, isAdminView]);
+  }, [accessToken, isAdminView, pageSize]);
 
   useEffect(() => {
     void load(page);
@@ -176,6 +177,24 @@ export function ApplicationsPage() {
             </div>
 
             <div className="publicJobsPager" role="navigation" aria-label="Applications pagination top">
+              <label className="publicJobsPagerSelect">
+                Records
+                <select
+                  className="input"
+                  value={String(pageSize)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (!Number.isFinite(next) || next <= 0) return;
+                    setPage(1);
+                    setPageSize(next);
+                  }}
+                  disabled={loading}
+                >
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </label>
               <button
                 className="btn btnPrimary btnSm"
                 style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -242,6 +261,24 @@ export function ApplicationsPage() {
           </div>
 
           <div className="publicJobsPager" role="navigation" aria-label="Applications pagination" style={{ marginTop: 16 }}>
+            <label className="publicJobsPagerSelect">
+              Records
+              <select
+                className="input"
+                value={String(pageSize)}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next) || next <= 0) return;
+                  setPage(1);
+                  setPageSize(next);
+                }}
+                disabled={loading}
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </label>
             <button
               className="btn btnPrimary btnSm"
               style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}

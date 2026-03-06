@@ -22,7 +22,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { useNavigate } from "react-router-dom";
 
-const COMPANY_PAGE_LIMIT = 5;
+const COMPANY_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
 
 type PanelMode = "view" | "edit";
 
@@ -235,6 +235,7 @@ export function CompaniesPage() {
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companiesPage, setCompaniesPage] = useState(1);
+  const [companiesPageSize, setCompaniesPageSize] = useState(5);
   const [search, setSearch] = useState("");
 
   const [addOpen, setAddOpen] = useState(false);
@@ -285,15 +286,15 @@ export function CompaniesPage() {
 
   const companiesPagination = useMemo(() => {
     const total = filteredCompanies.length;
-    const pages = Math.max(1, Math.ceil(total / COMPANY_PAGE_LIMIT));
+    const pages = Math.max(1, Math.ceil(total / companiesPageSize));
     const page = Math.min(companiesPage, pages);
-    return { page, limit: COMPANY_PAGE_LIMIT, total, pages };
-  }, [filteredCompanies.length, companiesPage]);
+    return { page, limit: companiesPageSize, total, pages };
+  }, [filteredCompanies.length, companiesPage, companiesPageSize]);
 
   const visibleCompanies = useMemo(() => {
-    const start = (companiesPagination.page - 1) * COMPANY_PAGE_LIMIT;
-    return filteredCompanies.slice(start, start + COMPANY_PAGE_LIMIT);
-  }, [filteredCompanies, companiesPagination.page]);
+    const start = (companiesPagination.page - 1) * companiesPageSize;
+    return filteredCompanies.slice(start, start + companiesPageSize);
+  }, [filteredCompanies, companiesPagination.page, companiesPageSize]);
 
   const companyStats = useMemo(() => {
     const total = filteredCompanies.length;
@@ -1140,6 +1141,24 @@ export function CompaniesPage() {
         </div>
 
         <div className="publicJobsPager" role="navigation" aria-label="Companies pagination top">
+          <label className="publicJobsPagerSelect">
+            Records
+            <select
+              className="input"
+              value={String(companiesPageSize)}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next) || next <= 0) return;
+                setCompaniesPage(1);
+                setCompaniesPageSize(next);
+              }}
+              disabled={saving}
+            >
+              {COMPANY_PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
           <button
             className="btn btnPrimary btnSm"
             style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -1383,6 +1402,24 @@ export function CompaniesPage() {
       </div>
 
       <div className="publicJobsPager" role="navigation" aria-label="Companies pagination" style={{ marginTop: 16 }}>
+        <label className="publicJobsPagerSelect">
+          Records
+          <select
+            className="input"
+            value={String(companiesPageSize)}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next) || next <= 0) return;
+              setCompaniesPage(1);
+              setCompaniesPageSize(next);
+            }}
+            disabled={saving}
+          >
+            {COMPANY_PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
         <button
           className="btn btnPrimary btnSm"
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
