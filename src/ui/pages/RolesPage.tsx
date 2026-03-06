@@ -565,6 +565,29 @@ export function RolesPage() {
                                   placeholder="Search by name or email..."
                                 />
                               </div>
+                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination top" style={{ marginBottom: 12 }}>
+                                <button
+                                  className="btn btnPrimary btnSm"
+                                  style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+                                  type="button"
+                                  disabled={usersPage <= 1}
+                                  onClick={() => setUsersPage((p) => Math.max(1, p - 1))}
+                                >
+                                  {"<-"} Previous
+                                </button>
+                                <span className="publicJobsPagerInfo">
+                                  Page {usersPage} of {usersTotalPages} ({filteredUsers.length} users)
+                                </span>
+                                <button
+                                  className="btn btnPrimary btnSm"
+                                  style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                                  type="button"
+                                  disabled={usersPage >= usersTotalPages}
+                                  onClick={() => setUsersPage((p) => Math.min(usersTotalPages, p + 1))}
+                                >
+                                  Next {"->"}
+                                </button>
+                              </div>
                               <div className="tableWrap">
                                 <table className="table companiesTable">
                                   <thead>

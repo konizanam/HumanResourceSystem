@@ -1554,6 +1554,20 @@ export function ReportsPage() {
                                   <div className="emptyState">No applications found for this status.</div>
                                 ) : (
                                   <>
+                                    {renderPager(
+                                      pagedApplicantsRows.page,
+                                      pagedApplicantsRows.pages,
+                                      pagedApplicantsRows.total,
+                                      setApplicantsPage,
+                                      "Applicants report pagination top",
+                                    )}
+                                    {renderPager(
+                                      statusPage,
+                                      statusPages,
+                                      scoped.length,
+                                      (nextPage) => setStatusPageByKey((prev) => ({ ...prev, [row.status]: nextPage })),
+                                      `${row.status} applications pagination top`,
+                                    )}
                                     <div className="tableWrap">
                                       <table className="table companiesTable">
                                         <thead>
@@ -1705,6 +1719,8 @@ export function ReportsPage() {
               </div>
             ) : null}
 
+            {renderPager(pagedDirectoryRows.page, pagedDirectoryRows.pages, pagedDirectoryRows.total, setDirectoryPage, "Directory records pagination top")}
+
             <div className="tableWrap" style={{ marginTop: 12 }}>
               <table className="table companiesTable">
                 <thead>
@@ -1790,6 +1806,7 @@ export function ReportsPage() {
         {openReports.monthly_signups ? (
           <>
             {!ranReports.monthly_signups ? <p className="pageText">Click Run Report to view signup trends.</p> : null}
+            {renderPager(pagedMonthlyRows.page, pagedMonthlyRows.pages, pagedMonthlyRows.total, setMonthlyPage, "Monthly signups pagination top")}
             <div className="tableWrap">
               <table className="table companiesTable">
                 <thead>

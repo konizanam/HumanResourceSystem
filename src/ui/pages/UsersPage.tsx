@@ -242,6 +242,53 @@ export function UsersPage() {
     load(page);
   }
 
+  function renderUsersPager(ariaLabel: string, marginTop = 16) {
+    if (pagination.total <= 0) return null;
+
+    return (
+      <div className="publicJobsPager" role="navigation" aria-label={ariaLabel} style={{ marginTop }}>
+        <label className="publicJobsPagerSelect">
+          Records
+          <select
+            className="input"
+            value={String(pagination.limit)}
+            onChange={(e) => {
+              const nextLimit = Number(e.target.value);
+              if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
+              setPagination((prev) => ({ ...prev, page: 1, limit: nextLimit }));
+            }}
+            disabled={loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+          type="button"
+          onClick={() => goToPage(pagination.page - 1)}
+          disabled={pagination.page <= 1 || loading}
+        >
+          {"<-"} Previous
+        </button>
+        <span className="publicJobsPagerInfo">
+          Page {pagination.page} of {pagination.pages} ({pagination.total} users)
+        </span>
+        <button
+          className="btn btnPrimary btnSm"
+          style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+          type="button"
+          onClick={() => goToPage(pagination.page + 1)}
+          disabled={pagination.page >= pagination.pages || loading}
+        >
+          Next {"->"}
+        </button>
+      </div>
+    );
+  }
+
   /* -- Render -- */
   if (loading && users.length === 0) {
     return (
@@ -321,6 +368,8 @@ export function UsersPage() {
           </select>
         </div>
       </div>
+
+      {renderUsersPager("Users pagination top", 0)}
 
       {/* Table */}
       <div className="tableWrap" role="region" aria-label="Users table">
@@ -477,48 +526,7 @@ export function UsersPage() {
       </div>
 
       {/* Pagination */}
-      {pagination.total > 0 && (
-        <div className="publicJobsPager" role="navigation" aria-label="Users pagination" style={{ marginTop: 16 }}>
-          <label className="publicJobsPagerSelect">
-            Records
-            <select
-              className="input"
-              value={String(pagination.limit)}
-              onChange={(e) => {
-                const nextLimit = Number(e.target.value);
-                if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
-                setPagination((prev) => ({ ...prev, page: 1, limit: nextLimit }));
-              }}
-              disabled={loading}
-            >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-            type="button"
-            onClick={() => goToPage(pagination.page - 1)}
-            disabled={pagination.page <= 1 || loading}
-          >
-            {"<-"} Previous
-          </button>
-          <span className="publicJobsPagerInfo">
-            Page {pagination.page} of {pagination.pages} ({pagination.total} users)
-          </span>
-          <button
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-            type="button"
-            onClick={() => goToPage(pagination.page + 1)}
-            disabled={pagination.page >= pagination.pages || loading}
-          >
-            Next {"->"}
-          </button>
-        </div>
-      )}
+      {renderUsersPager("Users pagination")}
 
       {/* Block / Unblock modal */}
       <ConfirmModal
