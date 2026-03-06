@@ -100,7 +100,8 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
       + 'You are invited to an interview for {{job_title}} at {{company_name}}.\n\n'
       + 'Date: {{interview_date}}\n'
       + 'Time: {{interview_time}}\n'
-      + 'Location: {{interview_location}}\n\n'
+      + 'Location: {{interview_location}}\n'
+      + 'Online Link: {{interview_online_link}}\n\n'
       + 'If you need to reschedule, please contact us at {{support_email}}.\n\n'
       + 'Regards,\n'
       + '{{company_name}} Recruitment Team',
@@ -112,6 +113,7 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
       'interview_date',
       'interview_time',
       'interview_location',
+      'interview_online_link',
       'support_email',
     ],
   },

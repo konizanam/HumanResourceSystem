@@ -2000,12 +2000,14 @@ export async function updateJobApplicationStatus(
     interviewDate?: string;
     interviewTime?: string;
     interviewVenue?: string;
+    interviewOnlineLink?: string;
   },
 ): Promise<JobApplication> {
   const payload: Record<string, string> = { status };
   if (options?.interviewDate) payload.interview_date = options.interviewDate;
   if (options?.interviewTime) payload.interview_time = options.interviewTime;
   if (options?.interviewVenue) payload.interview_location = options.interviewVenue;
+  if (options?.interviewOnlineLink) payload.interview_online_link = options.interviewOnlineLink;
 
   const res = await fetch(
     `${API_BASE}/jobs/${encodeURIComponent(jobId)}/applications/${encodeURIComponent(applicationId)}/status`,

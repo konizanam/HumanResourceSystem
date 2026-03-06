@@ -1161,6 +1161,7 @@ export async function createNotification(
               interview_date: String((data as any)?.interview_date ?? (data as any)?.date ?? ''),
               interview_time: String((data as any)?.interview_time ?? (data as any)?.time ?? ''),
               interview_location: String((data as any)?.interview_location ?? (data as any)?.location ?? ''),
+              interview_online_link: String((data as any)?.interview_online_link ?? (data as any)?.online_link ?? ''),
               unsubscribe_link: webOrigin() ? `${webOrigin()}/app/notifications` : '',
               support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || '',
             },

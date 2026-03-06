@@ -125,6 +125,7 @@ export function JobApplicationsPage() {
   const [interviewDate, setInterviewDate] = useState("");
   const [interviewTime, setInterviewTime] = useState("");
   const [interviewVenue, setInterviewVenue] = useState("");
+  const [interviewOnlineLink, setInterviewOnlineLink] = useState("");
   const [interviewError, setInterviewError] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<StageKey, boolean>>({
     longlisted: true,
@@ -258,7 +259,7 @@ export function JobApplicationsPage() {
   async function onUpdateStage(
     app: JobApplication,
     next: StageKey,
-    options?: { interviewDate?: string; interviewTime?: string; interviewVenue?: string },
+    options?: { interviewDate?: string; interviewTime?: string; interviewVenue?: string; interviewOnlineLink?: string },
   ) {
     if (!accessToken || !jobId) return;
     try {
@@ -274,9 +275,12 @@ export function JobApplicationsPage() {
       }
       setApplications((prev) => prev.map((p) => (p.id === app.id ? { ...p, ...updated } : p)));
       setStageOverrides((prev) => ({ ...prev, [app.id]: next }));
-      if (next === "interview" && options?.interviewDate && options?.interviewTime && options?.interviewVenue) {
+      if (next === "interview" && options?.interviewDate && options?.interviewTime) {
+        const placeSummary =
+          options.interviewVenue?.trim() ||
+          (options.interviewOnlineLink?.trim() ? "Online" : "TBD");
         setSuccess(
-          `Interview scheduled for ${options.interviewDate} at ${options.interviewTime} (${options.interviewVenue}).`,
+          `Interview scheduled for ${options.interviewDate} at ${options.interviewTime} (${placeSummary}).`,
         );
       } else {
         setSuccess(`Applicant moved to ${STATUS_ACTIONS.find((s) => s.key === next)?.label ?? next}.`);
@@ -297,6 +301,7 @@ export function JobApplicationsPage() {
     setInterviewDate("");
     setInterviewTime("");
     setInterviewVenue("");
+    setInterviewOnlineLink("");
     setInterviewError(null);
   }
 
@@ -308,8 +313,13 @@ export function JobApplicationsPage() {
 
   async function onConfirmInterviewSchedule() {
     if (!interviewApp) return;
-    if (!interviewDate || !interviewTime || !interviewVenue.trim()) {
-      setInterviewError("Interview date, time, and venue are required.");
+    if (!interviewDate || !interviewTime) {
+      setInterviewError("Interview date and time are required.");
+      return;
+    }
+
+    if (!interviewVenue.trim() && !interviewOnlineLink.trim()) {
+      setInterviewError("Provide at least a venue or an online interview link.");
       return;
     }
 
@@ -318,6 +328,7 @@ export function JobApplicationsPage() {
       interviewDate,
       interviewTime,
       interviewVenue: interviewVenue.trim(),
+      interviewOnlineLink: interviewOnlineLink.trim(),
     });
     setInterviewApp(null);
   }
@@ -894,6 +905,16 @@ export function JobApplicationsPage() {
                   value={interviewVenue}
                   onChange={(e) => setInterviewVenue(e.target.value)}
                   placeholder="Venue / location"
+                />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="fieldLabel" htmlFor="interview-online-link">Online Interview Link (optional)</label>
+                <input
+                  id="interview-online-link"
+                  className="input"
+                  value={interviewOnlineLink}
+                  onChange={(e) => setInterviewOnlineLink(e.target.value)}
+                  placeholder="https://..."
                 />
               </div>
             </div>

@@ -438,8 +438,40 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         </p>
       ) : null}
 
-      {error ? <div className="errorBox">{error}</div> : null}
-      {success ? <div className="successBox">{success}</div> : null}
+      {error ? (
+        <div
+          className="errorBox"
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+            style={{ minWidth: 32, padding: "2px 8px", lineHeight: 1 }}
+          >
+            x
+          </button>
+        </div>
+      ) : null}
+      {success ? (
+        <div
+          className="successBox"
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+        >
+          <span>{success}</span>
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            onClick={() => setSuccess(null)}
+            aria-label="Dismiss success"
+            style={{ minWidth: 32, padding: "2px 8px", lineHeight: 1 }}
+          >
+            x
+          </button>
+        </div>
+      ) : null}
 
       {mode === "messages" ? (
         <div
@@ -813,9 +845,25 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                     </div>
                   </div>
 
-                  <span className="chipBadge">
-                    {item.is_read ? "Read" : "Unread"}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="chipBadge">
+                      {item.is_read ? "Read" : "Unread"}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteItem(item);
+                      }}
+                      disabled={saving}
+                      aria-label="Close alert"
+                      title="Close alert"
+                      style={{ minWidth: 30, padding: "2px 8px", lineHeight: 1 }}
+                    >
+                      x
+                    </button>
+                  </div>
                 </div>
 
                 <div className="inboxCardBody">

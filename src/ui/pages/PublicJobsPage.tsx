@@ -128,7 +128,7 @@ export function PublicJobsPage() {
   const location = useLocation();
   const { jobId } = useParams();
 
-  const PAGE_LIMIT = 5;
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
 
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
@@ -148,8 +148,9 @@ export function PublicJobsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState<number>(5);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_LIMIT, total: 0, pages: 1 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 5, total: 0, pages: 1 });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterEmploymentType, setFilterEmploymentType] = useState<string>("");
@@ -166,6 +167,7 @@ export function PublicJobsPage() {
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const pageName = useMemo(() => {
     const rawJobId = String(jobId ?? "").trim();
@@ -307,17 +309,20 @@ export function PublicJobsPage() {
     };
   }, []);
 
-  const load = useCallback(async (page = 1) => {
+  const load = useCallback(async (page = 1, limitOverride?: number) => {
     try {
       setLoading(true);
       setError(null);
       setSuccess(null);
 
       const search = filterSearch.trim();
-      const data = await listPublicJobs({ page, limit: PAGE_LIMIT, search: search || undefined });
+      const limitToUse = Number.isFinite(Number(limitOverride)) && Number(limitOverride) > 0
+        ? Number(limitOverride)
+        : pageSize;
+      const data = await listPublicJobs({ page, limit: limitToUse, search: search || undefined });
       const base = Array.isArray(data.jobs) ? data.jobs : [];
       const total = Number(data.pagination?.total ?? base.length);
-      const limit = Number(data.pagination?.limit ?? PAGE_LIMIT);
+      const limit = Number(data.pagination?.limit ?? limitToUse);
       setPagination({
         page: Number(data.pagination?.page ?? page),
         limit,
@@ -339,26 +344,52 @@ export function PublicJobsPage() {
           } else {
             next = [job, ...list];
           }
-          return next.slice(0, PAGE_LIMIT);
+          return next.slice(0, limitToUse);
         });
       } else {
         setOpenJobId(null);
-        setJobs(base.slice(0, PAGE_LIMIT));
+        setJobs(base.slice(0, limitToUse));
       }
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load jobs");
     } finally {
       setLoading(false);
     }
-  }, [PAGE_LIMIT, filterSearch, jobId]);
+  }, [filterSearch, jobId, pageSize]);
 
   useEffect(() => {
     void load(1);
   }, [load]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onScroll = () => setShowBackToTop(window.scrollY > 260);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const renderPager = useCallback(() => {
     return (
       <div className="publicJobsPager" role="navigation" aria-label="Jobs pagination">
+        <label className="publicJobsPagerSelect">
+          Records
+          <select
+            className="input"
+            value={String(pageSize)}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next) || next <= 0) return;
+              setPageSize(next);
+              void load(1, next);
+            }}
+            disabled={loading || saving}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
         <button
           className="btn btnPrimary btnSm"
           style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -382,7 +413,7 @@ export function PublicJobsPage() {
         </button>
       </div>
     );
-  }, [load, loading, pagination.page, pagination.pages, pagination.total, saving]);
+  }, [PAGE_SIZE_OPTIONS, load, loading, pageSize, pagination.page, pagination.pages, pagination.total, saving]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -872,6 +903,17 @@ export function PublicJobsPage() {
                           </button>
                         </div>
                       </div>
+                    ) : null}
+
+                    {showBackToTop ? (
+                      <button
+                        type="button"
+                        className="btn btnPrimary btnSm backToTopBtn"
+                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                        aria-label="Back to top"
+                      >
+                        ↑ Back to Top
+                      </button>
                     ) : null}
                   </div>
                 );
