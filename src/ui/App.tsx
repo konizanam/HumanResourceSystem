@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
@@ -26,6 +27,8 @@ import { GlobalSettingsPage } from "./pages/GlobalSettingsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PublicJobsPage } from "./pages/PublicJobsPage";
 import { MyPermissionsPage } from "./pages/MyPermissionsPage";
+import { MainCompanySetupPage } from "./pages/MainCompanySetupPage";
+import { getPublicSetupStatus } from "./api/client";
 
 const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
@@ -49,6 +52,88 @@ const menu = [
 ] as const;
 
 type HasPermissionFn = (...candidates: string[]) => boolean;
+
+function LoginEntryRoute() {
+  const [loading, setLoading] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSetupStatus = async () => {
+      try {
+        const status = await getPublicSetupStatus();
+        if (!cancelled) {
+          setSetupRequired(status.setup_required);
+        }
+      } catch {
+        if (!cancelled) {
+          setSetupRequired(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSetupStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return <PlaceholderPage title="Loading..." />;
+  }
+
+  if (setupRequired) {
+    return <Navigate to="/setup/main-company" replace />;
+  }
+
+  return <LoginPage />;
+}
+
+function MainCompanySetupRoute() {
+  const [loading, setLoading] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSetupStatus = async () => {
+      try {
+        const status = await getPublicSetupStatus();
+        if (!cancelled) {
+          setSetupRequired(status.setup_required);
+        }
+      } catch {
+        if (!cancelled) {
+          setSetupRequired(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSetupStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return <PlaceholderPage title="Loading setup..." />;
+  }
+
+  if (!setupRequired) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <MainCompanySetupPage />;
+}
 
 function resolveDashboardPath(hasPermission: HasPermissionFn) {
   void hasPermission;
@@ -102,7 +187,8 @@ function PermissionGate({
 export function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<LoginEntryRoute />} />
+      <Route path="/setup/main-company" element={<MainCompanySetupRoute />} />
       <Route path="/register" element={<SignupPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 

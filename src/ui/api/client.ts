@@ -150,6 +150,24 @@ export type SystemSettings = {
   application_status_notifications?: Record<string, boolean>;
 };
 
+export type SetupStatus = {
+  setup_required: boolean;
+  main_company_id: string | null;
+};
+
+export type MainCompanySetupPayload = {
+  name: string;
+  industry: string;
+  description: string;
+  website?: string;
+  contact_email: string;
+  contact_phone: string;
+  address_line1: string;
+  address_line2: string;
+  city: string;
+  country: string;
+};
+
 function normalizeApplicationStatusNotifications(input: any): Record<string, boolean> | undefined {
   if (!input || typeof input !== "object") return undefined;
   const out: Record<string, boolean> = {};
@@ -508,6 +526,40 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
     application_status_notifications: normalizeApplicationStatusNotifications(
       (data as any).application_status_notifications,
     ),
+  };
+}
+
+export async function getPublicSetupStatus(): Promise<SetupStatus> {
+  const res = await fetch(`${API_BASE}/public/setup-status`, {
+    headers: publicHeaders(),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load setup status");
+
+  const data = (body as any)?.data ?? {};
+  return {
+    setup_required: Boolean(data.setup_required),
+    main_company_id:
+      data.main_company_id === null || data.main_company_id === undefined
+        ? null
+        : String(data.main_company_id),
+  };
+}
+
+export async function setupMainCompany(payload: MainCompanySetupPayload): Promise<{ main_company_id: string }> {
+  const res = await fetch(`${API_BASE}/public/setup/main-company`, {
+    method: "POST",
+    headers: publicHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to set up main company");
+  }
+
+  const data = (body as any)?.data ?? {};
+  return {
+    main_company_id: String(data.main_company_id ?? ""),
   };
 }
 

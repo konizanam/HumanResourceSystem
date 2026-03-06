@@ -1,8 +1,18 @@
 import { Router } from 'express';
 import { query } from '../config/database';
-import { getSystemSettings } from '../services/systemSettings.service';
+import { getSystemSettings, updateSystemSettings } from '../services/systemSettings.service';
 
 const router = Router();
+
+function normalizePhone(rawValue: unknown): { value: string; digits: string } {
+  const value = String(rawValue ?? '').trim();
+  const digits = value.replace(/\D/g, '');
+  return { value, digits };
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 function sniffImageMime(data: Buffer): string | null {
   if (data.length >= 8) {
@@ -30,6 +40,180 @@ function sniffImageMime(data: Buffer): string | null {
 
   return null;
 }
+
+router.get('/setup-status', async (_req, res) => {
+  try {
+    const settings = await getSystemSettings();
+    const mainCompanyId = String(settings.main_company_id ?? '').trim() || null;
+
+    if (!mainCompanyId) {
+      return res.json({
+        status: 'success',
+        data: {
+          setup_required: true,
+          main_company_id: null,
+        },
+      });
+    }
+
+    const result = await query(
+      `SELECT id
+         FROM companies
+        WHERE id = $1
+        LIMIT 1`,
+      [mainCompanyId],
+    );
+
+    const exists = result.rows.length > 0;
+
+    return res.json({
+      status: 'success',
+      data: {
+        setup_required: !exists,
+        main_company_id: exists ? mainCompanyId : null,
+      },
+    });
+  } catch {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to determine setup status',
+    });
+  }
+});
+
+router.post('/setup/main-company', async (req, res) => {
+  try {
+    const settings = await getSystemSettings();
+    const configuredMainCompanyId = String(settings.main_company_id ?? '').trim();
+
+    if (configuredMainCompanyId) {
+      const existing = await query(
+        `SELECT id
+           FROM companies
+          WHERE id = $1
+          LIMIT 1`,
+        [configuredMainCompanyId],
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(409).json({
+          status: 'error',
+          message: 'Main company is already configured',
+        });
+      }
+    }
+
+    const name = String(req.body?.name ?? '').trim();
+    const industry = String(req.body?.industry ?? '').trim();
+    const description = String(req.body?.description ?? '').trim();
+    const website = String(req.body?.website ?? '').trim();
+    const contactEmail = String(req.body?.contact_email ?? '').trim();
+    const contactPhone = String(req.body?.contact_phone ?? '').trim();
+    const addressLine1 = String(req.body?.address_line1 ?? '').trim();
+    const addressLine2 = String(req.body?.address_line2 ?? '').trim();
+    const city = String(req.body?.city ?? '').trim();
+    const country = String(req.body?.country ?? '').trim();
+
+    if (!name || !industry || !description || !contactEmail || !contactPhone || !addressLine1 || !addressLine2 || !city || !country) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing required main company fields',
+      });
+    }
+
+    if (!isValidEmail(contactEmail)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid contact email',
+      });
+    }
+
+    if (website && !/^https?:\/\//i.test(website)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Website must start with http:// or https://',
+      });
+    }
+
+    const phone = normalizePhone(contactPhone);
+    if (phone.digits.length > 13) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Phone number must not exceed 13 digits',
+      });
+    }
+
+    if (!phone.digits.startsWith('264')) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Phone number must start with +264',
+      });
+    }
+
+    if (!/^\+?[\d\s]+$/.test(phone.value)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid phone format',
+      });
+    }
+
+    const insertResult = await query(
+      `INSERT INTO companies (
+         name,
+         industry,
+         description,
+         website,
+         logo_url,
+         contact_email,
+         contact_phone,
+         address_line1,
+         address_line2,
+         city,
+         country,
+         created_by,
+         status
+       ) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, NULL, 'active')
+       RETURNING id`,
+      [
+        name,
+        industry,
+        description,
+        website || null,
+        contactEmail,
+        contactPhone,
+        addressLine1,
+        addressLine2,
+        city,
+        country,
+      ],
+    );
+
+    const companyId = String(insertResult.rows[0]?.id ?? '').trim();
+    if (!companyId) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to create main company',
+      });
+    }
+
+    await updateSystemSettings({
+      main_company_id: companyId,
+      system_name: name,
+    });
+
+    return res.status(201).json({
+      status: 'success',
+      data: {
+        main_company_id: companyId,
+      },
+    });
+  } catch {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to set up main company',
+    });
+  }
+});
 
 router.get('/system-settings', async (_req, res) => {
   try {

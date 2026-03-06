@@ -9,6 +9,7 @@ import { query, getClient } from "../db";
 import { findUserByEmail, findUserById, publicUser } from "../users";
 import { sendTemplatedEmail, apiOrigin, appName, webOrigin, formatLoginDateTime, describeIpLocation } from "../services/emailSender.service";
 import { authenticate } from "../middleware/auth";
+import { getSystemSettings } from "../services/systemSettings.service";
 
 export const authRouter = Router();
 
@@ -43,6 +44,22 @@ type TwoFactorChallenge = {
 };
 
 const twoFactorChallenges = new Map<string, TwoFactorChallenge>();
+
+async function isMainCompanyConfigured(): Promise<boolean> {
+  const settings = await getSystemSettings();
+  const mainCompanyId = String(settings.main_company_id ?? "").trim();
+  if (!mainCompanyId) return false;
+
+  const result = await query<{ id: string }>(
+    `SELECT id
+       FROM companies
+      WHERE id = $1
+      LIMIT 1`,
+    [mainCompanyId],
+  );
+
+  return result.rows.length > 0;
+}
 
 function createTwoFactorChallenge(input: {
   userId: string;
@@ -581,6 +598,14 @@ const loginSchema = z.object({
 
 authRouter.post("/login", async (req, res, next) => {
   try {
+    if (!(await isMainCompanyConfigured())) {
+      return res.status(403).json({
+        error: {
+          message: "System setup incomplete. Please set up the main company information first.",
+        },
+      });
+    }
+
     const { email, password } = loginSchema.parse(req.body);
     const user = await findUserByEmail(email);
 
@@ -678,6 +703,14 @@ const twoFactorChallengeSchema = z.object({
 
 authRouter.post("/2fa/challenge", async (req, res, next) => {
   try {
+    if (!(await isMainCompanyConfigured())) {
+      return res.status(403).json({
+        error: {
+          message: "System setup incomplete. Please set up the main company information first.",
+        },
+      });
+    }
+
     const { email, password } = twoFactorChallengeSchema.parse(req.body);
     const user = await findUserByEmail(email);
 
