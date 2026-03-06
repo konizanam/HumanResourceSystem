@@ -156,8 +156,7 @@ export function DashboardPage() {
     companies: 0,
     jobsLast30Days: 0,
   });
-  const [platformStatusFilter, setPlatformStatusFilter] = useState<string>("all");
-  const [platformWindowDays, setPlatformWindowDays] = useState<number>(14);
+  const platformWindowDays = 14;
   const [seekerStatusFilter, setSeekerStatusFilter] = useState<string>("all");
   const [seekerWindowDays, setSeekerWindowDays] = useState<number>(14);
   const [visitTrendMonths, setVisitTrendMonths] = useState<number>(12);
@@ -894,12 +893,8 @@ export function DashboardPage() {
   }, [adminStats]);
 
   const filteredPlatformJobs = useMemo(() => {
-    const selectedStatus = platformStatusFilter.trim().toLowerCase();
-    if (!selectedStatus || selectedStatus === "all") return platformJobsSnapshot;
-    return (platformJobsSnapshot ?? []).filter(
-      (job) => String(job.status ?? "").trim().toLowerCase() === selectedStatus,
-    );
-  }, [platformJobsSnapshot, platformStatusFilter]);
+    return platformJobsSnapshot;
+  }, [platformJobsSnapshot]);
 
   const platformStatCards = useMemo(() => {
     const jobsForCards = filteredPlatformJobs;
@@ -1009,36 +1004,7 @@ export function DashboardPage() {
           <div className="dashCard" style={{ marginBottom: 12 }}>
             <div className="dashCardHeader">
               <h2 className="dashCardTitle">Platform Overview</h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <label className="readLabel" htmlFor="platform-status-filter" style={{ margin: 0 }}>Status</label>
-                <select
-                  id="platform-status-filter"
-                  className="input"
-                  value={platformStatusFilter}
-                  onChange={(e) => setPlatformStatusFilter(e.target.value)}
-                  style={{ width: 150, padding: "6px 8px", fontSize: 13 }}
-                >
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="closed">Closed</option>
-                  <option value="draft">Draft</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                </select>
-                <label className="readLabel" htmlFor="platform-window-filter" style={{ margin: 0 }}>Window</label>
-                <select
-                  id="platform-window-filter"
-                  className="input"
-                  value={String(platformWindowDays)}
-                  onChange={(e) => setPlatformWindowDays(Number(e.target.value) || 14)}
-                  style={{ width: 120, padding: "6px 8px", fontSize: 13 }}
-                >
-                  <option value="7">7 days</option>
-                  <option value="14">14 days</option>
-                  <option value="30">30 days</option>
-                  <option value="90">90 days</option>
-                </select>
-              </div>
+              <span className="dashCardMeta">Live totals</span>
             </div>
             <div className="statsCardsGrid" role="region" aria-label="Universal dashboard statistics">
               {platformStatCards.map((card, idx) => {
