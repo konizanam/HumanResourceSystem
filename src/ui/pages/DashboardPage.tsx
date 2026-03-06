@@ -830,6 +830,10 @@ export function DashboardPage() {
       });
   }, [visitorTrends]);
 
+  const monthlyVisitTotal = useMemo(() => {
+    return monthlyVisitTrendChart.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  }, [monthlyVisitTrendChart]);
+
   const adminRecentActivityRows = useMemo(() => {
     if (!adminStats) return [];
     return [
@@ -1030,21 +1034,12 @@ export function DashboardPage() {
                       <h2 className="dashCardTitle">Visit Trends by Month</h2>
                       <span className="dashCardMeta">All available months</span>
                     </div>
-                    {monthlyVisitTrendChart.length ? (
-                      <>
-                        <Sparkline values={monthlyVisitTrendChart.map((item) => item.value)} />
-                        <div className="dashLegend">
-                          {monthlyVisitTrendChart.map((item) => (
-                            <span className="dashLegendItem" key={item.label}>
-                              <span className="dashLegendDot" />
-                              {item.label}: {item.value}
-                            </span>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="emptyState">No visitor trend data yet.</div>
-                    )}
+                    <TrendLinePanel
+                      total={monthlyVisitTotal}
+                      totalLabel="TOTAL VISITS"
+                      data={monthlyVisitTrendChart}
+                      emptyText="No visitor trend data yet."
+                    />
                   </div>
                 ) : null}
 
@@ -1112,21 +1107,12 @@ export function DashboardPage() {
                       <h2 className="dashCardTitle">Visit Trends by Month</h2>
                       <span className="dashCardMeta">All available months</span>
                     </div>
-                    {monthlyVisitTrendChart.length ? (
-                      <>
-                        <Sparkline values={monthlyVisitTrendChart.map((item) => item.value)} />
-                        <div className="dashLegend">
-                          {monthlyVisitTrendChart.map((item) => (
-                            <span className="dashLegendItem" key={item.label}>
-                              <span className="dashLegendDot" />
-                              {item.label}: {item.value}
-                            </span>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="emptyState">No visitor trend data yet.</div>
-                    )}
+                    <TrendLinePanel
+                      total={monthlyVisitTotal}
+                      totalLabel="TOTAL VISITS"
+                      data={monthlyVisitTrendChart}
+                      emptyText="No visitor trend data yet."
+                    />
                   </div>
                 ) : null}
 
