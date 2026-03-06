@@ -1095,6 +1095,119 @@ input[type="radio"][required] {
   background: linear-gradient(90deg, var(--primary), var(--menu-icon));
 }
 
+.trendLineCard {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--card2);
+  padding: 8px 10px 6px;
+}
+
+.trendLineMetric {
+  text-align: center;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 900;
+  color: var(--primary);
+  margin-top: 0;
+}
+
+.trendLineMetricLabel {
+  text-align: center;
+  margin-top: 1px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+}
+
+.trendLineSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 0;
+}
+
+.trendLineGrid {
+  stroke: color-mix(in srgb, var(--stroke) 70%, var(--heading));
+  stroke-width: 1;
+}
+
+.trendLinePath {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trendLineDot {
+  fill: var(--card);
+  stroke: var(--menu-icon);
+  stroke-width: 1.5;
+}
+
+.trendLineYLabel {
+  font-size: 14px;
+  font-weight: 800;
+  fill: var(--heading);
+}
+
+.trendLineXLabel {
+  font-size: 14px;
+  font-weight: 800;
+  fill: var(--heading);
+}
+
+.trendRangeTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  border-radius: 9px;
+  border: 1px solid var(--stroke);
+  background: var(--card2);
+  overflow: hidden;
+  width: min(100%, 360px);
+  margin-left: auto;
+}
+
+.trendRangeBtn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 6px 8px;
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  border-right: 1px solid var(--stroke);
+}
+
+.trendRangeBtn:last-child {
+  border-right: 0;
+}
+
+.trendRangeBtn:hover {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.trendRangeBtn.isActive {
+  color: #ffffff;
+  background: linear-gradient(180deg, var(--menu-icon), var(--menu-icon-active));
+}
+
+.trendCardHeader {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+@media (max-width: 760px) {
+  .trendRangeTabs {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 .dashBarValue {
   font-size: 13px;
   font-weight: 800;

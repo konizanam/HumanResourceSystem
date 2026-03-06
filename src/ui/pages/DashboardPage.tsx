@@ -157,6 +157,7 @@ export function DashboardPage() {
   const [platformWindowDays, setPlatformWindowDays] = useState<number>(14);
   const [seekerStatusFilter, setSeekerStatusFilter] = useState<string>("all");
   const [seekerWindowDays, setSeekerWindowDays] = useState<number>(14);
+  const [visitTrendMonths, setVisitTrendMonths] = useState<number>(12);
 
   const canViewAdminDashboard = hasPermission("ADMIN_DASHBOARD", "MANAGE_USERS");
   const canViewEmployerDashboard =
@@ -812,27 +813,38 @@ export function DashboardPage() {
     ];
   }, [adminStats]);
 
-  const monthlyVisitTrendChart = useMemo(() => {
-    if (!visitorTrends.length) return [];
+  const visibleMonthlyVisitTrendChart = useMemo(() => {
+    const months = Math.max(1, Number(visitTrendMonths) || 12);
 
-    return [...visitorTrends]
-      .sort((a, b) => String(a.period).localeCompare(String(b.period)))
-      .map((row) => {
-        const monthStart = new Date(`${row.period}-01T00:00:00`);
-        const label = Number.isNaN(monthStart.getTime())
-          ? String(row.period)
-          : monthStart.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+    const periodToValue = new Map<string, number>();
+    for (const row of visitorTrends) {
+      const period = String(row.period ?? "").trim();
+      if (!/^\d{4}-\d{2}$/.test(period)) continue;
+      periodToValue.set(period, Number(row.unique_visitors ?? 0));
+    }
 
-        return {
-          label,
-          value: Number(row.unique_visitors ?? 0),
-        };
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const series: Array<{ label: string; value: number }> = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const monthDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - i, 1);
+      const year = monthDate.getFullYear();
+      const month = String(monthDate.getMonth() + 1).padStart(2, "0");
+      const period = `${year}-${month}`;
+
+      series.push({
+        label: monthDate.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        value: periodToValue.get(period) ?? 0,
       });
-  }, [visitorTrends]);
+    }
+
+    return series;
+  }, [visitorTrends, visitTrendMonths]);
 
   const monthlyVisitTotal = useMemo(() => {
-    return monthlyVisitTrendChart.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
-  }, [monthlyVisitTrendChart]);
+    return visibleMonthlyVisitTrendChart.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  }, [visibleMonthlyVisitTrendChart]);
 
   const adminRecentActivityRows = useMemo(() => {
     if (!adminStats) return [];
@@ -1030,14 +1042,27 @@ export function DashboardPage() {
 
                 {canViewVisitTrends ? (
                   <div className="dashCard">
-                    <div className="dashCardHeader">
+                    <div className="dashCardHeader trendCardHeader">
                       <h2 className="dashCardTitle">Visit Trends by Month</h2>
-                      <span className="dashCardMeta">All available months</span>
+                      <div className="trendRangeTabs" role="tablist" aria-label="Visitor trend range">
+                        {[3, 6, 12].map((months) => (
+                          <button
+                            key={months}
+                            type="button"
+                            role="tab"
+                            aria-selected={visitTrendMonths === months}
+                            className={`trendRangeBtn${visitTrendMonths === months ? " isActive" : ""}`}
+                            onClick={() => setVisitTrendMonths(months)}
+                          >
+                            Last {months} months
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <TrendLinePanel
                       total={monthlyVisitTotal}
                       totalLabel="TOTAL VISITS"
-                      data={monthlyVisitTrendChart}
+                      data={visibleMonthlyVisitTrendChart}
                       emptyText="No visitor trend data yet."
                     />
                   </div>
@@ -1103,14 +1128,27 @@ export function DashboardPage() {
               <>
                 {canViewVisitTrends ? (
                   <div className="dashCard">
-                    <div className="dashCardHeader">
+                    <div className="dashCardHeader trendCardHeader">
                       <h2 className="dashCardTitle">Visit Trends by Month</h2>
-                      <span className="dashCardMeta">All available months</span>
+                      <div className="trendRangeTabs" role="tablist" aria-label="Visitor trend range">
+                        {[3, 6, 12].map((months) => (
+                          <button
+                            key={months}
+                            type="button"
+                            role="tab"
+                            aria-selected={visitTrendMonths === months}
+                            className={`trendRangeBtn${visitTrendMonths === months ? " isActive" : ""}`}
+                            onClick={() => setVisitTrendMonths(months)}
+                          >
+                            Last {months} months
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <TrendLinePanel
                       total={monthlyVisitTotal}
                       totalLabel="TOTAL VISITS"
-                      data={monthlyVisitTrendChart}
+                      data={visibleMonthlyVisitTrendChart}
                       emptyText="No visitor trend data yet."
                     />
                   </div>
@@ -1815,6 +1853,88 @@ function Sparkline({ values }: { values: number[] }) {
           Value: {activeValue}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TrendLinePanel({
+  total,
+  totalLabel,
+  data,
+  emptyText,
+}: {
+  total: number;
+  totalLabel: string;
+  data: ChartDatum[];
+  emptyText: string;
+}) {
+  if (!data.length) {
+    return <div className="emptyState">{emptyText}</div>;
+  }
+
+  const values = data.map((point) => Number(point.value) || 0);
+  const max = Math.max(1, ...values);
+  const min = Math.min(0, ...values);
+  const range = Math.max(1, max - min);
+
+  const width = 640;
+  const height = 220;
+  const chartLeft = 56;
+  const chartRight = 16;
+  const chartTop = 64;
+  const chartBottom = 44;
+  const chartWidth = width - chartLeft - chartRight;
+  const chartHeight = height - chartTop - chartBottom;
+
+  const points = values.map((value, index) => {
+    const x = chartLeft + (index * chartWidth) / Math.max(1, values.length - 1);
+    const y = chartTop + (1 - (value - min) / range) * chartHeight;
+    return { x, y };
+  });
+
+  const polyline = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+  const labelEvery = Math.max(1, Math.ceil(data.length / 6));
+  const yTicks = [max, Math.round(max / 2), 0];
+
+  return (
+    <div className="trendLineCard">
+      <div className="trendLineMetric">{total}</div>
+      <div className="trendLineMetricLabel">{totalLabel}</div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="trendLineSvg" role="img" aria-label={totalLabel}>
+        {yTicks.map((tick) => {
+          const y = chartTop + (1 - (tick - min) / range) * chartHeight;
+          return (
+            <g key={tick}>
+              <line className="trendLineGrid" x1={chartLeft} y1={y} x2={width - chartRight} y2={y} />
+              <text className="trendLineYLabel" x={chartLeft - 10} y={y + 4} textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+
+        <polyline className="trendLinePath" points={polyline} />
+        {points.map((point, idx) => (
+          <circle key={idx} className="trendLineDot" cx={point.x} cy={point.y} r={4.25} />
+        ))}
+
+        {data.map((point, idx) => {
+          if (idx % labelEvery !== 0 && idx !== data.length - 1) return null;
+          const x = points[idx]?.x ?? chartLeft;
+          return (
+            <text
+              key={`${point.label}-${idx}`}
+              className="trendLineXLabel"
+              x={x}
+              y={height - 16}
+              textAnchor="end"
+              transform={`rotate(-20 ${x} ${height - 16})`}
+            >
+              {point.label}
+            </text>
+          );
+        })}
+      </svg>
     </div>
   );
 }
