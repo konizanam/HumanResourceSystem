@@ -1190,9 +1190,10 @@ router.get('/statistics',
 
 router.get('/visitor-analytics',
   authenticate,
-  authorize('ADMIN'),
+  authorizePermission('EMPLOYER_DASHBOARD', 'ADMIN_DASHBOARD'),
   [
-    query('days').optional().isInt({ min: 1, max: 365 }).toInt()
+    query('days').optional().isInt({ min: 1, max: 3650 }).toInt(),
+    query('group_by').optional().isIn(['day', 'month'])
   ],
   async (req: Request, res: Response) => {
     try {
@@ -1201,28 +1202,43 @@ router.get('/visitor-analytics',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const days = Number(req.query.days || 30);
+      const days = Number(req.query.days || 365);
+      const groupBy = String(req.query.group_by || 'day').toLowerCase();
 
-      const analytics = await dbQuery(
-        `SELECT
-          visit_date,
-          COUNT(*)::int AS unique_visitors,
-          COALESCE(SUM(request_count), 0)::int AS total_requests
-         FROM daily_unique_visitors
-         WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
-         GROUP BY visit_date
-         ORDER BY visit_date DESC`,
-        [days]
-      );
+      const analytics = groupBy === 'month'
+        ? await dbQuery(
+            `SELECT
+              TO_CHAR(DATE_TRUNC('month', visit_date), 'YYYY-MM') AS period,
+              COUNT(*)::int AS unique_visitors,
+              COALESCE(SUM(request_count), 0)::int AS total_requests
+             FROM daily_unique_visitors
+             WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
+             GROUP BY DATE_TRUNC('month', visit_date)
+             ORDER BY DATE_TRUNC('month', visit_date) DESC`,
+            [days]
+          )
+        : await dbQuery(
+            `SELECT
+              TO_CHAR(visit_date, 'YYYY-MM-DD') AS period,
+              COUNT(*)::int AS unique_visitors,
+              COALESCE(SUM(request_count), 0)::int AS total_requests
+             FROM daily_unique_visitors
+             WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
+             GROUP BY visit_date
+             ORDER BY visit_date DESC`,
+            [days]
+          );
 
       return res.json({
         days,
+        group_by: groupBy,
         data: analytics.rows,
       });
     } catch (error: any) {
       if (error?.code === '42P01') {
         return res.status(200).json({
           days: Number(req.query.days || 30),
+          group_by: String(req.query.group_by || 'day').toLowerCase(),
           data: [],
           warning: 'daily_unique_visitors table not found. Run the ALTER script to enable visitor tracking.'
         });

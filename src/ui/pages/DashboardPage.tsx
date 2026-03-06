@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   applyToJob,
   getAdminStatistics,
+  getVisitorAnalytics,
   getCompany,
   getEmployerDashboard,
   getJob,
@@ -19,6 +20,7 @@ import {
   type EmployerDashboardData,
   type JobApplication,
   type JobListItem,
+  type VisitorAnalyticsPoint,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
@@ -115,6 +117,7 @@ export function DashboardPage() {
   const [openSeekerJobId, setOpenSeekerJobId] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<AdminStatistics | null>(null);
   const [adminLogs, setAdminLogs] = useState<AuditLog[]>([]);
+  const [visitorTrends, setVisitorTrends] = useState<VisitorAnalyticsPoint[]>([]);
   const [employerData, setEmployerData] = useState<EmployerDashboardData | null>(null);
   const [seekerJobs, setSeekerJobs] = useState<JobListItem[]>([]);
   const [seekerJobsPage, setSeekerJobsPage] = useState(1);
@@ -165,6 +168,8 @@ export function DashboardPage() {
     !canViewEmployerDashboard &&
     hasPermission("APPLY_JOB");
 
+  const canViewVisitTrends = hasPermission("ADMIN_DASHBOARD", "MANAGE_USERS", "EMPLOYER_DASHBOARD");
+
   const isJobSeekerUser = canViewSeekerDashboard;
   const isStandardDashboardUser = !isJobSeekerUser;
   const canApplyJob = canViewSeekerDashboard;
@@ -190,6 +195,11 @@ export function DashboardPage() {
     const loadEmployerDashboardData = async () => {
       const data = await getEmployerDashboard(accessToken);
       setEmployerData(data);
+    };
+
+    const loadVisitorTrends = async () => {
+      const data = await getVisitorAnalytics(accessToken, { days: 3650, group_by: "month" });
+      setVisitorTrends(Array.isArray(data.data) ? data.data : []);
     };
 
     const loadJobSeekerDashboard = async () => {
@@ -263,6 +273,7 @@ export function DashboardPage() {
 
       setAdminStats(null);
       setAdminLogs([]);
+      setVisitorTrends([]);
       setEmployerData(null);
       setSeekerJobs([]);
       setSeekerApplications([]);
@@ -298,6 +309,16 @@ export function DashboardPage() {
         }
       }
 
+      if (canViewVisitTrends) {
+        try {
+          await loadVisitorTrends();
+        } catch (e) {
+          if (!isPermissionDeniedError(e)) {
+            setError("Some dashboard sections are temporarily unavailable.");
+          }
+        }
+      }
+
       if (canViewSeekerDashboard) {
         try {
           await loadJobSeekerDashboard();
@@ -322,6 +343,7 @@ export function DashboardPage() {
     canViewAdminDashboard,
     canViewEmployerDashboard,
     canViewSeekerDashboard,
+    canViewVisitTrends,
   ]);
 
   useEffect(() => {
@@ -790,6 +812,24 @@ export function DashboardPage() {
     ];
   }, [adminStats]);
 
+  const monthlyVisitTrendChart = useMemo(() => {
+    if (!visitorTrends.length) return [];
+
+    return [...visitorTrends]
+      .sort((a, b) => String(a.period).localeCompare(String(b.period)))
+      .map((row) => {
+        const monthStart = new Date(`${row.period}-01T00:00:00`);
+        const label = Number.isNaN(monthStart.getTime())
+          ? String(row.period)
+          : monthStart.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+
+        return {
+          label,
+          value: Number(row.unique_visitors ?? 0),
+        };
+      });
+  }, [visitorTrends]);
+
   const adminRecentActivityRows = useMemo(() => {
     if (!adminStats) return [];
     return [
@@ -984,6 +1024,30 @@ export function DashboardPage() {
                   </div>
                 </div>
 
+                {canViewVisitTrends ? (
+                  <div className="dashCard">
+                    <div className="dashCardHeader">
+                      <h2 className="dashCardTitle">Visit Trends by Month</h2>
+                      <span className="dashCardMeta">All available months</span>
+                    </div>
+                    {monthlyVisitTrendChart.length ? (
+                      <>
+                        <Sparkline values={monthlyVisitTrendChart.map((item) => item.value)} />
+                        <div className="dashLegend">
+                          {monthlyVisitTrendChart.map((item) => (
+                            <span className="dashLegendItem" key={item.label}>
+                              <span className="dashLegendDot" />
+                              {item.label}: {item.value}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="emptyState">No visitor trend data yet.</div>
+                    )}
+                  </div>
+                ) : null}
+
                 <div className="dashCard">
                   <div className="dashCardHeader">
                     <h2 className="dashCardTitle">User Growth</h2>
@@ -1042,6 +1106,30 @@ export function DashboardPage() {
 
             {canViewEmployerDashboard && employerData ? (
               <>
+                {canViewVisitTrends ? (
+                  <div className="dashCard">
+                    <div className="dashCardHeader">
+                      <h2 className="dashCardTitle">Visit Trends by Month</h2>
+                      <span className="dashCardMeta">All available months</span>
+                    </div>
+                    {monthlyVisitTrendChart.length ? (
+                      <>
+                        <Sparkline values={monthlyVisitTrendChart.map((item) => item.value)} />
+                        <div className="dashLegend">
+                          {monthlyVisitTrendChart.map((item) => (
+                            <span className="dashLegendItem" key={item.label}>
+                              <span className="dashLegendDot" />
+                              {item.label}: {item.value}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="emptyState">No visitor trend data yet.</div>
+                    )}
+                  </div>
+                ) : null}
+
                 <div className="dashCard">
                   <div className="dashCardHeader">
                     <h2 className="dashCardTitle">Jobs Overview</h2>

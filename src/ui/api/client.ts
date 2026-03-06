@@ -2257,8 +2257,22 @@ export type AdminStatistics = {
   };
   system: {
     api_requests_today: number; active_sessions: number; monthly_visits: number;
+    unique_visitors_today?: number;
     storage_used: string; last_backup: string | null; version: string;
   };
+};
+
+export type VisitorAnalyticsPoint = {
+  period: string;
+  unique_visitors: number;
+  total_requests: number;
+};
+
+export type VisitorAnalyticsResponse = {
+  days: number;
+  group_by: 'day' | 'month';
+  data: VisitorAnalyticsPoint[];
+  warning?: string;
 };
 
 export type EmployerDashboardData = {
@@ -2279,6 +2293,22 @@ export async function getAdminStatistics(token: string): Promise<AdminStatistics
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load statistics");
   return body as AdminStatistics;
+}
+
+export async function getVisitorAnalytics(
+  token: string,
+  params?: { days?: number; group_by?: 'day' | 'month' },
+): Promise<VisitorAnalyticsResponse> {
+  const url = new URL(`${API_BASE}/admin/visitor-analytics`);
+  if (params?.days) url.searchParams.set('days', String(params.days));
+  if (params?.group_by) url.searchParams.set('group_by', params.group_by);
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, 'Failed to load visitor analytics');
+  return body as VisitorAnalyticsResponse;
 }
 
 export async function getEmployerDashboard(token: string): Promise<EmployerDashboardData> {
