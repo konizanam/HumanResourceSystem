@@ -16,7 +16,9 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
     }
 
     const result = await query(
-      `SELECT id, first_name, last_name, email, is_active, created_at
+      `SELECT id, first_name, last_name, email, is_active, created_at,
+              (profile_picture_data IS NOT NULL) as has_profile_picture,
+              profile_picture_updated_at
        FROM users WHERE id = $1`,
       [userId]
     );
@@ -57,6 +59,9 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
         email: user.email,
         is_active: user.is_active,
         created_at: user.created_at,
+        has_profile_picture: Boolean(user.has_profile_picture),
+        profile_picture_url: user.has_profile_picture ? '/api/v1/profile/picture' : null,
+        profile_picture_updated_at: user.profile_picture_updated_at ?? null,
         roles,
         permissions
       } 

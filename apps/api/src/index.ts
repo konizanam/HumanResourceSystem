@@ -25,6 +25,17 @@ async function ensureSchema() {
   await query(
     "ALTER TABLE users ALTER COLUMN is_active SET DEFAULT FALSE",
   );
+
+  // Store user profile pictures directly in DB.
+  await query(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_data BYTEA",
+  );
+  await query(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_mime VARCHAR(100)",
+  );
+  await query(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP",
+  );
 }
 
 async function start() {

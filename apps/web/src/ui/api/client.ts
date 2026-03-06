@@ -105,6 +105,9 @@ export type FullProfile = {
   education: Record<string, unknown>[];
   experience: Record<string, unknown>[];
   references: Record<string, unknown>[];
+  has_profile_picture?: boolean;
+  profile_picture_url?: string | null;
+  profile_picture_updated_at?: string | null;
 };
 
 export type IpLocation = {
@@ -965,6 +968,40 @@ export async function getFullProfile(
 
   const body = (await res.json()) as any;
   return (body?.data ?? body) as FullProfile;
+}
+
+export function getProfilePictureUrl(cacheBuster?: string | number | null): string {
+  const base = `${API_BASE}/profile/picture`;
+  if (cacheBuster === undefined || cacheBuster === null || String(cacheBuster).trim() === "") {
+    return base;
+  }
+  return `${base}?v=${encodeURIComponent(String(cacheBuster))}`;
+}
+
+export async function uploadProfilePicture(
+  token: string,
+  file: File,
+): Promise<{ profile_picture_url: string; profile_picture_updated_at: string | null }> {
+  const form = new FormData();
+  form.append("profile_picture", file);
+
+  const res = await fetch(`${API_BASE}/profile/picture`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to upload profile picture");
+
+  const data = (body as any)?.data ?? {};
+  return {
+    profile_picture_url: String(data.profile_picture_url ?? ""),
+    profile_picture_updated_at:
+      data.profile_picture_updated_at === null || data.profile_picture_updated_at === undefined
+        ? null
+        : String(data.profile_picture_updated_at),
+  };
 }
 
 export async function updateProfile(

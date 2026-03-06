@@ -11,9 +11,25 @@ import {
   experienceValidation,
   referenceValidation
 } from '../utils/validation';
+import multer from 'multer';
 
 const router = Router();
 const profileController = new ProfileController();
+
+const profilePictureUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Invalid profile picture file type. Please upload an image.') as any);
+  },
+});
 
 // All profile routes require authentication and job seeker permissions
 router.use(authenticate, authorizePermission('APPLY_JOB'));
@@ -29,6 +45,8 @@ router.patch(
 
 // Personal details
 router.get('/personal-details', profileController.getPersonalDetails);
+router.get('/picture', profileController.getProfilePicture);
+router.put('/picture', profilePictureUpload.single('profile_picture'), profileController.uploadProfilePicture);
 router.put(
   '/personal-details',
   personalDetailsValidation,

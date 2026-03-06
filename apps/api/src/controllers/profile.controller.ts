@@ -67,6 +67,54 @@ export class ProfileController {
     }
   };
 
+  uploadProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user!.userId;
+      const file = req.file;
+
+      if (!file || !file.buffer || !file.mimetype) {
+        return res.status(400).json({
+          status: 'error',
+          error: { message: 'Profile picture file is required' },
+        });
+      }
+
+      const saved = await this.profileService.uploadProfilePicture(userId, file.buffer, file.mimetype);
+
+      res.json({
+        status: 'success',
+        data: {
+          profile_picture_url: '/api/v1/profile/picture',
+          profile_picture_updated_at: saved?.profile_picture_updated_at ?? null,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user!.userId;
+      const picture = await this.profileService.getProfilePicture(userId);
+      const raw = picture?.profile_picture_data as unknown;
+      const mime = String(picture?.profile_picture_mime ?? '').trim();
+
+      if (!(raw instanceof Buffer) || raw.length === 0) {
+        return res.status(404).json({
+          status: 'error',
+          error: { message: 'Profile picture not found' },
+        });
+      }
+
+      res.setHeader('Content-Type', mime || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.send(raw);
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // Addresses
   getAddresses = async (req: Request, res: Response, next: NextFunction) => {
     try {

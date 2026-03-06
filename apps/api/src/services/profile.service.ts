@@ -46,6 +46,14 @@ export class ProfileService {
     return this.db.getPersonalDetails(userId);
   }
 
+  async uploadProfilePicture(userId: string, picture: Buffer, mimeType: string) {
+    return this.db.upsertUserProfilePicture(userId, picture, mimeType);
+  }
+
+  async getProfilePicture(userId: string) {
+    return this.db.getUserProfilePicture(userId);
+  }
+
   // Address methods
   async createAddress(
     userId: string,

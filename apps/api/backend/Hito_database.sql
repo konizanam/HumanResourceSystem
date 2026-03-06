@@ -38,6 +38,9 @@ CREATE TABLE users (
     field_of_expertise VARCHAR(100),
     years_experience INTEGER,
     resume_url TEXT,
+    profile_picture_data BYTEA,
+    profile_picture_mime VARCHAR(100),
+    profile_picture_updated_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

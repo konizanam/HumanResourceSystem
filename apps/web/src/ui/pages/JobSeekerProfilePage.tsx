@@ -13,8 +13,10 @@ import {
   listJobSeekers,
   listUserDocuments,
   getIpLocation,
+  getProfilePictureUrl,
   me,
   uploadJobSeekerDocument,
+  uploadProfilePicture,
   uploadJobSeekerResume,
   updateProfile,
   updatePersonalDetails,
@@ -1295,6 +1297,8 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           <PersonalDetailsSection
             key={`step-0-${editResetToken}`}
             data={data.personalDetails}
+            profilePictureUrl={String(data.profile_picture_url ?? "").trim()}
+            profilePictureUpdatedAt={data.profile_picture_updated_at ?? null}
             editing={isEditingThisStep}
             token={accessToken!}
             saving={saving}
@@ -1395,6 +1399,8 @@ type SectionProps = {
 
 function PersonalDetailsSection({
   data,
+  profilePictureUrl,
+  profilePictureUpdatedAt,
   editing,
   token,
   saving,
@@ -1402,7 +1408,11 @@ function PersonalDetailsSection({
   setError,
   setSuccess,
   reload,
-}: SectionProps & { data: Record<string, unknown> | null }) {
+}: SectionProps & {
+  data: Record<string, unknown> | null;
+  profilePictureUrl?: string;
+  profilePictureUpdatedAt?: string | null;
+}) {
   const d = data ?? {};
   const [form, setForm] = useState({
     firstName: (d.first_name as string) ?? "",
@@ -1423,7 +1433,11 @@ function PersonalDetailsSection({
   const [conductCertificateUrl, setConductCertificateUrl] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
+  const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false);
+  const [profilePictureUrlState, setProfilePictureUrlState] = useState("");
   const [externalDocPreview, setExternalDocPreview] = useState<{ url: string; title: string } | null>(null);
+
+  const resolvedProfilePictureUrl = resolveFileUrl(profilePictureUrlState);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1459,6 +1473,16 @@ function PersonalDetailsSection({
       disabilityStatus: (nd.disability_status as boolean) ?? false,
     });
   }, [data]);
+
+  useEffect(() => {
+    const incoming = String(profilePictureUrl ?? "").trim();
+    if (incoming) {
+      const cb = profilePictureUpdatedAt ? String(profilePictureUpdatedAt) : Date.now();
+      setProfilePictureUrlState(getProfilePictureUrl(cb));
+      return;
+    }
+    setProfilePictureUrlState("");
+  }, [profilePictureUpdatedAt, profilePictureUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1521,6 +1545,27 @@ function PersonalDetailsSection({
     }
   }
 
+  async function onUploadProfilePicture(file: File | null) {
+    if (!file) return;
+    try {
+      setUploadingProfilePicture(true);
+      setError(null);
+      const uploaded = await uploadProfilePicture(token, file);
+      const nextUrl = String(uploaded.profile_picture_url ?? "").trim();
+      if (nextUrl) {
+        const cb = uploaded.profile_picture_updated_at ?? Date.now();
+        setProfilePictureUrlState(getProfilePictureUrl(cb));
+      }
+      window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
+      setSuccess("Profile picture uploaded");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Profile picture upload failed");
+    } finally {
+      setUploadingProfilePicture(false);
+    }
+  }
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
 
@@ -1564,6 +1609,20 @@ function PersonalDetailsSection({
     return (
       <div className="editForm" style={{ marginTop: 0 }}>
         <div className="editGrid">
+          <div className="field fieldFull">
+            <span className="fieldLabel">Profile Picture</span>
+            {resolvedProfilePictureUrl ? (
+              <div className="uploadedDocPreview" style={{ marginTop: 6, maxWidth: 280 }}>
+                <img
+                  className="uploadedDocPreviewImage"
+                  src={resolvedProfilePictureUrl}
+                  alt="Profile picture"
+                />
+              </div>
+            ) : (
+              <span className="readValue">No profile picture uploaded.</span>
+            )}
+          </div>
           <EditField label="First Name" value={String(d.first_name ?? "")} onChange={() => {}} disabled />
           <EditField label="Last Name" value={String(d.last_name ?? "")} onChange={() => {}} disabled />
           <EditField label="Middle Name (optional)" value={String(d.middle_name ?? "")} onChange={() => {}} disabled />
@@ -1658,6 +1717,31 @@ function PersonalDetailsSection({
   return (
     <div className="editForm">
       <div className="editGrid">
+        <label className="field fieldFull">
+          <span className="fieldLabel">Profile Picture</span>
+          <input
+            className="input"
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              void onUploadProfilePicture(file);
+              e.currentTarget.value = "";
+            }}
+            disabled={uploadingProfilePicture || saving}
+          />
+          {resolvedProfilePictureUrl ? (
+            <div className="uploadedDocPreview" style={{ marginTop: 6, maxWidth: 280 }}>
+              <img
+                className="uploadedDocPreviewImage"
+                src={resolvedProfilePictureUrl}
+                alt="Profile picture"
+              />
+            </div>
+          ) : (
+            <span className="uploadedDocCardHint">No profile picture uploaded yet.</span>
+          )}
+        </label>
         <EditField
           label="First Name"
           value={form.firstName}

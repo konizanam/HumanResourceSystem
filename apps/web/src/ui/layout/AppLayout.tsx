@@ -245,6 +245,7 @@ export function AppLayout({
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
+  const [profilePictureObjectUrl, setProfilePictureObjectUrl] = useState<string>("");
   // Don't call applyThemeToHtml here — if no stored pref, let CSS prefers-color-scheme handle it.
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
 
@@ -276,6 +277,15 @@ export function AppLayout({
       return "";
     }
   }, [accessToken, userEmail, userName]);
+
+  const displayNameInitials = useMemo(() => {
+    const words = String(displayName ?? "").trim().split(/\s+/).filter(Boolean);
+    const initials = words
+      .slice(0, 2)
+      .map((w) => (w[0] ? w[0].toUpperCase() : ""))
+      .join("");
+    return initials || "U";
+  }, [displayName]);
 
   const sidebarClassName =
     (collapsed ? "sidebar sidebarCollapsed" : "sidebar") +
@@ -355,6 +365,52 @@ export function AppLayout({
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setProfilePictureObjectUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let currentObjectUrl: string | null = null;
+
+    const loadProfilePicture = async () => {
+      try {
+        const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+        if (!apiBase) return;
+        const res = await fetch(`${apiBase}/api/v1/profile/picture`, {
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) {
+          if (!cancelled) setProfilePictureObjectUrl("");
+          return;
+        }
+
+        const blob = await res.blob();
+        if (cancelled) return;
+
+        currentObjectUrl = URL.createObjectURL(blob);
+        setProfilePictureObjectUrl(currentObjectUrl);
+      } catch {
+        if (!cancelled) setProfilePictureObjectUrl("");
+      }
+    };
+
+    void loadProfilePicture();
+
+    const onProfilePictureUpdated = () => {
+      void loadProfilePicture();
+    };
+
+    window.addEventListener("hrs:profile-picture-updated", onProfilePictureUpdated);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hrs:profile-picture-updated", onProfilePictureUpdated);
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     };
   }, [accessToken]);
 
@@ -569,6 +625,17 @@ export function AppLayout({
         <div className="appTopUserBar" role="region" aria-label="User controls">
           {displayName ? (
             <div className="appTopUserName" title={displayName}>
+              {profilePictureObjectUrl ? (
+                <img
+                  className="appTopUserAvatar"
+                  src={profilePictureObjectUrl}
+                  alt={`${displayName} profile picture`}
+                />
+              ) : (
+                <span className="appTopUserAvatarFallback" aria-hidden="true">
+                  {displayNameInitials}
+                </span>
+              )}
               Hello, {displayName}
             </div>
           ) : null}

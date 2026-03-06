@@ -23,6 +23,31 @@ export class DatabaseService {
     return result.rows[0];
   }
 
+  async upsertUserProfilePicture(userId: string, picture: Buffer, mimeType: string) {
+    const result = await query(
+      `UPDATE users
+          SET profile_picture_data = $2,
+              profile_picture_mime = $3,
+              profile_picture_updated_at = NOW()
+        WHERE id = $1
+      RETURNING profile_picture_updated_at`,
+      [userId, picture, mimeType]
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  async getUserProfilePicture(userId: string) {
+    const result = await query(
+      `SELECT profile_picture_data, profile_picture_mime, profile_picture_updated_at
+         FROM users
+        WHERE id = $1`,
+      [userId]
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   // ==================== ROLE & PERMISSION METHODS ====================
 
   async assignJobSeekerRole(userId: string) {
@@ -49,6 +74,7 @@ export class DatabaseService {
   async getCompleteProfile(userId: string): Promise<any> {
   // Get all profile data in parallel for efficiency
   const [
+    user,
     profile,
     personalDetails,
     addresses,
@@ -56,6 +82,7 @@ export class DatabaseService {
     experience,
     references
   ] = await Promise.all([
+    this.getUserById(userId),
     this.getJobSeekerProfile(userId),
     this.getPersonalDetails(userId),
     this.getAddresses(userId),
@@ -70,7 +97,10 @@ export class DatabaseService {
     addresses: addresses || [],
     education: education || [],
     experience: experience || [],
-    references: references || []
+    references: references || [],
+    has_profile_picture: Boolean((user as any)?.profile_picture_data),
+    profile_picture_url: (user as any)?.profile_picture_data ? '/api/v1/profile/picture' : null,
+    profile_picture_updated_at: (user as any)?.profile_picture_updated_at ?? null,
   };
 }
 
