@@ -85,6 +85,17 @@ Commit messages are validated by Husky + commitlint (`.husky/commit-msg`).
 - Swagger UI: `http://localhost:4000/docs`
 - Web app: `http://localhost:5173`
 
+## Email Link Origin (Production)
+
+Email notifications with links use the app origin resolved in this order:
+
+1. `APP_ORIGIN`
+2. `PUBLIC_WEB_ORIGIN`
+3. `WEB_ORIGIN`
+4. Derived from `API_ORIGIN` (e.g. `https://api.example.com` -> `https://example.com`)
+
+In production, localhost origins are ignored to prevent sending localhost links in emails.
+
 ## Default user
 
 - Email: `admin@example.com`

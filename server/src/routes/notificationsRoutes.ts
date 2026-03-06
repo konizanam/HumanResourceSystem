@@ -1143,11 +1143,12 @@ export async function createNotification(
           const fullName = `${String(userRow?.first_name ?? '').trim()} ${String(userRow?.last_name ?? '').trim()}`.trim() || 'User';
           const rawAction = String(action_url ?? '').trim();
           const origin = webOrigin();
+          const notificationsLink = origin ? `${origin}/app/notifications` : '';
           const link = rawAction
             ? (/^https?:\/\//i.test(rawAction)
                 ? rawAction
                 : (origin ? `${origin}${rawAction.startsWith('/') ? rawAction : `/${rawAction}`}` : rawAction))
-            : (origin ? `${origin}/app/notifications` : '');
+            : notificationsLink;
           await sendTemplatedEmail({
             templateKey,
             to: toEmail,
@@ -1162,7 +1163,7 @@ export async function createNotification(
               interview_time: String((data as any)?.interview_time ?? (data as any)?.time ?? ''),
               interview_location: String((data as any)?.interview_location ?? (data as any)?.location ?? ''),
               interview_online_link: String((data as any)?.interview_online_link ?? (data as any)?.online_link ?? ''),
-              unsubscribe_link: webOrigin() ? `${webOrigin()}/app/notifications` : '',
+              unsubscribe_link: notificationsLink,
               support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || '',
             },
           });

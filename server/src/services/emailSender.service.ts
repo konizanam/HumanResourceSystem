@@ -418,17 +418,81 @@ export function appName(): string {
   return v && v.trim() ? v.trim() : "";
 }
 
+function isProductionEnv(): boolean {
+  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+}
+
+function normalizeOrigin(value: string | undefined | null): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/$/, '');
+}
+
+function isLocalhostOrigin(origin: string): boolean {
+  const raw = String(origin ?? '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    const host = String(parsed.hostname ?? '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+  } catch {
+    return /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(raw);
+  }
+}
+
+function deriveWebOriginFromApiOrigin(api: string): string {
+  const raw = normalizeOrigin(api);
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    const host = String(parsed.hostname ?? '');
+    if (host.toLowerCase().startsWith('api.')) {
+      parsed.hostname = host.slice(4);
+    }
+    parsed.pathname = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
 export function apiOrigin(): string {
-  const v = process.env.API_ORIGIN;
-  if (v && v.trim()) return v.trim().replace(/\/$/, '');
+  const configuredApi = normalizeOrigin(process.env.API_ORIGIN);
+  if (configuredApi && (!isProductionEnv() || !isLocalhostOrigin(configuredApi))) {
+    return configuredApi;
+  }
+
+  const configuredWeb = normalizeOrigin(process.env.APP_ORIGIN || process.env.PUBLIC_WEB_ORIGIN || process.env.WEB_ORIGIN);
+  if (configuredWeb && (!isProductionEnv() || !isLocalhostOrigin(configuredWeb))) {
+    return configuredWeb;
+  }
+
+  if (isProductionEnv()) {
+    return '';
+  }
+
   const port = process.env.PORT?.trim() ? process.env.PORT.trim() : '4000';
   return `http://localhost:${port}`;
 }
 
 export function webOrigin(): string {
-  const v = process.env.WEB_ORIGIN;
-  const trimmed = v && v.trim() ? v.trim() : '';
-  return (trimmed || 'http://localhost:5173').replace(/\/$/, '');
+  const configuredWeb = normalizeOrigin(process.env.APP_ORIGIN || process.env.PUBLIC_WEB_ORIGIN || process.env.WEB_ORIGIN);
+  if (configuredWeb && (!isProductionEnv() || !isLocalhostOrigin(configuredWeb))) {
+    return configuredWeb;
+  }
+
+  const derivedFromApi = deriveWebOriginFromApiOrigin(process.env.API_ORIGIN ?? '');
+  if (derivedFromApi && (!isProductionEnv() || !isLocalhostOrigin(derivedFromApi))) {
+    return derivedFromApi;
+  }
+
+  if (isProductionEnv()) {
+    return '';
+  }
+
+  return 'http://localhost:5173';
 }
 
 /** Format a Date as "DD/MM/YYYY HH:MM" (local server time) */
