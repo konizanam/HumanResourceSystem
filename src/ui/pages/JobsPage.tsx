@@ -278,6 +278,7 @@ export function JobsPage() {
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
+  const [companyNameByJobId, setCompanyNameByJobId] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isJobSeekerView) return;
@@ -316,8 +317,63 @@ export function JobsPage() {
       const fromMap = companyNameById.get(id);
       if (fromMap) return fromMap;
     }
+    const jobId = String(job.id ?? "").trim();
+    if (jobId) {
+      const fromJobMap = String(companyNameByJobId[jobId] ?? "").trim();
+      if (fromJobMap) return fromJobMap;
+    }
     return "—";
-  }, [companyNameById]);
+  }, [companyNameById, companyNameByJobId]);
+
+  useEffect(() => {
+    if (!accessToken || !isJobSeekerView || jobs.length === 0) return;
+
+    const unresolvedJobs = jobs.filter((job) => {
+      const direct = String(job.company ?? "").trim();
+      if (direct) return false;
+      const fromCompanyName = String((job as any).company_name ?? (job as any).companyName ?? "").trim();
+      if (fromCompanyName) return false;
+      const employerCompany = String((job as any).employer_company ?? "").trim();
+      if (employerCompany) return false;
+      const byCompanyId = String(companyNameById.get(String(job.company_id ?? "").trim()) ?? "").trim();
+      if (byCompanyId) return false;
+      const jobId = String(job.id ?? "").trim();
+      if (!jobId) return false;
+      const cached = String(companyNameByJobId[jobId] ?? "").trim();
+      return !cached;
+    });
+
+    if (unresolvedJobs.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      unresolvedJobs.map(async (job) => {
+        const jobId = String(job.id ?? "").trim();
+        if (!jobId) return null;
+        try {
+          const company = await getPublicCompany(jobId);
+          const name = String(company?.name ?? "").trim();
+          if (!name) return null;
+          return { jobId, name };
+        } catch {
+          return null;
+        }
+      })
+    ).then((resolved) => {
+      if (cancelled) return;
+      const updates = resolved.filter((item): item is { jobId: string; name: string } => Boolean(item?.jobId && item?.name));
+      if (updates.length === 0) return;
+      setCompanyNameByJobId((prev) => {
+        const next = { ...prev };
+        for (const item of updates) next[item.jobId] = item.name;
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, companyNameById, companyNameByJobId, isJobSeekerView, jobs]);
 
   const resolveJobCategoryName = useCallback((job: JobListItem) => {
     const direct = String(job.category ?? "").trim();
@@ -1038,7 +1094,11 @@ export function JobsPage() {
   }
 
   function onStartApply(job: JobListItem) {
-    setUpdateProfileBeforeApplyJob(job);
+    setUpdateProfileBeforeApplyJob({
+      ...job,
+      company: resolveJobCompanyName(job),
+      company_id: String((job as any).company_id ?? "").trim() || (job as any).company_id,
+    });
   }
 
   async function onConfirmApply() {

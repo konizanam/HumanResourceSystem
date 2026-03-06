@@ -588,6 +588,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     }
   }, [accessToken, pendingJob]);
 
+  const pendingJobCompanyName = useMemo(() => {
+    if (!pendingJob) return "—";
+    const direct = String((pendingJob as any).company ?? "").trim();
+    if (direct) return direct;
+    const fromCompanyName = String((pendingJob as any).company_name ?? (pendingJob as any).companyName ?? "").trim();
+    if (fromCompanyName) return fromCompanyName;
+    const employerCompany = String((pendingJob as any).employer_company ?? "").trim();
+    if (employerCompany) return employerCompany;
+    return "—";
+  }, [pendingJob]);
+
   function clearMessages() {
     setError(null);
     setSuccess(null);
@@ -1334,7 +1345,25 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
 
           <div className="profileReadGrid" style={{ marginTop: 6 }}>
             <ReadField label="Job" value={pendingJob.title} />
-            <ReadField label="Company" value={pendingJob.company ?? "—"} />
+            <div className="readField">
+              <span className="readLabel">Company</span>
+              <span className="readValue">
+                <button
+                  type="button"
+                  className="linkBtn"
+                  onClick={() => {
+                    const companyId = String((pendingJob as any).company_id ?? "").trim();
+                    if (companyId) {
+                      navigate(`/app/jobs?company_id=${encodeURIComponent(companyId)}`);
+                      return;
+                    }
+                    navigate("/app/jobs");
+                  }}
+                >
+                  {pendingJobCompanyName}
+                </button>
+              </span>
+            </div>
             <ReadField label="Location" value={pendingJob.location ?? "—"} />
             <ReadField
               label="Due Date"
