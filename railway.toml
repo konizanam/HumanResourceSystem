@@ -3,4 +3,5 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
+startCommand = "caddy run --config /assets/Caddyfile --adapter caddyfile"
 restartPolicyType = "on_failure"
