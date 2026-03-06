@@ -62,6 +62,7 @@ export function MainCompanySetupPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<SetupFormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
 
@@ -112,6 +113,7 @@ export function MainCompanySetupPage() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSuccess(null);
 
     const email = form.contact_email.trim();
     const website = form.website?.trim() ?? "";
@@ -148,7 +150,10 @@ export function MainCompanySetupPage() {
         country: form.country.trim(),
       });
 
-      navigate("/login", { replace: true });
+      setSuccess("Setup completed successfully. Redirecting to login...");
+      window.setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 1400);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete main company setup");
     } finally {
@@ -292,6 +297,12 @@ export function MainCompanySetupPage() {
             {error ? (
               <div className="errorBox" role="alert" aria-live="assertive">
                 {error}
+              </div>
+            ) : null}
+
+            {success ? (
+              <div className="hintBox" role="status" aria-live="polite">
+                {success}
               </div>
             ) : null}
 

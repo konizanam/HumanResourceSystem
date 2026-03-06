@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
@@ -29,6 +29,7 @@ import { PublicJobsPage } from "./pages/PublicJobsPage";
 import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 import { MainCompanySetupPage } from "./pages/MainCompanySetupPage";
 import { getPublicSetupStatus } from "./api/client";
+import { useAuth } from "./auth/AuthContext";
 
 const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
@@ -135,6 +136,65 @@ function MainCompanySetupRoute() {
   return <MainCompanySetupPage />;
 }
 
+function SetupGuard({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { accessToken, logout } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSetupStatus = async () => {
+      try {
+        const status = await getPublicSetupStatus();
+        if (!cancelled) {
+          setSetupRequired(status.setup_required);
+        }
+      } catch {
+        if (!cancelled) {
+          // Fail open if status API is unavailable.
+          setSetupRequired(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSetupStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!setupRequired) return;
+    if (!accessToken) return;
+
+    // Ensure incomplete setup cannot continue with an existing authenticated session.
+    logout();
+  }, [accessToken, loading, logout, setupRequired]);
+
+  if (loading) {
+    return <PlaceholderPage title="Loading setup status..." />;
+  }
+
+  const onSetupRoute = location.pathname.startsWith("/setup/main-company");
+
+  if (setupRequired && !onSetupRoute) {
+    return <Navigate to="/setup/main-company" replace />;
+  }
+
+  if (!setupRequired && onSetupRoute) {
+    return <Navigate to={accessToken ? "/app/dashboard" : "/login"} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function resolveDashboardPath(hasPermission: HasPermissionFn) {
   void hasPermission;
   return "/app/dashboard";
@@ -186,25 +246,26 @@ function PermissionGate({
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginEntryRoute />} />
-      <Route path="/setup/main-company" element={<MainCompanySetupRoute />} />
-      <Route path="/register" element={<SignupPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <SetupGuard>
+      <Routes>
+        <Route path="/login" element={<LoginEntryRoute />} />
+        <Route path="/setup/main-company" element={<MainCompanySetupRoute />} />
+        <Route path="/register" element={<SignupPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      <Route path="/jobs" element={<PublicJobsPage />} />
-      <Route path="/jobs/:jobId" element={<PublicJobsPage />} />
+        <Route path="/jobs" element={<PublicJobsPage />} />
+        <Route path="/jobs/:jobId" element={<PublicJobsPage />} />
 
-      <Route
-        path="/app"
-        element={
-          <RequireAuth>
-            <AppLayout menuItems={menu} />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<DashboardHomeRedirect />} />
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route
+          path="/app"
+          element={
+            <RequireAuth>
+              <AppLayout menuItems={menu} />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<DashboardHomeRedirect />} />
+          <Route path="dashboard" element={<DashboardPage />} />
 
         <Route
           path="global-settings"
@@ -364,10 +425,11 @@ export function App() {
             </PermissionGate>
           }
         />
-      </Route>
+        </Route>
 
-      <Route path="/" element={<Navigate to="/app" replace />} />
-      <Route path="*" element={<Navigate to="/app" replace />} />
-    </Routes>
+        <Route path="/" element={<Navigate to="/app" replace />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Routes>
+    </SetupGuard>
   );
 }
