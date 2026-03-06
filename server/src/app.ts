@@ -11,6 +11,7 @@ import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import { createOpenApiSpec } from './swagger';
 import { crudAuditMiddleware } from './middleware/crudAudit';
+import { visitorTrackingMiddleware } from './middleware/visitorTracking';
 
 // Load environment variables (only in development — production uses platform env vars)
 if (process.env.NODE_ENV !== 'production') {
@@ -62,6 +63,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // Centralized audit logging for successful CRUD operations
+app.use(visitorTrackingMiddleware);
 app.use(crudAuditMiddleware);
 
 // =====================

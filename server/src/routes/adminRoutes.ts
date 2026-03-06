@@ -1084,11 +1084,29 @@ router.get('/statistics',
       );
 
       // Activity statistics
-      const activityStats = await dbQuery(
-        `SELECT 
-          (SELECT COUNT(*) FROM audit_logs WHERE created_at >= CURRENT_DATE) as api_requests_today,
-          (SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE expires_at > NOW()) as active_sessions`
-      );
+      let activityStats;
+      try {
+        activityStats = await dbQuery(
+          `SELECT 
+            (SELECT COUNT(*) FROM audit_logs WHERE created_at >= CURRENT_DATE) as api_requests_today,
+            (SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE expires_at > NOW()) as active_sessions,
+            (SELECT COUNT(*) FROM daily_unique_visitors WHERE visit_date >= DATE_TRUNC('month', NOW())::date) as monthly_visits,
+            (SELECT COUNT(*) FROM daily_unique_visitors WHERE visit_date = CURRENT_DATE) as unique_visitors_today`
+        );
+      } catch (error: any) {
+        // Backward-compatible fallback when the new table is not present yet.
+        if (error?.code !== '42P01') {
+          throw error;
+        }
+
+        activityStats = await dbQuery(
+          `SELECT 
+            (SELECT COUNT(*) FROM audit_logs WHERE created_at >= CURRENT_DATE) as api_requests_today,
+            (SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE expires_at > NOW()) as active_sessions,
+            (SELECT COUNT(*) FROM audit_logs WHERE created_at >= DATE_TRUNC('month', NOW())) as monthly_visits,
+            0 as unique_visitors_today`
+        );
+      }
 
       // Date range specific statistics
       let dateRangeStats = null;
@@ -1107,6 +1125,8 @@ router.get('/statistics',
       const systemInfo = {
         api_requests_today: parseInt(activityStats.rows[0].api_requests_today),
         active_sessions: parseInt(activityStats.rows[0].active_sessions),
+        monthly_visits: parseInt(activityStats.rows[0].monthly_visits),
+        unique_visitors_today: parseInt(activityStats.rows[0].unique_visitors_today || '0'),
         storage_used: await getStorageUsed(),
         last_backup: await getLastBackupTime(),
         version: process.env.npm_package_version || '1.0.0'
@@ -1164,6 +1184,55 @@ router.get('/statistics',
     } catch (error) {
       console.error('Error fetching statistics:', error);
       res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+router.get('/visitor-analytics',
+  authenticate,
+  authorize('ADMIN'),
+  [
+    query('days').optional().isInt({ min: 1, max: 365 }).toInt()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const days = Number(req.query.days || 30);
+
+      const analytics = await dbQuery(
+        `SELECT
+          visit_date,
+          COUNT(*)::int AS unique_visitors,
+          COALESCE(SUM(request_count), 0)::int AS total_requests
+         FROM daily_unique_visitors
+         WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
+         GROUP BY visit_date
+         ORDER BY visit_date DESC`,
+        [days]
+      );
+
+      return res.json({
+        days,
+        data: analytics.rows,
+      });
+    } catch (error: any) {
+      if (error?.code === '42P01') {
+        return res.status(200).json({
+          days: Number(req.query.days || 30),
+          data: [],
+          warning: 'daily_unique_visitors table not found. Run the ALTER script to enable visitor tracking.'
+        });
+      }
+
+      console.error('Get visitor analytics error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to get visitor analytics'
+      });
     }
   }
 );

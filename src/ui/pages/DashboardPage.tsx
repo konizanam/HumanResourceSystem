@@ -1135,14 +1135,7 @@ export function DashboardPage() {
                 <StatCard label="API Requests Today" value={adminStats.system.api_requests_today} />
                 <StatCard label="Active Sessions" value={adminStats.system.active_sessions} />
                 <StatCard label="Storage Used" value={adminStats.system.storage_used ?? "—"} />
-                <StatCard
-                  label="Last Backup"
-                  value={
-                    adminStats.system.last_backup
-                      ? new Date(adminStats.system.last_backup).toLocaleString("en-GB")
-                      : "Never"
-                  }
-                />
+                <StatCard label="Monthly Visits" value={adminStats.system.monthly_visits ?? 0} />
                 <StatCard label="Version" value={adminStats.system.version} />
               </div>
             </div>

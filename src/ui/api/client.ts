@@ -2256,7 +2256,7 @@ export type AdminStatistics = {
     new_today: number;
   };
   system: {
-    api_requests_today: number; active_sessions: number;
+    api_requests_today: number; active_sessions: number; monthly_visits: number;
     storage_used: string; last_backup: string | null; version: string;
   };
 };

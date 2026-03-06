@@ -454,7 +454,24 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8.3 user_sessions table
+-- 8.3 daily_unique_visitors table
+CREATE TABLE daily_unique_visitors (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    visit_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    visitor_hash VARCHAR(64) NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    ip_address INET,
+    user_agent TEXT,
+    first_path TEXT,
+    first_seen_at TIMESTAMP DEFAULT NOW(),
+    last_seen_at TIMESTAMP DEFAULT NOW(),
+    request_count INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_daily_unique_visitors_date_hash UNIQUE (visit_date, visitor_hash)
+);
+
+-- 8.4 user_sessions table
 CREATE TABLE user_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -466,7 +483,7 @@ CREATE TABLE user_sessions (
     last_activity TIMESTAMP DEFAULT NOW()
 );
 
--- 8.4 job_reports table
+-- 8.5 job_reports table
 CREATE TABLE job_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -479,7 +496,7 @@ CREATE TABLE job_reports (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 8.5 backups table
+-- 8.6 backups table
 CREATE TABLE backups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     filename VARCHAR(255) NOT NULL,
@@ -489,7 +506,7 @@ CREATE TABLE backups (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 8.6 employer_stats table
+-- 8.7 employer_stats table
 CREATE TABLE employer_stats (
     employer_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     total_jobs_posted INTEGER DEFAULT 0,
@@ -589,6 +606,11 @@ CREATE INDEX idx_audit_module ON audit_logs(module_name);
 CREATE INDEX idx_audit_record ON audit_logs(record_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at);
 CREATE INDEX idx_audit_ip ON audit_logs(ip_address);
+
+-- Daily unique visitors indexes
+CREATE INDEX idx_daily_visitors_date ON daily_unique_visitors(visit_date);
+CREATE INDEX idx_daily_visitors_user ON daily_unique_visitors(user_id);
+CREATE INDEX idx_daily_visitors_last_seen ON daily_unique_visitors(last_seen_at);
 
 -- Company indexes
 CREATE INDEX idx_companies_name ON companies(name);
@@ -699,6 +721,7 @@ COMMENT ON TABLE companies IS 'Multi-tenant company profiles';
 COMMENT ON TABLE jobs IS 'Core table for job postings/vacancies';
 COMMENT ON TABLE applications IS 'Tracks job applications and candidate progression';
 COMMENT ON TABLE audit_logs IS 'Comprehensive activity tracking for compliance';
+COMMENT ON TABLE daily_unique_visitors IS 'Unique visitor tracking per day for analytics';
 COMMENT ON TABLE job_seeker_profiles IS 'Professional summary and searchable profile data';
 COMMENT ON TABLE job_seeker_personal_details IS 'Sensitive PII with restricted access';
 

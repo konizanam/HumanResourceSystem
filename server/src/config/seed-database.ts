@@ -691,6 +691,7 @@ async function clearExistingData(client: any) {
     'notifications',
     'notification_preferences',
     'user_sessions',
+    'daily_unique_visitors',
     'audit_logs',
     'admin_logs',
     'job_reports',
