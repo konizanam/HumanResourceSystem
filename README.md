@@ -46,6 +46,29 @@ Monorepo (npm workspaces) with:
 - Typecheck (both): `npm run typecheck`
 - Build (both): `npm run build`
 
+## Automated Versioning and Releases
+
+This repository uses Conventional Commits + semantic-release.
+
+- `fix:` bumps patch (x.y.Z)
+- `feat:` bumps minor (x.Y.0)
+- `feat!:` or `BREAKING CHANGE:` bumps major (X.0.0)
+
+Release automation runs from GitHub Actions on push to `main`/`master` via `.github/workflows/release.yml`.
+
+- Calculates next version from commit history
+- Updates `CHANGELOG.md`
+- Updates root `package.json` / `package-lock.json`
+- Syncs `server/package.json` version to the same release version
+- Creates a Git tag and GitHub Release
+
+Local helper scripts:
+
+- `npm run release:dry-run` to preview next release
+- `npm run release` for manual release run (usually CI handles this)
+
+Commit messages are validated by Husky + commitlint (`.husky/commit-msg`).
+
 ## Production
 
 1) Build everything:

@@ -28,7 +28,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { PublicJobsPage } from "./pages/PublicJobsPage";
 import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 import { MainCompanySetupPage } from "./pages/MainCompanySetupPage";
-import { getPublicSetupStatus } from "./api/client";
+import { getPublicSetupStatus, getPublicSystemSettings } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 
 const menu = [
@@ -245,6 +245,29 @@ function PermissionGate({
 }
 
 export function App() {
+  const [footerCompanyName, setFooterCompanyName] = useState("Global Company Name");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFooterCompanyName = async () => {
+      try {
+        const settings = await getPublicSystemSettings();
+        if (cancelled) return;
+        const companyName = String(settings.system_name ?? "").trim();
+        setFooterCompanyName(companyName || "Global Company Name");
+      } catch {
+        if (cancelled) return;
+        setFooterCompanyName("Global Company Name");
+      }
+    };
+
+    void loadFooterCompanyName();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <SetupGuard>
       <>
@@ -432,7 +455,8 @@ export function App() {
         <Route path="*" element={<Navigate to="/app" replace />} />
       </Routes>
       <footer className="globalAppFooter">
-        <span>© 2026 Konizanam Holdings (Demo)</span>
+        <span>© 2026 All Rights Reserved. {footerCompanyName}. Developbed By: </span>
+        <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
       </footer>
       </>
     </SetupGuard>
