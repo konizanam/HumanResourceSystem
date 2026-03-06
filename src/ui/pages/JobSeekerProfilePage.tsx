@@ -1090,25 +1090,25 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             />
           </div>
 
-          <div style={{ minWidth: 180 }}>
-            <label className="fieldLabel">Status</label>
-            <select
-              className="input"
-              value={directoryStatus}
-              onChange={(e) => {
-                setDirectoryStatus(e.target.value);
-                setDirectoryPage(1);
-              }}
-            >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="blocked">Blocked</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
+            <div style={{ minWidth: 180 }}>
+              <label className="fieldLabel">Status</label>
+              <select
+                className="input"
+                value={directoryStatus}
+                onChange={(e) => {
+                  setDirectoryStatus(e.target.value);
+                  setDirectoryPage(1);
+                }}
+              >
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="blocked">Blocked</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
 
-          {directoryPagination.pages > 1 ? (
-            <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination top" style={{ marginLeft: "auto" }}>
+            <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination top" style={{ marginLeft: 0 }}>
               <label className="publicJobsPagerSelect">
                 Records
                 <select
@@ -1149,7 +1149,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                 Next {"->"}
               </button>
             </div>
-          ) : null}
+          </div>
         </div>
 
         <div className="jobCardsGrid" role="region" aria-label="Job seeker cards">
@@ -1217,49 +1217,47 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           )}
         </div>
 
-        {directoryPagination.pages > 1 ? (
-          <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination" style={{ marginTop: 16, marginLeft: "auto" }}>
-            <label className="publicJobsPagerSelect">
-              Records
-              <select
-                className="input"
-                value={String(directoryPageLimit)}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (!Number.isFinite(next) || next <= 0) return;
-                  setDirectoryPage(1);
-                  setDirectoryPageLimit(next);
-                }}
-                disabled={directoryLoading}
-              >
-                {DIRECTORY_PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
-              type="button"
-              onClick={() => setDirectoryPage((p) => Math.max(1, p - 1))}
-              disabled={directoryPagination.page <= 1 || directoryLoading}
+        <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination" style={{ marginTop: 16, marginLeft: "auto" }}>
+          <label className="publicJobsPagerSelect">
+            Records
+            <select
+              className="input"
+              value={String(directoryPageLimit)}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next) || next <= 0) return;
+                setDirectoryPage(1);
+                setDirectoryPageLimit(next);
+              }}
+              disabled={directoryLoading}
             >
-              {"<-"} Previous
-            </button>
-            <span className="publicJobsPagerInfo">
-              Page {directoryPagination.page} of {directoryPagination.pages} ({directoryPagination.total} profiles)
-            </span>
-            <button
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-              type="button"
-              onClick={() => setDirectoryPage((p) => Math.min(directoryPagination.pages, p + 1))}
-              disabled={directoryPagination.page >= directoryPagination.pages || directoryLoading}
-            >
-              Next {"->"}
-            </button>
-          </div>
-        ) : null}
+              {DIRECTORY_PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+            type="button"
+            onClick={() => setDirectoryPage((p) => Math.max(1, p - 1))}
+            disabled={directoryPagination.page <= 1 || directoryLoading}
+          >
+            {"<-"} Previous
+          </button>
+          <span className="publicJobsPagerInfo">
+            Page {directoryPagination.page} of {directoryPagination.pages} ({directoryPagination.total} profiles)
+          </span>
+          <button
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            type="button"
+            onClick={() => setDirectoryPage((p) => Math.min(directoryPagination.pages, p + 1))}
+            disabled={directoryPagination.page >= directoryPagination.pages || directoryLoading}
+          >
+            Next {"->"}
+          </button>
+        </div>
 
         {/* Block / Unblock modal */}
         <ConfirmModal
