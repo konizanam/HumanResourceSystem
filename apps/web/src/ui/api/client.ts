@@ -665,6 +665,7 @@ export type NotificationItem = {
   type: string;
   title: string;
   message: string;
+  data?: Record<string, unknown> | string | null;
   is_read: boolean;
   read_at?: string | null;
   created_at: string;

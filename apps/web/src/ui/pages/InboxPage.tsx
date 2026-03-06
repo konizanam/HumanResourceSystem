@@ -18,6 +18,45 @@ import { usePermissions } from "../auth/usePermissions";
 
 type InboxMode = "job-alerts" | "messages";
 
+type LoginDetails = {
+  login_date_time: string;
+  login_ip: string;
+  login_location: string;
+  login_device: string;
+};
+
+function parseLoginDetails(item: NotificationItem): LoginDetails | null {
+  if (String(item.type ?? "").trim().toLowerCase() !== "system_alert") return null;
+
+  const rawData = item.data;
+  const data = (() => {
+    if (!rawData) return null;
+    if (typeof rawData === "string") {
+      try {
+        return JSON.parse(rawData) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof rawData === "object") return rawData as Record<string, unknown>;
+    return null;
+  })();
+
+  if (!data) return null;
+  if (String(data.event ?? "").trim().toLowerCase() !== "login_notification") return null;
+
+  const fallbackDate = item.created_at
+    ? new Date(item.created_at).toLocaleString("en-GB")
+    : "Unknown";
+
+  return {
+    login_date_time: String(data.login_date_time ?? "").trim() || fallbackDate,
+    login_ip: String(data.login_ip ?? "").trim() || "Unknown",
+    login_location: String(data.login_location ?? "").trim() || "Unknown",
+    login_device: String(data.login_device ?? "").trim() || "Unknown",
+  };
+}
+
 function getPageCopy(mode: InboxMode) {
   if (mode === "messages") {
     return {
@@ -600,6 +639,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
               mode === "messages" && fromLabel
                 ? rawMessage.slice(splitIdx + 1).trim()
                 : rawMessage;
+            const loginDetails = parseLoginDetails(item);
 
             return (
               <div
@@ -644,6 +684,33 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                     </div>
                   ) : null}
                   <div className="inboxCardMessage">{displayMessage || "—"}</div>
+                  {loginDetails ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        border: "1px solid var(--stroke)",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        background: "var(--card)",
+                      }}
+                    >
+                      <div className="inboxCardMeta" style={{ fontWeight: 700, marginBottom: 8 }}>
+                        Login Details
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", rowGap: 6, columnGap: 10 }}>
+                        <div className="inboxCardMeta">Date / Time</div>
+                        <div className="inboxCardMessage" style={{ margin: 0 }}>{loginDetails.login_date_time}</div>
+                        <div className="inboxCardMeta">IP Address</div>
+                        <div className="inboxCardMessage" style={{ margin: 0 }}>{loginDetails.login_ip}</div>
+                        <div className="inboxCardMeta">Location</div>
+                        <div className="inboxCardMessage" style={{ margin: 0 }}>{loginDetails.login_location}</div>
+                        <div className="inboxCardMeta">Device / Browser</div>
+                        <div className="inboxCardMessage" style={{ margin: 0, wordBreak: "break-word" }}>
+                          {loginDetails.login_device}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="inboxCardActions">
