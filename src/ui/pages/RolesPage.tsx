@@ -414,15 +414,20 @@ export function RolesPage() {
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
 
-      {/* Search */}
-      <div style={{ marginBottom: 16 }}>
-        <input
-          className="input"
-          placeholder="Search roles…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 320 }}
-        />
+      {/* Search + top pagination */}
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 260, flex: "1 1 320px" }}>
+          <input
+            className="input"
+            placeholder="Search roles…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          {renderRolesPager("Roles pagination top")}
+        </div>
       </div>
 
       {/* Add panel */}
@@ -462,7 +467,6 @@ export function RolesPage() {
       )}
 
       {/* Table */}
-      {renderRolesPager("Roles pagination top")}
       <div className="tableWrap" role="region" aria-label="Roles table">
         <table className="table companiesTable">
           <thead>

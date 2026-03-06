@@ -1148,6 +1148,21 @@ export function JobsPage() {
           </button>
         )}
       </div>
+      {error && <div className="errorBox">{error}</div>}
+      {success && <div className="successBox">{success}</div>}
+
+      <div className="statsCardsGrid" role="region" aria-label="Jobs statistics">
+        {jobsStatsCards.map((card, idx) => {
+          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+          return (
+            <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
+              <div className="readLabel">{card.label}</div>
+              <div className="statsCardValue">{card.value}</div>
+            </div>
+          );
+        })}
+      </div>
+
       {addInlineOpen && canCreate && (
         <div className="dropPanel" style={{ marginBottom: 16 }}>
           <div className="editForm">
@@ -1236,22 +1251,6 @@ export function JobsPage() {
           </div>
         </div>
       )}
-
-
-      {error && <div className="errorBox">{error}</div>}
-      {success && <div className="successBox">{success}</div>}
-
-      <div className="statsCardsGrid" role="region" aria-label="Jobs statistics">
-        {jobsStatsCards.map((card, idx) => {
-          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-          return (
-            <div key={card.label} className={`dashCard statsCard ${toneClass}`}>
-              <div className="readLabel">{card.label}</div>
-              <div className="statsCardValue">{card.value}</div>
-            </div>
-          );
-        })}
-      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 480px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>

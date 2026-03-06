@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { getEmailTemplates, type EmailTemplate } from './emailTemplates.service';
-import { getBrandingInfo } from './systemSettings.service';
+import { getBrandingInfo, getSystemSettings } from './systemSettings.service';
 
 type EmailConfig = {
   host: string;
@@ -38,6 +38,30 @@ function loadEmailConfig(): EmailConfig {
   }
 
   return { host, port, secure, user, pass, from };
+}
+
+function extractEmailAddress(fromValue: string): string {
+  const raw = String(fromValue ?? '').trim();
+  if (!raw) return '';
+  const match = raw.match(/<\s*([^>]+)\s*>/);
+  if (match && match[1]) return match[1].trim();
+  return raw;
+}
+
+async function resolveFromHeader(configuredFrom: string): Promise<string> {
+  const email = extractEmailAddress(configuredFrom);
+  if (!email) return configuredFrom;
+
+  try {
+    const branding = await getBrandingInfo();
+    const settings = await getSystemSettings();
+    const settingsName = String(settings.system_name ?? '').trim();
+    const brandName = String(branding.name ?? '').trim() || settingsName || appName();
+    if (!brandName) return configuredFrom;
+    return `${brandName} <${email}>`;
+  } catch {
+    return configuredFrom;
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -341,9 +365,10 @@ export async function sendEmail(params: {
 }): Promise<void> {
   const cfg = loadEmailConfig();
   const transport = getTransport();
+  const fromHeader = await resolveFromHeader(cfg.from);
 
   await transport.sendMail({
-    from: cfg.from,
+    from: fromHeader,
     to: params.to,
     subject: params.subject,
     html: params.html,

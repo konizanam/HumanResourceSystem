@@ -245,8 +245,11 @@ function PermissionGate({
 }
 
 export function App() {
+  const year = new Date().getFullYear();
+
   return (
     <SetupGuard>
+      <>
       <Routes>
         <Route path="/login" element={<LoginEntryRoute />} />
         <Route path="/setup/main-company" element={<MainCompanySetupRoute />} />
@@ -430,6 +433,11 @@ export function App() {
         <Route path="/" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/app" replace />} />
       </Routes>
+      <footer className="globalAppFooter">
+        <span>(c) {year} All Rights Reserved. Developed by </span>
+        <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
+      </footer>
+      </>
     </SetupGuard>
   );
 }

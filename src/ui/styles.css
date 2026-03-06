@@ -119,6 +119,27 @@ body {
   font-size: 14px;
 }
 
+.globalAppFooter {
+  margin: 10px 16px 18px;
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card2) 75%, var(--accent-soft));
+}
+
+.globalAppFooter a {
+  color: var(--menu-icon-active);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.globalAppFooter a:hover {
+  text-decoration: underline;
+}
+
 .errorBox {
   border: 1px solid rgba(220, 38, 38, 0.25);
   background: rgba(220, 38, 38, 0.06);

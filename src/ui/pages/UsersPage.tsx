@@ -367,9 +367,11 @@ export function UsersPage() {
             <option value="inactive">Inactive</option>
           </select>
         </div>
-      </div>
 
-      {renderUsersPager("Users pagination top", 0)}
+        <div style={{ marginLeft: "auto" }}>
+          {renderUsersPager("Users pagination top inline", 0)}
+        </div>
+      </div>
 
       {/* Table */}
       <div className="tableWrap" role="region" aria-label="Users table">
