@@ -1090,8 +1090,8 @@ router.get('/statistics',
           `SELECT 
             (SELECT COUNT(*) FROM audit_logs WHERE created_at >= CURRENT_DATE) as api_requests_today,
             (SELECT COUNT(DISTINCT user_id) FROM user_sessions WHERE expires_at > NOW()) as active_sessions,
-            (SELECT COUNT(*) FROM daily_unique_visitors WHERE visit_date >= DATE_TRUNC('month', NOW())::date) as monthly_visits,
-            (SELECT COUNT(*) FROM daily_unique_visitors WHERE visit_date = CURRENT_DATE) as unique_visitors_today`
+            (SELECT COUNT(DISTINCT ip_address) FROM daily_unique_visitors WHERE visit_date >= DATE_TRUNC('month', NOW())::date AND ip_address IS NOT NULL) as monthly_visits,
+            (SELECT COUNT(DISTINCT ip_address) FROM daily_unique_visitors WHERE visit_date = CURRENT_DATE AND ip_address IS NOT NULL) as unique_visitors_today`
         );
       } catch (error: any) {
         // Backward-compatible fallback when the new table is not present yet.
@@ -1209,7 +1209,7 @@ router.get('/visitor-analytics',
         ? await dbQuery(
             `SELECT
               TO_CHAR(DATE_TRUNC('month', visit_date), 'YYYY-MM') AS period,
-              COUNT(*)::int AS unique_visitors,
+              COUNT(DISTINCT ip_address)::int AS unique_visitors,
               COALESCE(SUM(request_count), 0)::int AS total_requests
              FROM daily_unique_visitors
              WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
@@ -1220,7 +1220,7 @@ router.get('/visitor-analytics',
         : await dbQuery(
             `SELECT
               TO_CHAR(visit_date, 'YYYY-MM-DD') AS period,
-              COUNT(*)::int AS unique_visitors,
+              COUNT(DISTINCT ip_address)::int AS unique_visitors,
               COALESCE(SUM(request_count), 0)::int AS total_requests
              FROM daily_unique_visitors
              WHERE visit_date >= (CURRENT_DATE - ($1::int - 1))
