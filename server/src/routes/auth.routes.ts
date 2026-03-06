@@ -87,6 +87,11 @@ function createTwoFactorChallenge(input: {
   };
 }
 
+function logDevOtpToTerminal(params: { email: string; challengeId: string; code: string }) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info(`[Auth DEV] OTP for ${params.email} (challenge ${params.challengeId}): ${params.code}`);
+}
+
 async function sendTwoFactorCodeEmail(params: {
   to: string;
   userFullName: string;
@@ -679,6 +684,12 @@ authRouter.post("/login", async (req, res, next) => {
       expiresInSeconds: challenge.expiresInSeconds,
     });
 
+    logDevOtpToTerminal({
+      email: user.email,
+      challengeId: challenge.challengeId,
+      code: challenge.code,
+    });
+
     return res.status(202).json({
       requiresTwoFactor: true,
       challengeId: challenge.challengeId,
@@ -781,11 +792,16 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
       expiresInSeconds: challenge.expiresInSeconds,
     });
 
+    logDevOtpToTerminal({
+      email: user.email,
+      challengeId: challenge.challengeId,
+      code: challenge.code,
+    });
+
     return res.json({
       message: "2FA challenge created",
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
-      ...(process.env.NODE_ENV !== "production" && { otpCode: challenge.code }),
     });
   } catch (err) {
     return next(err);

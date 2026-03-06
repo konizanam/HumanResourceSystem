@@ -148,6 +148,8 @@ export type SystemSettings = {
   app_color: string;
   main_company_id?: string | null;
   application_status_notifications?: Record<string, boolean>;
+  login_welcome_title?: string;
+  login_welcome_subtitle?: string;
 };
 
 export type SetupStatus = {
@@ -503,6 +505,8 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
     application_status_notifications: normalizeApplicationStatusNotifications(
       (data as any).application_status_notifications,
     ),
+    login_welcome_title: String((data as any).login_welcome_title ?? ""),
+    login_welcome_subtitle: String((data as any).login_welcome_subtitle ?? ""),
   };
 }
 
@@ -526,6 +530,8 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
     application_status_notifications: normalizeApplicationStatusNotifications(
       (data as any).application_status_notifications,
     ),
+    login_welcome_title: String((data as any).login_welcome_title ?? ""),
+    login_welcome_subtitle: String((data as any).login_welcome_subtitle ?? ""),
   };
 }
 
@@ -571,6 +577,8 @@ export async function updateSystemSettings(
     app_color: string;
     main_company_id: string | null;
     application_status_notifications: Record<string, boolean>;
+    login_welcome_title: string;
+    login_welcome_subtitle: string;
   }>,
 ): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/companies/settings`, {
@@ -594,6 +602,8 @@ export async function updateSystemSettings(
     application_status_notifications: normalizeApplicationStatusNotifications(
       (data as any).application_status_notifications,
     ),
+    login_welcome_title: String((data as any).login_welcome_title ?? ""),
+    login_welcome_subtitle: String((data as any).login_welcome_subtitle ?? ""),
   };
 }
 
@@ -1985,13 +1995,23 @@ export async function updateJobApplicationStatus(
   jobId: string,
   applicationId: string,
   status: string,
+  options?: {
+    interviewDate?: string;
+    interviewTime?: string;
+    interviewVenue?: string;
+  },
 ): Promise<JobApplication> {
+  const payload: Record<string, string> = { status };
+  if (options?.interviewDate) payload.interview_date = options.interviewDate;
+  if (options?.interviewTime) payload.interview_time = options.interviewTime;
+  if (options?.interviewVenue) payload.interview_location = options.interviewVenue;
+
   const res = await fetch(
     `${API_BASE}/jobs/${encodeURIComponent(jobId)}/applications/${encodeURIComponent(applicationId)}/status`,
     {
       method: "PATCH",
       headers: authHeaders(token),
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(payload),
     },
   );
   const body = await safeJson(res);

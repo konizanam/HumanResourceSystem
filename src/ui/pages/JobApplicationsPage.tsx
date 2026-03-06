@@ -121,6 +121,11 @@ export function JobApplicationsPage() {
   const [openProfileId, setOpenProfileId] = useState<string | null>(null);
   const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null>>({});
   const [documentUrlByAppId, setDocumentUrlByAppId] = useState<Record<string, string | null>>({});
+  const [interviewApp, setInterviewApp] = useState<JobApplication | null>(null);
+  const [interviewDate, setInterviewDate] = useState("");
+  const [interviewTime, setInterviewTime] = useState("");
+  const [interviewVenue, setInterviewVenue] = useState("");
+  const [interviewError, setInterviewError] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<StageKey, boolean>>({
     longlisted: true,
     shortlisted: true,
@@ -250,7 +255,11 @@ export function JobApplicationsPage() {
     return mainListApplications.slice(start, start + pagination.limit);
   }, [mainListApplications, pagination.limit, pagination.page]);
 
-  async function onUpdateStage(app: JobApplication, next: StageKey) {
+  async function onUpdateStage(
+    app: JobApplication,
+    next: StageKey,
+    options?: { interviewDate?: string; interviewTime?: string; interviewVenue?: string },
+  ) {
     if (!accessToken || !jobId) return;
     try {
       setSavingId(app.id);
@@ -259,18 +268,58 @@ export function JobApplicationsPage() {
       const preferredStatus = next;
       let updated: JobApplication | null = null;
       try {
-        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, preferredStatus);
+        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, preferredStatus, options);
       } catch {
-        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, LEGACY_STATUS_MAP[next]);
+        updated = await updateJobApplicationStatus(accessToken, jobId, app.id, LEGACY_STATUS_MAP[next], options);
       }
       setApplications((prev) => prev.map((p) => (p.id === app.id ? { ...p, ...updated } : p)));
       setStageOverrides((prev) => ({ ...prev, [app.id]: next }));
-      setSuccess(`Applicant moved to ${STATUS_ACTIONS.find((s) => s.key === next)?.label ?? next}.`);
+      if (next === "interview" && options?.interviewDate && options?.interviewTime && options?.interviewVenue) {
+        setSuccess(
+          `Interview scheduled for ${options.interviewDate} at ${options.interviewTime} (${options.interviewVenue}).`,
+        );
+      } else {
+        setSuccess(`Applicant moved to ${STATUS_ACTIONS.find((s) => s.key === next)?.label ?? next}.`);
+      }
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to update status");
     } finally {
       setSavingId(null);
     }
+  }
+
+  function onRequestStageChange(app: JobApplication, next: StageKey) {
+    if (next !== "interview") {
+      void onUpdateStage(app, next);
+      return;
+    }
+    setInterviewApp(app);
+    setInterviewDate("");
+    setInterviewTime("");
+    setInterviewVenue("");
+    setInterviewError(null);
+  }
+
+  function closeInterviewModal() {
+    if (savingId) return;
+    setInterviewApp(null);
+    setInterviewError(null);
+  }
+
+  async function onConfirmInterviewSchedule() {
+    if (!interviewApp) return;
+    if (!interviewDate || !interviewTime || !interviewVenue.trim()) {
+      setInterviewError("Interview date, time, and venue are required.");
+      return;
+    }
+
+    setInterviewError(null);
+    await onUpdateStage(interviewApp, "interview", {
+      interviewDate,
+      interviewTime,
+      interviewVenue: interviewVenue.trim(),
+    });
+    setInterviewApp(null);
   }
 
   async function onMoveBackToAllApplicants(app: JobApplication) {
@@ -634,7 +683,7 @@ export function JobApplicationsPage() {
                         key={`${app.id}-${action.key}`}
                         type="button"
                         className="btn btnGhost btnSm"
-                        onClick={() => onUpdateStage(app, action.key)}
+                        onClick={() => onRequestStageChange(app, action.key)}
                         disabled={savingId === app.id}
                       >
                         {action.label}
@@ -771,7 +820,7 @@ export function JobApplicationsPage() {
                               key={`${stage}-${app.id}-${action.key}`}
                               type="button"
                               className="btn btnGhost btnSm"
-                              onClick={() => onUpdateStage(app, action.key)}
+                              onClick={() => onRequestStageChange(app, action.key)}
                               disabled={savingId === app.id}
                             >
                               {action.label}
@@ -805,6 +854,61 @@ export function JobApplicationsPage() {
           ) : null}
         </section>
       ))}
+
+      {interviewApp ? (
+        <div className="modalOverlay" role="presentation" onMouseDown={closeInterviewModal}>
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Schedule Interview</div>
+            <div className="modalMessage" style={{ marginBottom: 10 }}>
+              Set interview details for {interviewApp.applicant_name ?? "this applicant"}.
+            </div>
+
+            {interviewError ? <div className="errorBox" style={{ marginTop: 0 }}>{interviewError}</div> : null}
+
+            <div className="profileReadGrid" style={{ marginTop: 8 }}>
+              <div>
+                <label className="fieldLabel" htmlFor="interview-date">Interview Date</label>
+                <input
+                  id="interview-date"
+                  className="input"
+                  type="date"
+                  value={interviewDate}
+                  onChange={(e) => setInterviewDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="fieldLabel" htmlFor="interview-time">Interview Time</label>
+                <input
+                  id="interview-time"
+                  className="input"
+                  type="time"
+                  value={interviewTime}
+                  onChange={(e) => setInterviewTime(e.target.value)}
+                />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="fieldLabel" htmlFor="interview-venue">Interview Venue</label>
+                <input
+                  id="interview-venue"
+                  className="input"
+                  value={interviewVenue}
+                  onChange={(e) => setInterviewVenue(e.target.value)}
+                  placeholder="Venue / location"
+                />
+              </div>
+            </div>
+
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={closeInterviewModal} disabled={Boolean(savingId)}>
+                Cancel
+              </button>
+              <button className="btn btnPrimary" type="button" onClick={() => void onConfirmInterviewSchedule()} disabled={Boolean(savingId)}>
+                {savingId ? "Saving..." : "Schedule Interview"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

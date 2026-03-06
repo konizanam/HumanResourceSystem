@@ -565,7 +565,7 @@ export function RolesPage() {
                                   placeholder="Search by name or email..."
                                 />
                               </div>
-                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination top" style={{ marginBottom: 12 }}>
+                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination top" style={{ marginBottom: 12, marginLeft: "auto" }}>
                                 <button
                                   className="btn btnPrimary btnSm"
                                   style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -625,7 +625,7 @@ export function RolesPage() {
                                   </tbody>
                                 </table>
                               </div>
-                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination" style={{ marginTop: 12 }}>
+                              <div className="publicJobsPager" role="navigation" aria-label="Role users pagination" style={{ marginTop: 12, marginLeft: "auto" }}>
                                 <button
                                   className="btn btnPrimary btnSm"
                                   style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}

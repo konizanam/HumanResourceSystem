@@ -86,6 +86,8 @@ export function GlobalSettingsPage() {
   });
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
   const [appColor, setAppColor] = useState("#6366f1");
+  const [loginWelcomeTitle, setLoginWelcomeTitle] = useState("");
+  const [loginWelcomeSubtitle, setLoginWelcomeSubtitle] = useState("");
   const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
     DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
   );
@@ -119,6 +121,8 @@ export function GlobalSettingsPage() {
             app_color: "#6366f1",
             main_company_id: null,
             application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+            login_welcome_title: "",
+            login_welcome_subtitle: "",
           };
         }),
       ]);
@@ -151,6 +155,8 @@ export function GlobalSettingsPage() {
         ...(settings.application_status_notifications ?? {}),
       };
       setApplicationStatusNotifications(nextNotifications);
+      setLoginWelcomeTitle(String(settings.login_welcome_title ?? ""));
+      setLoginWelcomeSubtitle(String(settings.login_welcome_subtitle ?? ""));
 
       setLoadedMainCompanyId(preferredId || null);
       setMainCompanyId(selectedCompany?.id ?? "");
@@ -198,9 +204,13 @@ export function GlobalSettingsPage() {
       const systemPayload: Partial<{
         app_color: string;
         application_status_notifications: Record<string, boolean>;
+        login_welcome_title: string;
+        login_welcome_subtitle: string;
       }> = {};
       if (canEdit) {
         systemPayload.application_status_notifications = applicationStatusNotifications;
+        systemPayload.login_welcome_title = loginWelcomeTitle.trim();
+        systemPayload.login_welcome_subtitle = loginWelcomeSubtitle.trim();
       }
       if (canChangeAppColor) {
         systemPayload.app_color = appColor;
@@ -217,6 +227,8 @@ export function GlobalSettingsPage() {
         ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
         ...(updatedSettings.application_status_notifications ?? {}),
       });
+      setLoginWelcomeTitle(String(updatedSettings.login_welcome_title ?? ""));
+      setLoginWelcomeSubtitle(String(updatedSettings.login_welcome_subtitle ?? ""));
       setMode(updatedMode);
       setSuccess("Global settings updated.");
     } catch (e) {
@@ -509,6 +521,38 @@ export function GlobalSettingsPage() {
                   ))}
                 </div>
                 <p className="pageText">Controls whether job seekers receive application update notifications per status.</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="dashCard" style={{ gridColumn: "1 / -1" }}>
+            <h3 className="editFormTitle" style={{ margin: "0 0 10px" }}>Login Welcome Content</h3>
+            <div className="editGrid">
+              <label className="field fieldFull">
+                <span className="fieldLabel">Welcome Title</span>
+                <input
+                  className="input"
+                  value={loginWelcomeTitle}
+                  onChange={(e) => setLoginWelcomeTitle(e.target.value)}
+                  disabled={!canEdit || saving || loading}
+                  placeholder="Welcome to your recruitment command center"
+                />
+              </label>
+              <label className="field fieldFull">
+                <span className="fieldLabel">Welcome Subtitle</span>
+                <textarea
+                  className="input"
+                  value={loginWelcomeSubtitle}
+                  onChange={(e) => setLoginWelcomeSubtitle(e.target.value)}
+                  disabled={!canEdit || saving || loading}
+                  rows={3}
+                  placeholder="Sign in to hire, apply, and stay updated on applications - all in one secure place."
+                />
+              </label>
+              <div className="field fieldFull">
+                <p className="pageText" style={{ margin: 0 }}>
+                  If these are left blank, the default login message is used automatically.
+                </p>
               </div>
             </div>
           </section>

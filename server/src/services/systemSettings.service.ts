@@ -79,6 +79,8 @@ export type SystemSettings = {
   app_color: string;
   main_company_id: string | null;
   application_status_notifications: ApplicationStatusNotificationSettings;
+  login_welcome_title: string;
+  login_welcome_subtitle: string;
 };
 
 export type BrandingInfo = {
@@ -95,6 +97,8 @@ const DEFAULT_SETTINGS: SystemSettings = {
   app_color: "#6366f1",
   main_company_id: null,
   application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
+  login_welcome_title: "",
+  login_welcome_subtitle: "",
 };
 
 const BRANDING_CACHE_MS = 30_000;
@@ -170,6 +174,14 @@ async function readSettings(): Promise<SystemSettings> {
     const mainCompanyIdRaw =
       typeof (parsed as any).main_company_id === "string" ? String((parsed as any).main_company_id).trim() : "";
     const mainCompanyId = mainCompanyIdRaw || null;
+    const loginWelcomeTitle =
+      typeof (parsed as any).login_welcome_title === "string"
+        ? String((parsed as any).login_welcome_title).trim()
+        : "";
+    const loginWelcomeSubtitle =
+      typeof (parsed as any).login_welcome_subtitle === "string"
+        ? String((parsed as any).login_welcome_subtitle).trim()
+        : "";
 
     const notificationsRaw = (parsed as any).application_status_notifications as unknown;
     const application_status_notifications: ApplicationStatusNotificationSettings = {
@@ -194,6 +206,8 @@ async function readSettings(): Promise<SystemSettings> {
       app_color: appColor,
       main_company_id: mainCompanyId,
       application_status_notifications,
+      login_welcome_title: loginWelcomeTitle,
+      login_welcome_subtitle: loginWelcomeSubtitle,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -277,7 +291,7 @@ export async function getBrandingInfo(): Promise<BrandingInfo> {
 }
 
 export async function updateSystemSettings(
-  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color" | "main_company_id" | "application_status_notifications">>,
+  changes: Partial<Pick<SystemSettings, "system_name" | "branding_logo_url" | "app_color" | "main_company_id" | "application_status_notifications" | "login_welcome_title" | "login_welcome_subtitle">>,
 ): Promise<SystemSettings> {
   const settings = await readSettings();
 
@@ -318,6 +332,14 @@ export async function updateSystemSettings(
       }
       settings.application_status_notifications = next;
     }
+  }
+
+  if (changes.login_welcome_title !== undefined) {
+    settings.login_welcome_title = String(changes.login_welcome_title ?? "").trim();
+  }
+
+  if (changes.login_welcome_subtitle !== undefined) {
+    settings.login_welcome_subtitle = String(changes.login_welcome_subtitle ?? "").trim();
   }
 
   await writeSettings(settings);

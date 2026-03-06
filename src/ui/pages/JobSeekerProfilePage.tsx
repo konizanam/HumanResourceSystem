@@ -381,9 +381,10 @@ function StepIcon({ step }: { step: number }) {
 /*  Main component                                                     */
 /* ================================================================== */
 
-const DIRECTORY_PAGE_LIMIT = 5;
+const DEFAULT_DIRECTORY_PAGE_LIMIT = 5;
 
 export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "directory" }) {
+  const DIRECTORY_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -396,9 +397,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [mode, setMode] = useState<"self" | "directory" | "forbidden">("self");
   const [jobSeekers, setJobSeekers] = useState<JobSeekerListItem[]>([]);
   const [directoryPage, setDirectoryPage] = useState(1);
+  const [directoryPageLimit, setDirectoryPageLimit] = useState(DEFAULT_DIRECTORY_PAGE_LIMIT);
   const [directoryPagination, setDirectoryPagination] = useState({
     page: 1,
-    limit: DIRECTORY_PAGE_LIMIT,
+    limit: DEFAULT_DIRECTORY_PAGE_LIMIT,
     total: 0,
     pages: 1,
   });
@@ -600,7 +602,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
 
         const res = await listJobSeekers(accessToken, {
           page: pageToLoad,
-          limit: DIRECTORY_PAGE_LIMIT,
+          limit: directoryPageLimit,
           search: directorySearch.trim() || undefined,
           status: directoryStatus || undefined,
         });
@@ -608,7 +610,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         const allSeekers = Array.isArray((res as any)?.job_seekers) ? (res as any).job_seekers : [];
         const pag = (res as any)?.pagination ?? {};
 
-        const requestedLimit = DIRECTORY_PAGE_LIMIT;
+        const requestedLimit = directoryPageLimit;
         const apiPageRaw = Number(pag.page);
         const apiLimitRaw = Number(pag.limit);
         const apiTotalRaw = Number(pag.total);
@@ -646,13 +648,13 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         });
       } catch (e) {
         setJobSeekers([]);
-        setDirectoryPagination({ page: 1, limit: DIRECTORY_PAGE_LIMIT, total: 0, pages: 1 });
+        setDirectoryPagination({ page: 1, limit: directoryPageLimit, total: 0, pages: 1 });
         setError((e as any)?.message ?? "Failed to load job seeker profiles");
       } finally {
         setDirectoryLoading(false);
       }
     },
-    [accessToken, directorySearch, directoryStatus],
+    [accessToken, directorySearch, directoryStatus, directoryPageLimit],
   );
 
   useEffect(() => {
@@ -1106,7 +1108,25 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           </div>
 
           {directoryPagination.pages > 1 ? (
-            <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination top">
+            <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination top" style={{ marginLeft: "auto" }}>
+              <label className="publicJobsPagerSelect">
+                Records
+                <select
+                  className="input"
+                  value={String(directoryPageLimit)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (!Number.isFinite(next) || next <= 0) return;
+                    setDirectoryPage(1);
+                    setDirectoryPageLimit(next);
+                  }}
+                  disabled={directoryLoading}
+                >
+                  {DIRECTORY_PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </label>
               <button
                 className="btn btnPrimary btnSm"
                 style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
@@ -1198,7 +1218,25 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         </div>
 
         {directoryPagination.pages > 1 ? (
-          <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination" style={{ marginTop: 16 }}>
+          <div className="publicJobsPager" role="navigation" aria-label="Job seeker profiles pagination" style={{ marginTop: 16, marginLeft: "auto" }}>
+            <label className="publicJobsPagerSelect">
+              Records
+              <select
+                className="input"
+                value={String(directoryPageLimit)}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next) || next <= 0) return;
+                  setDirectoryPage(1);
+                  setDirectoryPageLimit(next);
+                }}
+                disabled={directoryLoading}
+              >
+                {DIRECTORY_PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </label>
             <button
               className="btn btnPrimary btnSm"
               style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}

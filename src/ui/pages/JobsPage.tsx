@@ -1266,7 +1266,7 @@ export function JobsPage() {
           ) : null}
         </div>
 
-        {!isJobSeekerView ? <div style={{ width: "100%" }}>{renderSeekerPager()}</div> : null}
+        {!isJobSeekerView ? renderSeekerPager() : null}
       </div>
 
       {companyIdFromUrl && (

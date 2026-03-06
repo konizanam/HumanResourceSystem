@@ -186,6 +186,8 @@ export function ReportsPage() {
   const [applicantsPage, setApplicantsPage] = useState(1);
   const [directoryPage, setDirectoryPage] = useState(1);
   const [monthlyPage, setMonthlyPage] = useState(1);
+  const [jobsWithoutApplicantsPage, setJobsWithoutApplicantsPage] = useState(1);
+  const [companyPerformancePage, setCompanyPerformancePage] = useState(1);
   const [statusPageByKey, setStatusPageByKey] = useState<Record<string, number>>({});
   const [jobsWithoutApplicantsSearch, setJobsWithoutApplicantsSearch] = useState("");
   const [companyPerformanceSearch, setCompanyPerformanceSearch] = useState("");
@@ -667,6 +669,28 @@ export function ReportsPage() {
     };
   }, [registrationByMonth, monthlyPage]);
 
+  const pagedJobsWithoutApplicantsRows = useMemo(() => {
+    const page = normalizePage(jobsWithoutApplicantsRows.length, jobsWithoutApplicantsPage);
+    const start = (page - 1) * REPORT_PAGE_SIZE;
+    return {
+      page,
+      pages: Math.max(1, Math.ceil(jobsWithoutApplicantsRows.length / REPORT_PAGE_SIZE)),
+      total: jobsWithoutApplicantsRows.length,
+      rows: jobsWithoutApplicantsRows.slice(start, start + REPORT_PAGE_SIZE),
+    };
+  }, [jobsWithoutApplicantsRows, jobsWithoutApplicantsPage]);
+
+  const pagedCompanyPerformanceRows = useMemo(() => {
+    const page = normalizePage(companyHiringPerformanceRows.length, companyPerformancePage);
+    const start = (page - 1) * REPORT_PAGE_SIZE;
+    return {
+      page,
+      pages: Math.max(1, Math.ceil(companyHiringPerformanceRows.length / REPORT_PAGE_SIZE)),
+      total: companyHiringPerformanceRows.length,
+      rows: companyHiringPerformanceRows.slice(start, start + REPORT_PAGE_SIZE),
+    };
+  }, [companyHiringPerformanceRows, companyPerformancePage]);
+
   useEffect(() => {
     setApplicantsPage(1);
   }, [selectedJobId, jobApplicantsSearch, jobApplicantsStatusFilter, jobApplicantsGenderFilter, jobApplicantsFromDate, jobApplicantsToDate, jobApplicantRows]);
@@ -675,6 +699,14 @@ export function ReportsPage() {
     setDirectoryPage(1);
     setMonthlyPage(1);
   }, [directoryFilteredRows, registrationByMonth]);
+
+  useEffect(() => {
+    setJobsWithoutApplicantsPage(1);
+  }, [jobsWithoutApplicantsSearch, jobsWithoutApplicantsRows.length]);
+
+  useEffect(() => {
+    setCompanyPerformancePage(1);
+  }, [companyPerformanceSearch, companyHiringPerformanceRows.length]);
 
   useEffect(() => {
     if (reportType !== "job_seekers") return;
@@ -1375,6 +1407,13 @@ export function ReportsPage() {
                 ) : null}
 
                 <div className="tableWrap">
+            {renderPager(
+              pagedApplicantsRows.page,
+              pagedApplicantsRows.pages,
+              pagedApplicantsRows.total,
+              setApplicantsPage,
+              "Applicants report pagination top",
+            )}
             <table className="table companiesTable">
               <thead>
                 <tr>
@@ -1916,11 +1955,21 @@ export function ReportsPage() {
                   <input
                     className="input"
                     value={jobsWithoutApplicantsSearch}
-                    onChange={(e) => setJobsWithoutApplicantsSearch(e.target.value)}
+                    onChange={(e) => {
+                      setJobsWithoutApplicantsSearch(e.target.value);
+                      setJobsWithoutApplicantsPage(1);
+                    }}
                     placeholder="Type job title or company"
                   />
                 </div>
                 {!ranReports.jobs_without_applicants ? <p className="pageText">Click Run Report to list open gaps.</p> : null}
+                {renderPager(
+                  pagedJobsWithoutApplicantsRows.page,
+                  pagedJobsWithoutApplicantsRows.pages,
+                  pagedJobsWithoutApplicantsRows.total,
+                  setJobsWithoutApplicantsPage,
+                  "Jobs without applicants pagination top",
+                )}
                 <div className="tableWrap">
                   <table className="table companiesTable">
                     <thead>
@@ -1932,10 +1981,10 @@ export function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {jobsWithoutApplicantsRows.length === 0 ? (
+                      {pagedJobsWithoutApplicantsRows.total === 0 ? (
                         <tr><td colSpan={4}>All visible jobs currently have applicants.</td></tr>
                       ) : (
-                        jobsWithoutApplicantsRows.map((row) => (
+                        pagedJobsWithoutApplicantsRows.rows.map((row) => (
                           <tr key={row.id}>
                             <td>{row.title}</td>
                             <td>{row.company}</td>
@@ -1947,6 +1996,13 @@ export function ReportsPage() {
                     </tbody>
                   </table>
                 </div>
+                {renderPager(
+                  pagedJobsWithoutApplicantsRows.page,
+                  pagedJobsWithoutApplicantsRows.pages,
+                  pagedJobsWithoutApplicantsRows.total,
+                  setJobsWithoutApplicantsPage,
+                  "Jobs without applicants pagination",
+                )}
               </>
             ) : renderCollapsedArrow("jobs_without_applicants")}
           </div>
@@ -1971,11 +2027,21 @@ export function ReportsPage() {
                   <input
                     className="input"
                     value={companyPerformanceSearch}
-                    onChange={(e) => setCompanyPerformanceSearch(e.target.value)}
+                    onChange={(e) => {
+                      setCompanyPerformanceSearch(e.target.value);
+                      setCompanyPerformancePage(1);
+                    }}
                     placeholder="Type company name"
                   />
                 </div>
                 {!ranReports.company_hiring_performance ? <p className="pageText">Click Run Report to refresh company performance.</p> : null}
+                {renderPager(
+                  pagedCompanyPerformanceRows.page,
+                  pagedCompanyPerformanceRows.pages,
+                  pagedCompanyPerformanceRows.total,
+                  setCompanyPerformancePage,
+                  "Company hiring performance pagination top",
+                )}
                 <div className="tableWrap">
                   <table className="table companiesTable">
                     <thead>
@@ -1989,10 +2055,10 @@ export function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {companyHiringPerformanceRows.length === 0 ? (
+                      {pagedCompanyPerformanceRows.total === 0 ? (
                         <tr><td colSpan={6}>No company performance rows for current scope.</td></tr>
                       ) : (
-                        companyHiringPerformanceRows.map((row) => (
+                        pagedCompanyPerformanceRows.rows.map((row) => (
                           <tr key={row.company}>
                             <td>{row.company}</td>
                             <td className="tdRight">{row.jobs}</td>
@@ -2006,6 +2072,13 @@ export function ReportsPage() {
                     </tbody>
                   </table>
                 </div>
+                {renderPager(
+                  pagedCompanyPerformanceRows.page,
+                  pagedCompanyPerformanceRows.pages,
+                  pagedCompanyPerformanceRows.total,
+                  setCompanyPerformancePage,
+                  "Company hiring performance pagination",
+                )}
               </>
             ) : renderCollapsedArrow("company_hiring_performance")}
           </div>

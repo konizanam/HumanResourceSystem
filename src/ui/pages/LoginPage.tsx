@@ -11,6 +11,9 @@ import {
 } from "../api/client";
 
 const THEME_KEY = "hrs-theme";
+const DEFAULT_LOGIN_WELCOME_TITLE = "Welcome to your recruitment command center";
+const DEFAULT_LOGIN_WELCOME_SUBTITLE =
+  "Sign in to hire, apply, and stay updated on applications - all in one secure place.";
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
@@ -90,6 +93,8 @@ export function LoginPage() {
   const location = useLocation();
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
+  const [welcomeTitle, setWelcomeTitle] = useState<string>(DEFAULT_LOGIN_WELCOME_TITLE);
+  const [welcomeSubtitle, setWelcomeSubtitle] = useState<string>(DEFAULT_LOGIN_WELCOME_SUBTITLE);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -126,6 +131,10 @@ export function LoginPage() {
         }
         if (!cancelled) {
           setSystemName(resolvedName);
+          const nextWelcomeTitle = String((settings as any).login_welcome_title ?? "").trim();
+          const nextWelcomeSubtitle = String((settings as any).login_welcome_subtitle ?? "").trim();
+          setWelcomeTitle(nextWelcomeTitle || DEFAULT_LOGIN_WELCOME_TITLE);
+          setWelcomeSubtitle(nextWelcomeSubtitle || DEFAULT_LOGIN_WELCOME_SUBTITLE);
         }
 
         const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
@@ -137,6 +146,8 @@ export function LoginPage() {
         if (cancelled) return;
         setSystemName("");
         setBrandingLogoUrl("");
+        setWelcomeTitle(DEFAULT_LOGIN_WELCOME_TITLE);
+        setWelcomeSubtitle(DEFAULT_LOGIN_WELCOME_SUBTITLE);
       }
     };
 
@@ -347,9 +358,9 @@ export function LoginPage() {
       <div className="authWrap">
         <aside className="authVisual" aria-hidden="true">
           <div className="authVisualBadge">{systemName}</div>
-          <h2 className="authVisualTitle">Welcome to your recruitment command center</h2>
+          <h2 className="authVisualTitle">{welcomeTitle}</h2>
           <p className="authVisualText">
-            Sign in to hire, apply, and stay updated on applications — all in one secure place.
+            {welcomeSubtitle}
           </p>
           <div className="authVisualMeta">Fast • Secure • Reliable</div>
         </aside>

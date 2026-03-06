@@ -51,6 +51,7 @@ function ConfirmModal({
 /* ------------------------------------------------------------------ */
 
 export function JobCategoriesPage() {
+  const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const canManageCompany = hasPermission("MANAGE_COMPANY");
@@ -62,6 +63,8 @@ export function JobCategoriesPage() {
 
   const [categories, setCategories] = useState<JobCategory[]>([]);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Add category
   const [addOpen, setAddOpen] = useState(false);
@@ -88,6 +91,68 @@ export function JobCategoriesPage() {
     if (!q) return categories;
     return categories.filter((c) => c.name.toLowerCase().includes(q));
   }, [categories, search]);
+
+  const pagination = useMemo(() => {
+    const total = filteredCategories.length;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, pages);
+    return { page: safePage, pages, total, limit: pageSize };
+  }, [filteredCategories.length, page, pageSize]);
+
+  useEffect(() => {
+    if (page > pagination.pages) {
+      setPage(pagination.pages);
+    }
+  }, [page, pagination.pages]);
+
+  const visibleCategories = useMemo(() => {
+    const start = (pagination.page - 1) * pagination.limit;
+    return filteredCategories.slice(start, start + pagination.limit);
+  }, [filteredCategories, pagination.limit, pagination.page]);
+
+  const renderPager = (ariaLabel: string, marginTop?: number) => (
+    <div className="publicJobsPager" role="navigation" aria-label={ariaLabel} style={marginTop ? { marginTop } : undefined}>
+      <label className="publicJobsPagerSelect">
+        Records
+        <select
+          className="input"
+          value={String(pageSize)}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            if (!Number.isFinite(next) || next <= 0) return;
+            setPage(1);
+            setPageSize(next);
+          }}
+          disabled={loading}
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>{size}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        className="btn btnPrimary btnSm"
+        style={{ background: "var(--menu-icon)", borderColor: "var(--menu-icon)" }}
+        type="button"
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        disabled={pagination.page <= 1 || loading}
+      >
+        {"<-"} Previous
+      </button>
+      <span className="publicJobsPagerInfo">
+        Page {pagination.page} of {pagination.pages} ({pagination.total} categories)
+      </span>
+      <button
+        className="btn btnPrimary btnSm"
+        style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+        type="button"
+        onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+        disabled={pagination.page >= pagination.pages || loading}
+      >
+        Next {"->"}
+      </button>
+    </div>
+  );
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -282,10 +347,15 @@ export function JobCategoriesPage() {
           className="input"
           placeholder="Search categories…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           style={{ maxWidth: 320 }}
         />
       </div>
+
+      {renderPager("Job categories pagination top")}
 
       {/* Add category panel */}
       {addOpen && canManageCompany && (
@@ -330,7 +400,7 @@ export function JobCategoriesPage() {
             {filteredCategories.length === 0 ? (
               <tr><td colSpan={5}><div className="emptyState">No categories found.</div></td></tr>
             ) : (
-              filteredCategories.map((cat) => {
+              visibleCategories.map((cat) => {
                 const isExpanded = expandedCatId === cat.id;
                 const isEditing = editCatId === cat.id;
                 return (
@@ -477,6 +547,8 @@ export function JobCategoriesPage() {
           </tbody>
         </table>
       </div>
+
+      {renderPager("Job categories pagination", 16)}
 
       {/* Delete category modal */}
       <ConfirmModal

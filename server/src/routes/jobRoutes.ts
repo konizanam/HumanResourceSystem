@@ -1173,6 +1173,11 @@ router.patch('/:id/applications/:applicationId/status',
 
       const rawStatus = String(req.body.status ?? '').trim();
       const normalizedStatus = statusMap[rawStatus.toLowerCase()] ?? rawStatus.toUpperCase();
+      const interviewDate = String(req.body.interview_date ?? req.body.interviewDate ?? '').trim();
+      const interviewTime = String(req.body.interview_time ?? req.body.interviewTime ?? '').trim();
+      const interviewVenue = String(
+        req.body.interview_location ?? req.body.interviewLocation ?? req.body.interview_venue ?? req.body.interviewVenue ?? ''
+      ).trim();
 
       const allowedStatuses = new Set([
         'APPLIED',
@@ -1190,6 +1195,15 @@ router.patch('/:id/applications/:applicationId/status',
 
       if (!allowedStatuses.has(normalizedStatus)) {
         return res.status(400).json({ error: 'Invalid status' });
+      }
+
+      const isInterviewTransition = normalizedStatus.includes('INTERVIEW');
+      if (isInterviewTransition) {
+        if (!interviewDate || !interviewTime || !interviewVenue) {
+          return res.status(400).json({
+            error: 'Interview date, interview time, and interview venue are required for interview notifications.',
+          });
+        }
       }
 
       // Check if job exists and user owns it
@@ -1282,6 +1296,9 @@ router.patch('/:id/applications/:applicationId/status',
           application_id: updatedApplication.id,
           job_id: req.params.id,
           status: updatedApplication.status,
+          interview_date: interviewDate || null,
+          interview_time: interviewTime || null,
+          interview_location: interviewVenue || null,
         },
       });
 
@@ -1295,6 +1312,9 @@ router.patch('/:id/applications/:applicationId/status',
             application_id: updatedApplication.id,
             job_id: req.params.id,
             status: updatedApplication.status,
+            interview_date: interviewDate || null,
+            interview_time: interviewTime || null,
+            interview_location: interviewVenue || null,
           },
         });
 
@@ -1305,12 +1325,27 @@ router.patch('/:id/applications/:applicationId/status',
 
           if (enabled) {
             const statusLabel = String(updatedApplication.status ?? '').trim();
+            const notificationType = isInterviewTransition ? 'interview_scheduled' : 'application_update';
+            const notificationTitle = isInterviewTransition ? 'Interview Invitation' : 'Application Status Update';
+            const notificationMessage = isInterviewTransition
+              ? `You are invited to an interview for ${jobTitle || 'this job'} on ${interviewDate} at ${interviewTime}. Venue: ${interviewVenue}`
+              : `Your application for ${jobTitle || 'this job'} has been updated to ${statusLabel}`;
+
             await createNotification(
               updatedApplication.user_id,
-              'application_update',
-              'Application Status Update',
-              `Your application for ${jobTitle || 'this job'} has been updated to ${statusLabel}`,
-              { application_id: updatedApplication.id, job_id: req.params.id, status: updatedApplication.status },
+              notificationType,
+              notificationTitle,
+              notificationMessage,
+              {
+                application_id: updatedApplication.id,
+                job_id: req.params.id,
+                status: updatedApplication.status,
+                job_title: jobTitle || 'this job',
+                interview_date: interviewDate,
+                interview_time: interviewTime,
+                interview_location: interviewVenue,
+                interview_venue: interviewVenue,
+              },
               '/app/dashboard',
               String(updatedApplication.status ?? '').trim().toUpperCase() === 'REJECTED' ? 'normal' : 'high',
             );

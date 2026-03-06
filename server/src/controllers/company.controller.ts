@@ -356,12 +356,22 @@ export class CompanyController {
         req.body?.application_status_notifications === undefined
           ? undefined
           : (req.body.application_status_notifications as unknown);
+      const loginWelcomeTitle =
+        req.body?.login_welcome_title === undefined
+          ? undefined
+          : String(req.body.login_welcome_title);
+      const loginWelcomeSubtitle =
+        req.body?.login_welcome_subtitle === undefined
+          ? undefined
+          : String(req.body.login_welcome_subtitle);
 
       const updatingGeneralSettings =
         systemName !== undefined ||
         brandingLogo !== undefined ||
         mainCompanyId !== undefined ||
-        applicationStatusNotifications !== undefined;
+        applicationStatusNotifications !== undefined ||
+        loginWelcomeTitle !== undefined ||
+        loginWelcomeSubtitle !== undefined;
       const updatingAppColor = appColor !== undefined;
 
       if (!updatingGeneralSettings && !updatingAppColor) {
@@ -393,6 +403,8 @@ export class CompanyController {
         app_color: appColor,
         main_company_id: mainCompanyId,
         application_status_notifications: applicationStatusNotifications as any,
+        login_welcome_title: loginWelcomeTitle,
+        login_welcome_subtitle: loginWelcomeSubtitle,
       });
       res.json({
         status: 'success',
