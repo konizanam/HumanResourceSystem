@@ -12,8 +12,10 @@ import swaggerUi from 'swagger-ui-express';
 import { createOpenApiSpec } from './swagger';
 import { crudAuditMiddleware } from './middleware/crudAudit';
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env') });
+// Load environment variables (only in development — production uses platform env vars)
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.join(__dirname, '../.env') });
+}
 
 // Create Express application
 const app: Application = express();
