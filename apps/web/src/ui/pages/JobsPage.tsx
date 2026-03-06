@@ -291,6 +291,8 @@ export function JobsPage() {
   const resolveJobCompanyName = useCallback((job: JobListItem) => {
     const direct = String(job.company ?? "").trim();
     if (direct) return direct;
+    const fromCompanyName = String((job as any).company_name ?? (job as any).companyName ?? "").trim();
+    if (fromCompanyName) return fromCompanyName;
     const employerCompany = String((job as any).employer_company ?? "").trim();
     if (employerCompany) return employerCompany;
     const id = String(job.company_id ?? "").trim();

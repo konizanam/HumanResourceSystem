@@ -13,7 +13,6 @@ import {
   listJobSeekers,
   listUserDocuments,
   getIpLocation,
-  getProfilePictureUrl,
   me,
   uploadJobSeekerDocument,
   uploadProfilePicture,
@@ -91,6 +90,18 @@ const EDUCATION_FIELD_OF_STUDY_OPTIONS = [
   "Software Development",
 ] as const;
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+function validatePdfUpload(file: File | null): string | null {
+  if (!file) return "No file selected.";
+  const ext = String(file.name ?? "").toLowerCase();
+  const mime = String(file.type ?? "").toLowerCase();
+  const isPdf = mime === "application/pdf" || mime === "application/x-pdf" || ext.endsWith(".pdf");
+  if (!isPdf) return "Only PDF files are allowed.";
+  if (file.size > MAX_UPLOAD_BYTES) return "File too large. Maximum size is 10MB.";
+  return null;
+}
+
 function resolveFileUrl(raw: unknown): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";
@@ -98,6 +109,27 @@ function resolveFileUrl(raw: unknown): string {
   const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
   if (!base) return value;
   return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+async function fetchProfilePictureObjectUrl(
+  token: string,
+  opts?: { userId?: string | null },
+): Promise<string | null> {
+  const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  if (!apiBase) return null;
+
+  const userId = String(opts?.userId ?? "").trim();
+  const url = userId
+    ? `${apiBase}/api/v1/users/profile-picture/${encodeURIComponent(userId)}`
+    : `${apiBase}/api/v1/profile/picture`;
+
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 function extractFileName(raw: unknown): string {
@@ -210,6 +242,57 @@ function UploadedDocumentCard({
       ) : null}
 
       {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
+    </div>
+  );
+}
+
+function DirectoryProfilePicture({ token, userId, fullName }: { token: string; userId: string; fullName: string }) {
+  const [pictureUrl, setPictureUrl] = useState("");
+
+  useEffect(() => {
+    if (!token || !userId) {
+      setPictureUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrlToRevoke: string | null = null;
+
+    (async () => {
+      const objectUrl = await fetchProfilePictureObjectUrl(token, { userId });
+      if (!objectUrl || cancelled) {
+        if (!cancelled) setPictureUrl("");
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        return;
+      }
+
+      objectUrlToRevoke = objectUrl;
+      setPictureUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return objectUrl;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
+    };
+  }, [token, userId]);
+
+  return (
+    <div className="field fieldFull" style={{ marginBottom: 4 }}>
+      <div className="readLabel">Profile Picture</div>
+      {pictureUrl ? (
+        <div style={{ marginTop: 6 }}>
+          <img
+            src={pictureUrl}
+            alt={`${fullName || "User"} profile picture`}
+            style={{ width: 84, height: 84, borderRadius: "999px", objectFit: "contain", background: "var(--card)", border: "2px solid var(--stroke)" }}
+          />
+        </div>
+      ) : (
+        <div className="pageText" style={{ marginTop: 6 }}>No profile picture uploaded.</div>
+      )}
     </div>
   );
 }
@@ -701,6 +784,11 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             <div style={{ marginTop: 10 }}>
               <div className="readLabel">Personal Details</div>
               <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                <DirectoryProfilePicture
+                  token={accessToken!}
+                  userId={userId}
+                  fullName={resolvedFullName}
+                />
                 <ReadField label="Full Name" value={resolvedFullName} />
                 <ReadField label="Email" value={seeker.email} />
                 <ReadField label="Phone" value={seeker.phone} />
@@ -1435,9 +1523,10 @@ function PersonalDetailsSection({
   const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false);
   const [profilePictureUrlState, setProfilePictureUrlState] = useState("");
+  const [profilePictureRefreshKey, setProfilePictureRefreshKey] = useState(0);
   const [externalDocPreview, setExternalDocPreview] = useState<{ url: string; title: string } | null>(null);
 
-  const resolvedProfilePictureUrl = resolveFileUrl(profilePictureUrlState);
+  const resolvedProfilePictureUrl = profilePictureUrlState;
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1475,14 +1564,35 @@ function PersonalDetailsSection({
   }, [data]);
 
   useEffect(() => {
-    const incoming = String(profilePictureUrl ?? "").trim();
-    if (incoming) {
-      const cb = profilePictureUpdatedAt ? String(profilePictureUpdatedAt) : Date.now();
-      setProfilePictureUrlState(getProfilePictureUrl(cb));
+    const hasPicture = Boolean(String(profilePictureUrl ?? "").trim());
+    if (!hasPicture) {
+      setProfilePictureUrlState("");
       return;
     }
-    setProfilePictureUrlState("");
-  }, [profilePictureUpdatedAt, profilePictureUrl]);
+
+    let cancelled = false;
+    let objectUrlToRevoke: string | null = null;
+
+    (async () => {
+      const objectUrl = await fetchProfilePictureObjectUrl(token);
+      if (!objectUrl || cancelled) {
+        if (!cancelled) setProfilePictureUrlState("");
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        return;
+      }
+
+      objectUrlToRevoke = objectUrl;
+      setProfilePictureUrlState((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return objectUrl;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
+    };
+  }, [token, profilePictureRefreshKey, profilePictureUpdatedAt, profilePictureUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1515,6 +1625,11 @@ function PersonalDetailsSection({
 
   async function onUploadDocument(file: File | null, type: "id" | "license" | "conduct") {
     if (!file) return;
+    const fileError = validatePdfUpload(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
     try {
       setUploadingDocType(type);
       setError(null);
@@ -1553,8 +1668,7 @@ function PersonalDetailsSection({
       const uploaded = await uploadProfilePicture(token, file);
       const nextUrl = String(uploaded.profile_picture_url ?? "").trim();
       if (nextUrl) {
-        const cb = uploaded.profile_picture_updated_at ?? Date.now();
-        setProfilePictureUrlState(getProfilePictureUrl(cb));
+        setProfilePictureRefreshKey((v) => v + 1);
       }
       window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
       setSuccess("Profile picture uploaded");
@@ -1853,7 +1967,7 @@ function PersonalDetailsSection({
               <input
                 className="input"
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   void onUploadDocument(file, "id");
@@ -1880,7 +1994,7 @@ function PersonalDetailsSection({
               <input
                 className="input"
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   void onUploadDocument(file, "license");
@@ -1905,7 +2019,7 @@ function PersonalDetailsSection({
               <input
                 className="input"
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   void onUploadDocument(file, "conduct");
@@ -2443,6 +2557,11 @@ function EducationSection({
 
   async function onUploadQualificationEvidence(file: File | null) {
     if (!file) return;
+    const fileError = validatePdfUpload(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
     try {
       setUploadingCertificate(true);
       setError(null);
@@ -2736,7 +2855,7 @@ function EducationSection({
               <input
                 className="input"
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   void onUploadQualificationEvidence(file);
@@ -2820,6 +2939,11 @@ function ExperienceSection({
 
   async function onUploadCv(file: File | null) {
     if (!file) return;
+    const fileError = validatePdfUpload(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
     try {
       setCvUploading(true);
       setError(null);
@@ -3018,7 +3142,7 @@ function ExperienceSection({
               <input
                 className="input"
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,application/pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
                   void onUploadCv(file);

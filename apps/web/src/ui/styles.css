@@ -669,7 +669,9 @@ input[type="radio"][required] {
 }
 
 .appTopUserAvatar {
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: var(--card);
   display: block;
 }
 

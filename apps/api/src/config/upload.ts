@@ -45,23 +45,19 @@ const storage = multer.diskStorage({
 
 // File filter function
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Allowed file types
-  const allowedMimes = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/plain'
-  ];
+  // Allowed file types: PDF only
+  const allowedMimes = ['application/pdf', 'application/x-pdf'];
 
-  if (allowedMimes.includes(file.mimetype)) {
+  const ext = path.extname(String(file.originalname ?? '')).toLowerCase();
+  const allowedExts = new Set(['.pdf']);
+
+  const isAllowedByMime = allowedMimes.includes(file.mimetype);
+  const isAllowedByExtension = allowedExts.has(ext);
+
+  if (isAllowedByMime || isAllowedByExtension) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images, PDFs, and documents are allowed.') as any, false);
+    cb(new Error('Invalid file type. Only PDF files are allowed.') as any, false);
   }
 };
 

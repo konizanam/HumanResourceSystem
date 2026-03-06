@@ -468,7 +468,7 @@ export function PublicJobsPage() {
   }
 
   const resolvePublicJobCompanyName = useCallback((job: JobListItem) => {
-    const fromCompanyName = String(job.company_name ?? "").replace(/\s+/g, " ").trim();
+    const fromCompanyName = String((job as any).company_name ?? (job as any).companyName ?? "").replace(/\s+/g, " ").trim();
     if (fromCompanyName) return fromCompanyName;
     const direct = String(job.company ?? "").replace(/\s+/g, " ").trim();
     if (direct) return direct;

@@ -5,6 +5,22 @@ import { ForbiddenError } from "../utils/errors";
 
 export const meRouter = Router();
 
+function canViewUserProfilePicture(req: any, targetUserId: string): boolean {
+  const requesterId = String(req.user?.userId ?? '').trim();
+  if (requesterId && requesterId === targetUserId) return true;
+
+  const roles = Array.isArray(req.user?.roles)
+    ? req.user.roles.map((r: unknown) => String(r).toUpperCase())
+    : [];
+  if (roles.includes('ADMIN')) return true;
+
+  const permissions = Array.isArray(req.user?.permissions)
+    ? req.user.permissions.map((p: unknown) => String(p).toUpperCase())
+    : [];
+
+  return permissions.some((p) => ['MANAGE_USERS', 'VIEW_CV_DATABASE', 'VIEW_APPLICATIONS'].includes(p));
+}
+
 // Use your existing authenticate middleware
 meRouter.get("/me", authenticate, async (req, res, next) => {
   try {
@@ -125,6 +141,40 @@ meRouter.get("/search", authenticate, async (req, res, next) => {
       status: "success",
       data: users,
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+meRouter.get("/profile-picture/:userId", authenticate, async (req, res, next) => {
+  try {
+    const userId = String(req.params?.userId ?? '').trim();
+    if (!userId) {
+      return res.status(400).json({ error: { message: 'Missing user id' } });
+    }
+
+    if (!canViewUserProfilePicture(req, userId)) {
+      throw new ForbiddenError('You do not have permission to view this profile picture');
+    }
+
+    const result = await query(
+      `SELECT profile_picture_data, profile_picture_mime
+         FROM users
+        WHERE id = $1`,
+      [userId],
+    );
+
+    const row = result.rows[0] as any;
+    const raw = row?.profile_picture_data as unknown;
+    const mime = String(row?.profile_picture_mime ?? '').trim();
+
+    if (!(raw instanceof Buffer) || raw.length === 0) {
+      return res.status(404).json({ error: { message: 'Profile picture not found' } });
+    }
+
+    res.setHeader('Content-Type', mime || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.send(raw);
   } catch (err) {
     return next(err);
   }

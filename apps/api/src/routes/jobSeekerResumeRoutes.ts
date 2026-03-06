@@ -29,13 +29,15 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: any, file: any, cb: multer.FileFilterCallback) => {
-  // Accept only PDF, DOC, DOCX files
-  const allowedMimes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  // Accept only PDF files
+  const allowedMimes = ['application/pdf', 'application/x-pdf'];
+  const ext = path.extname(String(file.originalname ?? '')).toLowerCase();
+  const isAllowedByExtension = ext === '.pdf';
   
-  if (allowedMimes.includes(file.mimetype)) {
+  if (allowedMimes.includes(file.mimetype) || isAllowedByExtension) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF, DOC, and DOCX files are allowed.'));
+    cb(new Error('Invalid file type. Only PDF files are allowed.'));
   }
 };
 
@@ -43,7 +45,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 10 * 1024 * 1024 // 10MB limit
   }
 });
 
@@ -125,7 +127,7 @@ const validateResumeId = [
  *               resume:
  *                 type: string
  *                 format: binary
- *                 description: Resume file (PDF, DOC, DOCX only, max 5MB)
+ *                 description: Resume file (PDF only, max 10MB)
  *               is_primary:
  *                 type: boolean
  *                 description: Set as primary resume
@@ -147,7 +149,7 @@ const validateResumeId = [
  *       403:
  *         description: Forbidden - Job seeker access required
  *       413:
- *         description: File too large (max 5MB)
+ *         description: File too large (max 10MB)
  */
 router.post('/',
   authenticate,
@@ -157,7 +159,7 @@ router.post('/',
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(413).json({ error: 'File too large. Maximum size is 5MB.' });
+            return res.status(413).json({ error: 'File too large. Maximum size is 10MB.' });
           }
         }
         return res.status(400).json({ error: err.message });
