@@ -1253,6 +1253,45 @@ router.get('/visitor-analytics',
   }
 );
 
+router.get('/user-growth-analytics',
+  authenticate,
+  authorizePermission('ADMIN_DASHBOARD', 'MANAGE_USERS'),
+  [
+    query('days').optional().isInt({ min: 1, max: 3650 }).toInt()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const days = Number(req.query.days || 3650);
+      const growth = await dbQuery(
+        `SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS period,
+          COUNT(*)::int AS new_users
+         FROM users
+         WHERE created_at >= (CURRENT_DATE - ($1::int - 1))
+         GROUP BY DATE_TRUNC('month', created_at)
+         ORDER BY DATE_TRUNC('month', created_at) DESC`,
+        [days]
+      );
+
+      return res.json({
+        days,
+        data: growth.rows,
+      });
+    } catch (error) {
+      console.error('Get user growth analytics error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to get user growth analytics'
+      });
+    }
+  }
+);
+
 // ============================================================================
 // GET /api/admin/audit-logs - Get admin action logs
 // ============================================================================

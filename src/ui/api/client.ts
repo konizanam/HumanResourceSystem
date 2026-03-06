@@ -2275,6 +2275,16 @@ export type VisitorAnalyticsResponse = {
   warning?: string;
 };
 
+export type UserGrowthAnalyticsPoint = {
+  period: string;
+  new_users: number;
+};
+
+export type UserGrowthAnalyticsResponse = {
+  days: number;
+  data: UserGrowthAnalyticsPoint[];
+};
+
 export type EmployerDashboardData = {
   profile?: Record<string, unknown> | null;
   stats?: {
@@ -2309,6 +2319,21 @@ export async function getVisitorAnalytics(
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, 'Failed to load visitor analytics');
   return body as VisitorAnalyticsResponse;
+}
+
+export async function getUserGrowthAnalytics(
+  token: string,
+  params?: { days?: number },
+): Promise<UserGrowthAnalyticsResponse> {
+  const url = new URL(`${API_BASE}/admin/user-growth-analytics`);
+  if (params?.days) url.searchParams.set('days', String(params.days));
+
+  const res = await fetch(url, {
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, 'Failed to load user growth analytics');
+  return body as UserGrowthAnalyticsResponse;
 }
 
 export async function getEmployerDashboard(token: string): Promise<EmployerDashboardData> {

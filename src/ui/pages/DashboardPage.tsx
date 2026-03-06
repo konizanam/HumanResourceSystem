@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   applyToJob,
   getAdminStatistics,
+  getUserGrowthAnalytics,
   getVisitorAnalytics,
   getCompany,
   getEmployerDashboard,
@@ -20,6 +21,7 @@ import {
   type EmployerDashboardData,
   type JobApplication,
   type JobListItem,
+  type UserGrowthAnalyticsPoint,
   type VisitorAnalyticsPoint,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -118,6 +120,7 @@ export function DashboardPage() {
   const [adminStats, setAdminStats] = useState<AdminStatistics | null>(null);
   const [adminLogs, setAdminLogs] = useState<AuditLog[]>([]);
   const [visitorTrends, setVisitorTrends] = useState<VisitorAnalyticsPoint[]>([]);
+  const [userGrowthTrends, setUserGrowthTrends] = useState<UserGrowthAnalyticsPoint[]>([]);
   const [employerData, setEmployerData] = useState<EmployerDashboardData | null>(null);
   const [seekerJobs, setSeekerJobs] = useState<JobListItem[]>([]);
   const [seekerJobsPage, setSeekerJobsPage] = useState(1);
@@ -158,6 +161,8 @@ export function DashboardPage() {
   const [seekerStatusFilter, setSeekerStatusFilter] = useState<string>("all");
   const [seekerWindowDays, setSeekerWindowDays] = useState<number>(14);
   const [visitTrendMonths, setVisitTrendMonths] = useState<number>(12);
+  const [userGrowthMonths, setUserGrowthMonths] = useState<number>(12);
+  const [jobPostTrendMonths, setJobPostTrendMonths] = useState<number>(12);
 
   const canViewAdminDashboard = hasPermission("ADMIN_DASHBOARD", "MANAGE_USERS");
   const canViewEmployerDashboard =
@@ -201,6 +206,11 @@ export function DashboardPage() {
     const loadVisitorTrends = async () => {
       const data = await getVisitorAnalytics(accessToken, { days: 3650, group_by: "month" });
       setVisitorTrends(Array.isArray(data.data) ? data.data : []);
+    };
+
+    const loadUserGrowthTrends = async () => {
+      const data = await getUserGrowthAnalytics(accessToken, { days: 3650 });
+      setUserGrowthTrends(Array.isArray(data.data) ? data.data : []);
     };
 
     const loadJobSeekerDashboard = async () => {
@@ -275,6 +285,7 @@ export function DashboardPage() {
       setAdminStats(null);
       setAdminLogs([]);
       setVisitorTrends([]);
+      setUserGrowthTrends([]);
       setEmployerData(null);
       setSeekerJobs([]);
       setSeekerApplications([]);
@@ -312,7 +323,7 @@ export function DashboardPage() {
 
       if (canViewVisitTrends) {
         try {
-          await loadVisitorTrends();
+          await Promise.all([loadVisitorTrends(), loadUserGrowthTrends()]);
         } catch (e) {
           if (!isPermissionDeniedError(e)) {
             setError("Some dashboard sections are temporarily unavailable.");
@@ -793,14 +804,38 @@ export function DashboardPage() {
     return toChartData(data, 8);
   }, [adminStats]);
 
-  const adminGrowthSpark = useMemo(() => {
-    if (!adminStats) return [];
-    return [
-      Number(adminStats.users.new_today ?? 0),
-      Number(adminStats.users.new_this_week ?? 0),
-      Number(adminStats.users.new_this_month ?? 0),
-    ];
-  }, [adminStats]);
+  const visibleUserGrowthTrendChart = useMemo(() => {
+    const months = Math.max(1, Number(userGrowthMonths) || 12);
+
+    const periodToValue = new Map<string, number>();
+    for (const row of userGrowthTrends) {
+      const period = String(row.period ?? "").trim();
+      if (!/^\d{4}-\d{2}$/.test(period)) continue;
+      periodToValue.set(period, Number(row.new_users ?? 0));
+    }
+
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const series: Array<{ label: string; value: number }> = [];
+
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const monthDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - i, 1);
+      const year = monthDate.getFullYear();
+      const month = String(monthDate.getMonth() + 1).padStart(2, "0");
+      const period = `${year}-${month}`;
+
+      series.push({
+        label: monthDate.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        value: periodToValue.get(period) ?? 0,
+      });
+    }
+
+    return series;
+  }, [userGrowthTrends, userGrowthMonths]);
+
+  const userGrowthTotal = useMemo(() => {
+    return visibleUserGrowthTrendChart.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  }, [visibleUserGrowthTrendChart]);
 
   const adminKpiCards = useMemo(() => {
     if (!adminStats) return [];
@@ -907,22 +942,44 @@ export function DashboardPage() {
     return toChartData(breakdown, 6);
   }, [filteredPlatformJobs]);
 
-  const platformPostingTrend = useMemo(() => {
-    const now = Date.now();
-    const minDate = now - platformWindowDays * 24 * 60 * 60 * 1000;
-    const inRange = (filteredPlatformJobs ?? []).filter((job) => {
-      if (!job.created_at) return false;
-      const ts = new Date(String(job.created_at)).getTime();
-      return Number.isFinite(ts) && ts >= minDate;
-    });
+  const visibleJobPostTrendChart = useMemo(() => {
+    const months = Math.max(1, Number(jobPostTrendMonths) || 12);
+    const periodToValue = new Map<string, number>();
 
-    return toDailySeries(
-      inRange.map((job) => ({
-        created_at: job.created_at ?? undefined,
-      })),
-      platformWindowDays,
-    );
-  }, [filteredPlatformJobs, platformWindowDays]);
+    for (const job of filteredPlatformJobs ?? []) {
+      const raw = String(job.created_at ?? "").trim();
+      if (!raw) continue;
+      const dt = new Date(raw);
+      if (Number.isNaN(dt.getTime())) continue;
+
+      const year = dt.getFullYear();
+      const month = String(dt.getMonth() + 1).padStart(2, "0");
+      const period = `${year}-${month}`;
+      periodToValue.set(period, (periodToValue.get(period) ?? 0) + 1);
+    }
+
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const series: Array<{ label: string; value: number }> = [];
+
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const monthDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - i, 1);
+      const year = monthDate.getFullYear();
+      const month = String(monthDate.getMonth() + 1).padStart(2, "0");
+      const period = `${year}-${month}`;
+
+      series.push({
+        label: monthDate.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
+        value: periodToValue.get(period) ?? 0,
+      });
+    }
+
+    return series;
+  }, [filteredPlatformJobs, jobPostTrendMonths]);
+
+  const jobPostTrendTotal = useMemo(() => {
+    return visibleJobPostTrendChart.reduce((sum, point) => sum + (Number(point.value) || 0), 0);
+  }, [visibleJobPostTrendChart]);
 
   if (loading || permissionsLoading) {
     return <div className="page"><h1 className="pageTitle">Dashboard</h1><p className="pageText">Loading...</p></div>;
@@ -985,11 +1042,29 @@ export function DashboardPage() {
 
           <div className="dashGraphs" style={{ marginBottom: 12 }}>
             <div className="dashCard">
-              <div className="dashCardHeader">
+              <div className="dashCardHeader trendCardHeader">
                 <h2 className="dashCardTitle">New Job Posts Trend</h2>
-                <span className="dashCardMeta">Last {platformWindowDays} days</span>
+                <div className="trendRangeTabs" role="tablist" aria-label="New job posts trend range">
+                  {[3, 6, 12].map((months) => (
+                    <button
+                      key={months}
+                      type="button"
+                      role="tab"
+                      aria-selected={jobPostTrendMonths === months}
+                      className={`trendRangeBtn${jobPostTrendMonths === months ? " isActive" : ""}`}
+                      onClick={() => setJobPostTrendMonths(months)}
+                    >
+                      Last {months} months
+                    </button>
+                  ))}
+                </div>
               </div>
-              <Sparkline values={platformPostingTrend} />
+              <TrendLinePanel
+                total={jobPostTrendTotal}
+                totalLabel="TOTAL NEW POSTS"
+                data={visibleJobPostTrendChart}
+                emptyText="No job posting trend data yet."
+              />
             </div>
 
             <div className="dashCard">
@@ -1069,16 +1144,29 @@ export function DashboardPage() {
                 ) : null}
 
                 <div className="dashCard">
-                  <div className="dashCardHeader">
+                  <div className="dashCardHeader trendCardHeader">
                     <h2 className="dashCardTitle">User Growth</h2>
-                    <span className="dashCardMeta">Today / Week / Month</span>
+                    <div className="trendRangeTabs" role="tablist" aria-label="User growth range">
+                      {[3, 6, 12].map((months) => (
+                        <button
+                          key={months}
+                          type="button"
+                          role="tab"
+                          aria-selected={userGrowthMonths === months}
+                          className={`trendRangeBtn${userGrowthMonths === months ? " isActive" : ""}`}
+                          onClick={() => setUserGrowthMonths(months)}
+                        >
+                          Last {months} months
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <Sparkline values={adminGrowthSpark} />
-                  <div className="dashLegend">
-                    <span className="dashLegendItem"><span className="dashLegendDot" />Today: {adminStats.users.new_today}</span>
-                    <span className="dashLegendItem"><span className="dashLegendDot" />Week: {adminStats.users.new_this_week}</span>
-                    <span className="dashLegendItem"><span className="dashLegendDot" />Month: {adminStats.users.new_this_month}</span>
-                  </div>
+                  <TrendLinePanel
+                    total={userGrowthTotal}
+                    totalLabel="TOTAL NEW USERS"
+                    data={visibleUserGrowthTrendChart}
+                    emptyText="No user growth data yet."
+                  />
                 </div>
 
                 <div className="dashCard">
@@ -1868,6 +1956,8 @@ function TrendLinePanel({
   data: ChartDatum[];
   emptyText: string;
 }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
   if (!data.length) {
     return <div className="emptyState">{emptyText}</div>;
   }
@@ -1895,12 +1985,22 @@ function TrendLinePanel({
   const polyline = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
   const labelEvery = Math.max(1, Math.ceil(data.length / 6));
   const yTicks = [max, Math.round(max / 2), 0];
+  const activeIndex =
+    hoveredIndex === null ? null : Math.max(0, Math.min(data.length - 1, hoveredIndex));
+  const activePoint = activeIndex === null ? null : points[activeIndex];
+  const activeDatum = activeIndex === null ? null : data[activeIndex];
 
   return (
     <div className="trendLineCard">
       <div className="trendLineMetric">{total}</div>
       <div className="trendLineMetricLabel">{totalLabel}</div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="trendLineSvg" role="img" aria-label={totalLabel}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="trendLineSvg"
+        role="img"
+        aria-label={totalLabel}
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
         {yTicks.map((tick) => {
           const y = chartTop + (1 - (tick - min) / range) * chartHeight;
           return (
@@ -1915,7 +2015,16 @@ function TrendLinePanel({
 
         <polyline className="trendLinePath" points={polyline} />
         {points.map((point, idx) => (
-          <circle key={idx} className="trendLineDot" cx={point.x} cy={point.y} r={4.25} />
+          <circle
+            key={idx}
+            className="trendLineDot"
+            cx={point.x}
+            cy={point.y}
+            r={4.25}
+            onMouseEnter={() => setHoveredIndex(idx)}
+          >
+            <title>{`${data[idx]?.label ?? "Point"}: ${data[idx]?.value ?? 0}`}</title>
+          </circle>
         ))}
 
         {data.map((point, idx) => {
@@ -1935,6 +2044,25 @@ function TrendLinePanel({
           );
         })}
       </svg>
+      {activePoint && activeDatum ? (
+        <div
+          className="dashCardMeta"
+          style={{
+            position: "absolute",
+            left: `${Math.max(9, Math.min(91, (activePoint.x / width) * 100))}%`,
+            top: `${Math.max(2, ((activePoint.y - 28) / height) * 100)}%`,
+            transform: "translate(-50%, -100%)",
+            background: "var(--card)",
+            border: "1px solid var(--stroke)",
+            borderRadius: 8,
+            padding: "2px 8px",
+            pointerEvents: "none",
+            zIndex: 2,
+          }}
+        >
+          {activeDatum.label}: {activeDatum.value}
+        </div>
+      ) : null}
     </div>
   );
 }

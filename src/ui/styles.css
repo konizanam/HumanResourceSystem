@@ -1100,6 +1100,7 @@ input[type="radio"][required] {
   border-radius: 12px;
   background: var(--card2);
   padding: 8px 10px 6px;
+  position: relative;
 }
 
 .trendLineMetric {
