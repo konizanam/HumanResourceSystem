@@ -326,36 +326,39 @@ export function JobCategoriesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Job Categories</h1>
+      </div>
+
+      {error && <div className="errorBox">{error}</div>}
+      {success && <div className="successBox">{success}</div>}
+
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          placeholder="Search categories..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          style={{ minWidth: 260, maxWidth: 320, flex: "1 1 320px" }}
+        />
+
         {canManageCompany && (
           <button
             type="button"
-            className="btn btnGhost btnSm stepperSaveBtn"
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
             onClick={() => { clearMessages(); setExpandedCatId(null); setAddOpen((v) => !v); }}
             disabled={saving}
           >
             {addOpen ? "Cancel" : "Add Category"}
           </button>
         )}
+
+        <div style={{ marginLeft: "auto" }}>
+          {renderPager("Job categories pagination top")}
+        </div>
       </div>
-
-      {error && <div className="errorBox">{error}</div>}
-      {success && <div className="successBox">{success}</div>}
-
-      {/* Search */}
-      <div style={{ marginBottom: 16 }}>
-        <input
-          className="input"
-          placeholder="Search categories…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          style={{ maxWidth: 320 }}
-        />
-      </div>
-
-      {renderPager("Job categories pagination top")}
 
       {/* Add category panel */}
       {addOpen && canManageCompany && (

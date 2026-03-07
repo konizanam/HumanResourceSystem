@@ -2,6 +2,7 @@ import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, us
 import {
   type Company,
   type CompanyUpsertPayload,
+  type Industry,
   type JobCategory,
   type JobUpsertPayload,
   type UserSearchResult,
@@ -12,6 +13,7 @@ import {
   deleteCompany,
   deactivateCompany,
   getCompanyUsers,
+  listIndustries,
   listJobCategories,
   listCompanies,
   reactivateCompany,
@@ -43,34 +45,6 @@ type CompanyJobFormState = {
   application_deadline: string;
   status: "draft" | "pending";
 };
-
-const INDUSTRY_SUGGESTIONS = [
-  "Agriculture",
-  "Automotive",
-  "Banking",
-  "Construction",
-  "Education",
-  "Energy",
-  "Engineering",
-  "Finance",
-  "Government",
-  "Healthcare",
-  "Hospitality",
-  "Insurance",
-  "Legal",
-  "Logistics",
-  "Manufacturing",
-  "Media",
-  "Mining",
-  "Non-profit",
-  "Real Estate",
-  "Retail",
-  "Telecommunications",
-  "Technology / ICT",
-  "Transportation",
-  "Travel",
-  "Utilities",
-];
 
 const EMPTY_COMPANY: CompanyUpsertPayload = {
   name: "",
@@ -246,6 +220,8 @@ export function CompaniesPage() {
   const [addForm, setAddForm] = useState<CompanyUpsertPayload>(EMPTY_COMPANY);
   const [addFieldErrors, setAddFieldErrors] = useState<Record<string, string>>({});
   const [industryFocused, setIndustryFocused] = useState(false);
+  const [industryMatches, setIndustryMatches] = useState<string[]>([]);
+  const [industrySearching, setIndustrySearching] = useState(false);
   const [assignQuery, setAssignQuery] = useState("");
   const [assignResults, setAssignResults] = useState<UserSearchResult[]>([]);
   const [assignSelected, setAssignSelected] = useState<UserSearchResult[]>([]);
@@ -334,12 +310,6 @@ export function CompaniesPage() {
     }
   }, [companiesPage, companiesPagination.pages]);
 
-  const industryMatches = useMemo(() => {
-    const q = (addForm.industry ?? "").trim().toLowerCase();
-    if (!q) return [] as string[];
-    return INDUSTRY_SUGGESTIONS.filter((v) => v.toLowerCase().includes(q)).slice(0, 8);
-  }, [addForm.industry]);
-
   const selectedCategory = useMemo(
     () => jobCategories.find((cat) => cat.id === postJobForm.category_id) ?? null,
     [jobCategories, postJobForm.category_id],
@@ -385,6 +355,46 @@ export function CompaniesPage() {
       cancelled = true;
     };
   }, [accessToken, postJobCompany]);
+
+  useEffect(() => {
+    if (!accessToken || !addOpen || !industryFocused) {
+      setIndustryMatches([]);
+      setIndustrySearching(false);
+      return;
+    }
+
+    const q = String(addForm.industry ?? "").trim();
+    if (q.length < 1) {
+      setIndustryMatches([]);
+      setIndustrySearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIndustrySearching(true);
+
+    const handle = window.setTimeout(async () => {
+      try {
+        const response = await listIndustries(accessToken, { page: 1, limit: 20, search: q });
+        if (cancelled) return;
+        const names = (Array.isArray(response.industries) ? response.industries : [])
+          .map((item: Industry) => String(item?.name ?? "").trim())
+          .filter(Boolean);
+        setIndustryMatches(Array.from(new Set(names)).slice(0, 8));
+      } catch {
+        if (cancelled) return;
+        setIndustryMatches([]);
+      } finally {
+        if (cancelled) return;
+        setIndustrySearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [accessToken, addOpen, addForm.industry, industryFocused]);
 
   useEffect(() => {
     if (!postJobForm.subcategory) return;
@@ -820,19 +830,6 @@ export function CompaniesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Companies</h1>
-
-        <button
-          type="button"
-          className="btn btnGhost btnSm stepperSaveBtn"
-          onClick={() => {
-            clearMessages();
-            setOpenCompanyId(null);
-            setAddOpen((v) => !v);
-          }}
-          disabled={saving}
-        >
-          {addOpen ? "Cancel" : "Add Company"}
-        </button>
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -889,6 +886,12 @@ export function CompaniesPage() {
                   required
                 />
                 {addFieldErrors.industry && <span className="fieldError">{addFieldErrors.industry}</span>}
+
+                {industryFocused && industrySearching ? (
+                  <div className="confirmLabel" style={{ marginTop: 6 }}>
+                    Searching...
+                  </div>
+                ) : null}
 
                 {industryFocused && industryMatches.length > 0 && (
                   <div className="typeaheadList" role="listbox" aria-label="Industry suggestions">
@@ -1170,6 +1173,25 @@ export function CompaniesPage() {
             placeholder="Search name/industry/city/country/creator..."
           />
         </div>
+
+        <button
+          type="button"
+          className="btn btnPrimary btnSm"
+          style={{
+            background: "var(--menu-icon-active)",
+            borderColor: "var(--menu-icon-active)",
+            fontWeight: 700,
+            alignSelf: "flex-end",
+          }}
+          onClick={() => {
+            clearMessages();
+            setOpenCompanyId(null);
+            setAddOpen((v) => !v);
+          }}
+          disabled={saving}
+        >
+          {addOpen ? "Cancel" : "Add Company"}
+        </button>
 
         <div className="publicJobsPager" role="navigation" aria-label="Companies pagination top">
           <label className="publicJobsPagerSelect">

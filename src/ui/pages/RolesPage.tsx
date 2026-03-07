@@ -399,32 +399,31 @@ export function RolesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Roles</h1>
+      </div>
+
+      {error && <div className="errorBox">{error}</div>}
+      {success && <div className="successBox">{success}</div>}
+
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          placeholder="Search roles..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ minWidth: 260, maxWidth: 320, flex: "1 1 320px" }}
+        />
+
         {canManageUsers && (
           <button
             type="button"
-            className="btn btnGhost btnSm stepperSaveBtn"
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
             onClick={() => { clearMessages(); setOpenRoleId(null); setAddOpen((v) => !v); }}
             disabled={saving}
           >
             {addOpen ? "Cancel" : "Add Role"}
           </button>
         )}
-      </div>
-
-      {error && <div className="errorBox">{error}</div>}
-      {success && <div className="successBox">{success}</div>}
-
-      {/* Search + top pagination */}
-      <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 260, flex: "1 1 320px" }}>
-          <input
-            className="input"
-            placeholder="Search roles…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ maxWidth: 320 }}
-          />
-        </div>
         <div style={{ marginLeft: "auto" }}>
           {renderRolesPager("Roles pagination top")}
         </div>

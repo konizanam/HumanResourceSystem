@@ -331,6 +331,53 @@ WHERE u.id IN (SELECT user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.
 -- 4. COMPANIES (4 companies)
 -- =====================================================
 
+-- Namibia industries seed (master list)
+INSERT INTO industries (name)
+VALUES
+    ('Agriculture, Forestry and Fishing'),
+    ('Mining and Quarrying'),
+    ('Manufacturing'),
+    ('Electricity, Gas and Water Supply'),
+    ('Construction'),
+    ('Wholesale and Retail Trade'),
+    ('Accommodation and Food Service Activities'),
+    ('Transport and Storage'),
+    ('Information and Communication Technology (ICT)'),
+    ('Financial and Insurance Activities'),
+    ('Real Estate Activities'),
+    ('Professional, Scientific and Technical Activities'),
+    ('Administrative and Support Service Activities'),
+    ('Public Administration and Defence'),
+    ('Education'),
+    ('Human Health and Social Work Activities'),
+    ('Arts, Entertainment and Recreation'),
+    ('Other Service Activities'),
+    ('Tourism and Hospitality'),
+    ('Fishing and Fish Processing'),
+    ('Oil, Gas and Energy'),
+    ('Renewable Energy'),
+    ('Logistics and Supply Chain'),
+    ('Banking'),
+    ('Insurance'),
+    ('Telecommunications'),
+    ('Media and Communications'),
+    ('Legal Services'),
+    ('Security Services'),
+    ('Cleaning and Facilities Management'),
+    ('Waste Management and Recycling'),
+    ('Environmental Services'),
+    ('Maritime and Port Services'),
+    ('Aviation'),
+    ('Automotive and Motor Trade'),
+    ('Pharmaceuticals'),
+    ('Non-Governmental Organizations (NGOs)'),
+    ('International Development'),
+    ('Human Resources and Recruitment'),
+    ('Business Process Outsourcing (BPO)'),
+    ('Data and Analytics'),
+    ('E-commerce')
+ON CONFLICT (name) DO NOTHING;
+
 -- Ensure company industries exist
 INSERT INTO industries (name)
 VALUES

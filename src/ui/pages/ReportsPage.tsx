@@ -135,7 +135,7 @@ export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
   const canManageUsers = hasPermission("MANAGE_USERS");
-  const canViewApplicantsReport = hasPermission("VIEW_APPLICANTS_REPORT");
+  const canViewApplicantsReport = hasPermission("MANAGE_USERS", "VIEW_APPLICANTS_REPORT");
   const canViewReports = hasPermission("MANAGE_USERS", "VIEW_AUDIT_LOGS", "VIEW_APPLICANTS_REPORT");
 
   const [reportType, setReportType] = useState<ReportType>("job_seekers");

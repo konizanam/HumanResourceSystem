@@ -230,10 +230,28 @@ export function IndustriesPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Industries</h1>
+      </div>
+
+      {error ? <div className="errorBox">{error}</div> : null}
+      {success ? <div className="successBox">{success}</div> : null}
+
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <input
+          className="input"
+          placeholder="Search industries..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          style={{ minWidth: 260, maxWidth: 320, flex: "1 1 320px" }}
+        />
+
         {canManageIndustries ? (
           <button
             type="button"
-            className="btn btnGhost btnSm stepperSaveBtn"
+            className="btn btnPrimary btnSm"
+            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
             onClick={() => {
               clearMessages();
               setEditIndustry(null);
@@ -244,25 +262,11 @@ export function IndustriesPage() {
             {addOpen ? "Cancel" : "Add Industry"}
           </button>
         ) : null}
+
+        <div style={{ marginLeft: "auto" }}>
+          {renderPager("Industries pagination top")}
+        </div>
       </div>
-
-      {error ? <div className="errorBox">{error}</div> : null}
-      {success ? <div className="successBox">{success}</div> : null}
-
-      <div style={{ marginBottom: 16 }}>
-        <input
-          className="input"
-          placeholder="Search industries..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          style={{ maxWidth: 320 }}
-        />
-      </div>
-
-      {renderPager("Industries pagination top")}
 
       {addOpen && canManageIndustries ? (
         <div className="dropPanel" role="region" aria-label="Add industry">
