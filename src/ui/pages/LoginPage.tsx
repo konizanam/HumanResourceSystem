@@ -149,6 +149,13 @@ export function LoginPage() {
   const fallbackLogoSrc = useMemo(() => resolvePublicAssetPath("hito-logo.png"), []);
 
   useEffect(() => {
+    document.body.classList.add("loginBodyNoScroll");
+    return () => {
+      document.body.classList.remove("loginBodyNoScroll");
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const loadBranding = async () => {
       try {

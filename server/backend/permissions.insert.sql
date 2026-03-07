@@ -12,6 +12,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
   ('CONTACT_REFERENCES', 'Contact candidate references', 'Candidates', 'UPDATE'),
   ('CREATE_JOB', 'Create new job postings', 'Jobs', 'CREATE'),
+  ('DELETE_COMPANY', 'Delete company records', 'Company', 'DELETE'),
   ('DELETE_JOB', 'Delete job postings', 'Jobs', 'DELETE'),
   ('EDIT_JOB', 'Edit existing jobs', 'Jobs', 'UPDATE'),
   ('EMPLOYER_DASHBOARD', 'Access employer dashboard widgets', 'Dashboard', 'VIEW'),

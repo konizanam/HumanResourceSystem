@@ -99,6 +99,7 @@ router.get('/', companyController.getAllCompanies);
 router.get('/:id', companyController.getCompanyById);
 router.post('/', companyLogoUpload.single('logo'), companyCreateValidation, validateRequest, logAdminAction('CREATE_COMPANY', 'company'), companyController.createCompany);
 router.put('/:id', companyLogoUpload.single('logo'), companyUpdateValidation, validateRequest, logAdminAction('UPDATE_COMPANY', 'company'), companyController.updateCompany);
+router.delete('/:id', logAdminAction('DELETE_COMPANY', 'company'), companyController.deleteCompany);
 router.patch('/:id/approve', logAdminAction('APPROVE_COMPANY', 'company'), companyController.approveCompany);
 router.patch('/:id/deactivate', logAdminAction('DEACTIVATE_COMPANY', 'company'), companyController.deactivateCompany);
 router.patch('/:id/reactivate', companyController.reactivateCompany);

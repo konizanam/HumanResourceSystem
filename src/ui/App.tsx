@@ -29,6 +29,7 @@ import { PublicJobsPage } from "./pages/PublicJobsPage";
 import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 import { MainCompanySetupPage } from "./pages/MainCompanySetupPage";
 import { ActivateAccountPage } from "./pages/ActivateAccountPage";
+import { IndustriesPage } from "./pages/IndustriesPage";
 import { getPublicSetupStatus, getPublicSystemSettings } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 
@@ -48,6 +49,7 @@ const menu = [
   { path: "permission", title: "Permissions", icon: "key" },
   { path: "status", title: "Status", icon: "list" },
   { path: "job-categories", title: "Job Categories", icon: "tag" },
+  { path: "industries", title: "Industries", icon: "building" },
   { path: "audit", title: "Audit", icon: "file" },
   { path: "email-templates", title: "Email Templates", icon: "file" },
   { path: "reports", title: "Reports", icon: "chart" },
@@ -243,6 +245,31 @@ function PermissionGate({
   }
 
   return children;
+}
+
+function NonJobSeekerGate({ children }: { children: ReactNode }) {
+  const { loading, hasPermission } = usePermissions();
+
+  if (loading) {
+    return <PlaceholderPage title="Loading..." />;
+  }
+
+  const isAdminView = hasPermission("MANAGE_USERS");
+  const isEmployerView = !isAdminView && (hasPermission("EMPLOYER_DASHBOARD") || hasPermission("CREATE_JOB"));
+  const isJobSeekerView = !isAdminView && !isEmployerView && hasPermission("APPLY_JOB");
+
+  if (isJobSeekerView) {
+    return (
+      <div className="page">
+        <h1 className="pageTitle">Insufficient permissions</h1>
+        <div className="errorBox" style={{ marginTop: 10 }}>
+          This page is not available for job seekers.
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 export function App() {
@@ -479,6 +506,14 @@ export function App() {
             <PermissionGate allow={(hasPermission) => hasPermission("MANAGE_USERS")} requiredPermissions={["MANAGE_USERS"]}>
               <JobCategoriesPage />
             </PermissionGate>
+          }
+        />
+        <Route
+          path="industries"
+          element={
+            <NonJobSeekerGate>
+              <IndustriesPage />
+            </NonJobSeekerGate>
           }
         />
         <Route

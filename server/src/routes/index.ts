@@ -17,6 +17,7 @@ import notificationsRoutes from './notificationsRoutes';
 import adminRoutes from './adminRoutes';
 import rolePermissionRoutes from './rolePermissionRoutes';
 import publicRoutes from './public.routes';
+import industriesRoutes from './industries.routes';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.use('/job-seeker/resume', jobSeekerResumeRoutes);
 router.use('/job-seeker/skills', jobSeekerSkillsRoutes);
 router.use('/job-seeker/certifications', jobSeekerCertificationsRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/industries', industriesRoutes);
 router.use('/admin', adminRoutes);
 router.use(rolePermissionRoutes);
 

@@ -38,6 +38,45 @@ async function ensureSchema() {
   await query(
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP",
   );
+
+  // Industries master table for dropdowns/management.
+  await query(
+    `CREATE TABLE IF NOT EXISTS industries (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(120) NOT NULL UNIQUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`,
+  );
+
+  // Backfill industries from existing companies and jobs data.
+  await query(
+    `INSERT INTO industries (name)
+     SELECT DISTINCT TRIM(industry) AS name
+       FROM companies
+      WHERE industry IS NOT NULL
+        AND TRIM(industry) <> ''
+     ON CONFLICT (name) DO NOTHING`,
+  );
+
+  await query(
+    `INSERT INTO industries (name)
+     SELECT DISTINCT TRIM(industry) AS name
+       FROM jobs
+      WHERE industry IS NOT NULL
+        AND TRIM(industry) <> ''
+     ON CONFLICT (name) DO NOTHING`,
+  );
+
+  // Ensure company delete permission exists for role assignment.
+  await query(
+    `INSERT INTO permissions (name, description, module_name, action_type)
+     VALUES ('DELETE_COMPANY', 'Delete company records', 'Company', 'DELETE')
+     ON CONFLICT (name) DO UPDATE
+       SET description = EXCLUDED.description,
+           module_name = EXCLUDED.module_name,
+           action_type = EXCLUDED.action_type`,
+  );
 }
 
 async function start() {

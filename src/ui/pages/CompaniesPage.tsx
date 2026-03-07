@@ -9,6 +9,7 @@ import {
   approveCompany,
   createJob,
   createCompany,
+  deleteCompany,
   deactivateCompany,
   getCompanyUsers,
   listJobCategories,
@@ -229,6 +230,7 @@ export function CompaniesPage() {
   const canPostJob = hasPermission("CREATE_JOB", "MANAGE_USERS");
   const canViewJobs = hasPermission("VIEW_JOB", "MANAGE_USERS");
   const canApproveCompany = hasPermission("APPROVE_COMPANY", "MANAGE_USERS");
+  const canDeleteCompany = hasPermission("DELETE_COMPANY", "MANAGE_USERS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -261,6 +263,7 @@ export function CompaniesPage() {
   const [editForm, setEditForm] = useState<CompanyUpsertPayload>(EMPTY_COMPANY);
 
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [usersModalCompany, setUsersModalCompany] = useState<Company | null>(null);
   const [postJobCompany, setPostJobCompany] = useState<Company | null>(null);
   const [postJobForm, setPostJobForm] = useState<CompanyJobFormState>(EMPTY_COMPANY_JOB_FORM);
@@ -762,6 +765,31 @@ export function CompaniesPage() {
     }
   }
 
+  async function onConfirmDeleteCompany() {
+    if (!accessToken) return;
+    if (!confirmDeleteId) return;
+
+    try {
+      clearMessages();
+      setSaving(true);
+      const id = confirmDeleteId;
+      await deleteCompany(accessToken, id);
+
+      setCompanies((prev) => prev.filter((c) => c.id !== id));
+      if (openCompanyId === id) {
+        setOpenCompanyId(null);
+        setPanelMode("view");
+      }
+
+      setConfirmDeleteId(null);
+      setSuccess("Company deleted successfully");
+    } catch (e) {
+      setError((e as any)?.message ?? "Failed to delete company");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onApproveCompany(id: string) {
     if (!accessToken) return;
     try {
@@ -1239,6 +1267,19 @@ export function CompaniesPage() {
                 <div className="companyCardActions">
                   {isDeactivated ? (
                     <>
+                      {canDeleteCompany ? (
+                        <button
+                          type="button"
+                          className="btn btnDanger btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => {
+                            clearMessages();
+                            setConfirmDeleteId(c.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="btn btnPrimary btnSm jobActionBtn companyCardActionBtn"
@@ -1293,6 +1334,19 @@ export function CompaniesPage() {
                       >
                         Deactivate
                       </button>
+                      {canDeleteCompany ? (
+                        <button
+                          type="button"
+                          className="btn btnDanger btnSm jobActionBtn companyCardActionBtn"
+                          disabled={saving}
+                          onClick={() => {
+                            clearMessages();
+                            setConfirmDeleteId(c.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                       {userNames.length > 0 ? (
                         <button
                           type="button"
@@ -1456,6 +1510,16 @@ export function CompaniesPage() {
         busy={saving}
         onCancel={() => setConfirmDeactivateId(null)}
         onConfirm={onConfirmDeactivate}
+      />
+
+      <ConfirmModal
+        open={Boolean(confirmDeleteId)}
+        title="Delete company"
+        message="Delete this company permanently? This is only allowed when the company has no job applications."
+        confirmLabel={saving ? "Deleting..." : "Delete"}
+        busy={saving}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={onConfirmDeleteCompany}
       />
 
       <UsersModal

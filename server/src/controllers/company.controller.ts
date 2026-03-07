@@ -43,6 +43,7 @@ export class CompanyController {
     this.updateCompany = this.updateCompany.bind(this);
     this.deactivateCompany = this.deactivateCompany.bind(this);
     this.reactivateCompany = this.reactivateCompany.bind(this);
+    this.deleteCompany = this.deleteCompany.bind(this);
     this.getCompanyUsers = this.getCompanyUsers.bind(this);
     this.addUserToCompany = this.addUserToCompany.bind(this);
     this.removeUserFromCompany = this.removeUserFromCompany.bind(this);
@@ -51,6 +52,37 @@ export class CompanyController {
     this.updateApprovalMode = this.updateApprovalMode.bind(this);
     this.getSystemSettings = this.getSystemSettings.bind(this);
     this.updateSystemSettings = this.updateSystemSettings.bind(this);
+  }
+
+  // Delete company permanently
+  async deleteCompany(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = getStringParam(req, 'id');
+      const userId = req.user!.userId;
+
+      if (!hasPermission(req, 'DELETE_COMPANY')) {
+        throw new ForbiddenError('You do not have permission to delete companies');
+      }
+
+      const deleted = await this.companyService.deleteCompany(id, userId);
+      await logAudit({
+        userId,
+        action: 'COMPANY_DELETED',
+        targetType: 'company',
+        targetId: id,
+        details: {
+          company_name: deleted?.name ?? null,
+        },
+      });
+
+      res.json({
+        status: 'success',
+        message: 'Company deleted successfully',
+        data: deleted,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   // Get all companies

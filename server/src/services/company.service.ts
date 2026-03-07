@@ -1,6 +1,6 @@
 import { DatabaseService } from './database.service';
-import { query } from '../config/database';  // Add this import
-import { NotFoundError, ForbiddenError } from '../utils/errors';
+import { query, transaction } from '../config/database';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors';
 import { getCompanyApprovalMode } from './systemSettings.service';
 
 export class CompanyService {
@@ -547,6 +547,59 @@ export class CompanyService {
     if (result.rowCount === 0) {
       throw new NotFoundError('User not found in this company');
     }
+  }
+
+  async deleteCompany(companyId: string, userId: string) {
+    const canDeleteCompany = await this.checkCompanyPermission(companyId, userId, 'DELETE_COMPANY');
+    if (!canDeleteCompany) {
+      throw new ForbiddenError('You do not have permission to delete this company');
+    }
+
+    const companyResult = await query('SELECT id, name FROM companies WHERE id = $1 LIMIT 1', [companyId]);
+    if (companyResult.rows.length === 0) {
+      throw new NotFoundError('Company not found');
+    }
+
+    const applicationsResult = await query(
+      `SELECT COUNT(*)::int AS total
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+        WHERE j.company_id = $1`,
+      [companyId],
+    );
+
+    const applicationCount = Number(applicationsResult.rows[0]?.total ?? 0);
+    if (applicationCount > 0) {
+      throw new BadRequestError('Company cannot be deleted because it has job applications');
+    }
+
+    return transaction(async (client) => {
+      await client.query(
+        `DELETE FROM saved_jobs
+          WHERE job_id IN (
+            SELECT id FROM jobs WHERE company_id = $1
+          )`,
+        [companyId],
+      );
+
+      await client.query('DELETE FROM company_documents WHERE company_id = $1', [companyId]);
+      await client.query('DELETE FROM documents WHERE company_id = $1', [companyId]);
+      await client.query('DELETE FROM jobs WHERE company_id = $1', [companyId]);
+      await client.query('DELETE FROM company_users WHERE company_id = $1', [companyId]);
+
+      const deleted = await client.query(
+        `DELETE FROM companies
+          WHERE id = $1
+          RETURNING id, name`,
+        [companyId],
+      );
+
+      if (deleted.rows.length === 0) {
+        throw new NotFoundError('Company not found');
+      }
+
+      return deleted.rows[0];
+    });
   }
 
   private async checkCompanyPermission(companyId: string, userId: string, permission: string): Promise<boolean> {

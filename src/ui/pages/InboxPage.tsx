@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteNotification,
   getNotificationPreferences,
+  listPublicIndustries,
   listCompanies,
   listJobCategories,
   listNotifications,
@@ -125,6 +126,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [categories, setCategories] = useState<JobCategory[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [industryOptions, setIndustryOptions] = useState<string[]>([]);
 
   const visibleNotifications = useMemo(() => {
     const list = Array.isArray(notifications) ? notifications : [];
@@ -152,15 +154,6 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
     );
   }, [mode, unreadCount]);
 
-  const industries = useMemo(() => {
-    const names = new Set<string>();
-    for (const company of companies) {
-      const value = String(company.industry ?? "").trim();
-      if (value) names.add(value);
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [companies]);
-
   const canUseJobAlerts = hasPermission(
     "APPLY_JOB",
     "VIEW_JOB",
@@ -180,10 +173,11 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
       const safePage = Math.max(1, Number(nextPage ?? page ?? 1));
 
       if (mode === "job-alerts") {
-        const [pref, categoryData, companyData] = await Promise.all([
+        const [pref, categoryData, companyData, publicIndustryData] = await Promise.all([
           getNotificationPreferences(accessToken),
           listJobCategories(accessToken),
           listCompanies(accessToken),
+          listPublicIndustries(),
         ]);
         const normalizedPref: NotificationPreferences = {
           ...pref,
@@ -197,6 +191,15 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         setUnreadTotal(0);
         setCategories(Array.isArray(categoryData.categories) ? categoryData.categories : []);
         setCompanies(Array.isArray(companyData) ? companyData : []);
+        setIndustryOptions(
+          Array.from(
+            new Set(
+              (Array.isArray(publicIndustryData.industries) ? publicIndustryData.industries : [])
+                .map((item) => String(item?.name ?? "").trim())
+                .filter(Boolean),
+            ),
+          ).sort((a, b) => a.localeCompare(b)),
+        );
         setPreferences(normalizedPref);
       } else {
         const data = await listNotifications(accessToken, { page: safePage, limit: pageSize });
@@ -212,6 +215,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
         setPreferences(null);
         setCategories([]);
         setCompanies([]);
+        setIndustryOptions([]);
       }
     } catch (e) {
       setError((e as Error)?.message ?? copy.loadError);
@@ -728,7 +732,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                 </div>
               </div>
               <div className="inboxCardBody inboxPrefSection">
-                {industries.length === 0 ? (
+                {industryOptions.length === 0 ? (
                   <p className="pageText">No industries found.</p>
                 ) : (
                   <div
@@ -738,7 +742,7 @@ export function InboxPage({ mode }: { mode: InboxMode }) {
                       gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     }}
                   >
-                    {industries.map((industry) => (
+                    {industryOptions.map((industry) => (
                       <label key={industry} className="fieldCheckbox">
                         <input
                           type="checkbox"

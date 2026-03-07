@@ -268,6 +268,29 @@ router.get('/system-settings', async (_req, res) => {
   }
 });
 
+router.get('/industries', async (_req, res) => {
+  try {
+    const industriesResult = await query(
+      `SELECT id, name, created_at, updated_at
+         FROM industries
+        ORDER BY name ASC`
+    );
+
+    return res.json({
+      status: 'success',
+      data: {
+        industries: industriesResult.rows,
+        total: industriesResult.rows.length,
+      },
+    });
+  } catch {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to load industries',
+    });
+  }
+});
+
 router.get('/jobs/:jobId/company', async (req, res) => {
   try {
     const jobId = String(req.params.jobId ?? '').trim();

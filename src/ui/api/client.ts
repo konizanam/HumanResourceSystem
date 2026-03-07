@@ -460,6 +460,18 @@ export async function reactivateCompany(token: string, id: string): Promise<Comp
   return envelope.data;
 }
 
+export async function deleteCompany(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Failed to delete company");
+  }
+}
+
 export async function getCompanyApprovalMode(token: string): Promise<CompanyApprovalMode> {
   const res = await fetch(`${API_BASE}/companies/approval-mode`, {
     headers: authHeaders(token),
@@ -1588,6 +1600,15 @@ export type JobCategory = {
   job_counts?: { total_jobs: number; active_jobs: number };
 };
 
+export type Industry = {
+  id: string;
+  name: string;
+  created_at?: string;
+  updated_at?: string;
+  company_count?: number;
+  job_count?: number;
+};
+
 export async function listJobCategories(
   token: string,
 ): Promise<{ categories: JobCategory[]; total_categories: number }> {
@@ -1685,6 +1706,78 @@ export async function deleteJobSubcategory(token: string, id: string): Promise<v
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to delete subcategory");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Industries                                                         */
+/* ------------------------------------------------------------------ */
+
+export async function listIndustries(
+  token: string,
+  params?: { page?: number; limit?: number; search?: string },
+): Promise<{ industries: Industry[]; pagination: Pagination }> {
+  const url = new URL(`${API_BASE}/industries`);
+  if (params?.page) url.searchParams.set("page", String(params.page));
+  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.search) url.searchParams.set("search", params.search);
+
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load industries");
+  return {
+    industries: Array.isArray((body as any)?.industries) ? (body as any).industries : [],
+    pagination: (body as any)?.pagination ?? { page: 1, limit: 10, total: 0, pages: 1 },
+  };
+}
+
+export async function listPublicIndustries(): Promise<{ industries: Industry[]; total: number }> {
+  const res = await fetch(`${API_BASE}/public/industries`, {
+    headers: publicHeaders(),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to load industries");
+
+  const data = (body as any)?.data ?? {};
+  return {
+    industries: Array.isArray(data.industries) ? data.industries : [],
+    total: Number(data.total ?? 0),
+  };
+}
+
+export async function createIndustry(token: string, payload: { name: string }): Promise<Industry> {
+  const res = await fetch(`${API_BASE}/industries`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create industry");
+  return body as Industry;
+}
+
+export async function updateIndustry(
+  token: string,
+  id: string,
+  payload: { name: string },
+): Promise<Industry> {
+  const res = await fetch(`${API_BASE}/industries/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update industry");
+  return body as Industry;
+}
+
+export async function deleteIndustry(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/industries/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to delete industry");
 }
 
 /* ------------------------------------------------------------------ */
