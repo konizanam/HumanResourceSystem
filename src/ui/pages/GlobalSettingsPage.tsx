@@ -33,7 +33,7 @@ const DEFAULT_APPLICATION_STATUS_NOTIFICATIONS: Record<string, boolean> =
 
 function normalizeHexColor(value: string): string {
   const raw = String(value ?? "").trim();
-  if (!raw) return "#6366f1";
+  if (!raw) return "#6b7280";
   const withHash = raw.startsWith("#") ? raw : `#${raw}`;
   if (/^#([0-9a-fA-F]{3})$/.test(withHash)) {
     const shortHex = withHash.slice(1);
@@ -42,7 +42,7 @@ function normalizeHexColor(value: string): string {
   if (/^#([0-9a-fA-F]{6})$/.test(withHash)) {
     return withHash.toLowerCase();
   }
-  return "#6366f1";
+  return "#6b7280";
 }
 
 function resolveCompanyLogoUrl(company: Company): string {
@@ -85,7 +85,7 @@ export function GlobalSettingsPage() {
     country: "",
   });
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
-  const [appColor, setAppColor] = useState("#6366f1");
+  const [appColor, setAppColor] = useState("#6b7280");
   const [loginWelcomeTitle, setLoginWelcomeTitle] = useState("");
   const [loginWelcomeSubtitle, setLoginWelcomeSubtitle] = useState("");
   const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
@@ -118,7 +118,7 @@ export function GlobalSettingsPage() {
             company_approval_mode: fallbackMode,
             system_name: "",
             branding_logo_url: "",
-            app_color: "#6366f1",
+            app_color: "#6b7280",
             main_company_id: null,
             application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
             login_welcome_title: "",
@@ -147,8 +147,8 @@ export function GlobalSettingsPage() {
 
       setCompanies(companiesForSelection);
       setMode(settings.company_approval_mode);
-      setAppColor(settings.app_color || "#6366f1");
-      applyAppThemeColor(settings.app_color || "#6366f1");
+      setAppColor(settings.app_color || "#6b7280");
+      applyAppThemeColor(settings.app_color || "#6b7280");
 
       const nextNotifications = {
         ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
@@ -221,8 +221,8 @@ export function GlobalSettingsPage() {
       const results = await Promise.all(updates);
       const updatedMode = canEdit ? (results[0] as CompanyApprovalMode) : mode;
       const updatedSettings = results[results.length - 1] as Awaited<ReturnType<typeof updateSystemSettings>>;
-      setAppColor(updatedSettings.app_color || "#6366f1");
-      applyAppThemeColor(updatedSettings.app_color || "#6366f1");
+      setAppColor(updatedSettings.app_color || "#6b7280");
+      applyAppThemeColor(updatedSettings.app_color || "#6b7280");
       setApplicationStatusNotifications({
         ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
         ...(updatedSettings.application_status_notifications ?? {}),

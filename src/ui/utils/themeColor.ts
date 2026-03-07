@@ -1,4 +1,4 @@
-const DEFAULT_APP_COLOR = "#6366f1";
+const DEFAULT_APP_COLOR = "#6b7280";
 
 function normalizeHexColor(input: unknown): string {
   const raw = String(input ?? "").trim();

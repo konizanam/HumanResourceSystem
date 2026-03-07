@@ -249,7 +249,7 @@ export function PublicJobsPage() {
         if (cancelled) return;
         setSystemName("");
         setBrandingLogoUrl("");
-        applyAppThemeColor("#6366f1");
+        applyAppThemeColor("#6b7280");
         setBrandingLogoFailed(false);
       }
     };

@@ -116,12 +116,12 @@ export function PermissionsPage() {
             <h2 className="editFormTitle">Add Permission</h2>
             <div className="editGrid">
               <div className="field">
-                <label className="fieldLabel">Permission Name *</label>
+                <label className="fieldLabel">Permission Name</label>
                 <input className="input" value={addName} onChange={(e) => { setAddFieldErrors({}); setAddName(e.target.value); }} placeholder="e.g. CREATE_JOB" required />
                 {addFieldErrors.name && <span className="fieldError">{addFieldErrors.name}</span>}
               </div>
               <div className="field">
-                <label className="fieldLabel">Module *</label>
+                <label className="fieldLabel">Module</label>
                 <select className="input" value={addModule} onChange={(e) => { setAddFieldErrors({}); setAddModule(e.target.value); }}>
                   <option value="">Select module</option>
                   {MODULE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -129,7 +129,7 @@ export function PermissionsPage() {
                 {addFieldErrors.module_name && <span className="fieldError">{addFieldErrors.module_name}</span>}
               </div>
               <div className="field">
-                <label className="fieldLabel">Action Type *</label>
+                <label className="fieldLabel">Action Type</label>
                 <select className="input" value={addAction} onChange={(e) => { setAddFieldErrors({}); setAddAction(e.target.value); }}>
                   <option value="">Select action</option>
                   {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}

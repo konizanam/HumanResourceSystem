@@ -827,7 +827,7 @@ export function CompaniesPage() {
 
             <div className="editGrid">
               <div className="field">
-                <label className="fieldLabel">Company Name *</label>
+                <label className="fieldLabel">Company Name</label>
                 <input
                   className="input"
                   value={addForm.name}
@@ -842,7 +842,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Industry *</label>
+                <label className="fieldLabel">Industry</label>
                 <input
                   className="input"
                   value={addForm.industry}
@@ -888,7 +888,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field fieldFull">
-                <label className="fieldLabel">Description *</label>
+                <label className="fieldLabel">Description</label>
                 <textarea
                   className="input textarea"
                   value={addForm.description}
@@ -915,7 +915,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Company Logo *</label>
+                <label className="fieldLabel">Company Logo</label>
                 <input
                   className="input"
                   type="file"
@@ -931,7 +931,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Contact Email *</label>
+                <label className="fieldLabel">Contact Email</label>
                 <input
                   className="input"
                   value={addForm.contact_email}
@@ -948,7 +948,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Contact Phone *</label>
+                <label className="fieldLabel">Contact Phone</label>
                 {(() => {
                   const parts = splitInternationalPhone(addForm.contact_phone ?? "", DEFAULT_CALLING_CODE);
                   return (
@@ -989,7 +989,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Address Line 1 *</label>
+                <label className="fieldLabel">Address Line 1</label>
                 <input
                   className="input"
                   value={addForm.address_line1}
@@ -1006,7 +1006,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Address Line 2 *</label>
+                <label className="fieldLabel">Address Line 2</label>
                 <input
                   className="input"
                   value={addForm.address_line2}
@@ -1023,7 +1023,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">City *</label>
+                <label className="fieldLabel">City</label>
                 <input
                   className="input"
                   value={addForm.city}
@@ -1038,7 +1038,7 @@ export function CompaniesPage() {
               </div>
 
               <div className="field">
-                <label className="fieldLabel">Country *</label>
+                <label className="fieldLabel">Country</label>
                 <input
                   className="input"
                   value={addForm.country}
@@ -1588,7 +1588,7 @@ function CompanyPostJobPanel({
       ) : (
         <div className="editGrid">
           <div className="field">
-            <label className="fieldLabel">Job Title *</label>
+            <label className="fieldLabel">Job Title</label>
             <input
               className="input"
               value={form.title}
@@ -1598,7 +1598,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Category *</label>
+            <label className="fieldLabel">Category</label>
             <select
               className="input"
               value={form.category_id}
@@ -1615,7 +1615,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Subcategory *</label>
+            <label className="fieldLabel">Subcategory</label>
             <select
               className="input"
               value={form.subcategory}
@@ -1633,7 +1633,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Employment Type *</label>
+            <label className="fieldLabel">Employment Type</label>
             <select
               className="input"
               value={form.employment_type}
@@ -1652,7 +1652,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Salary Min *</label>
+            <label className="fieldLabel">Salary Min</label>
             <input
               className="input"
               type="number"
@@ -1663,7 +1663,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Salary Max *</label>
+            <label className="fieldLabel">Salary Max</label>
             <input
               className="input"
               type="number"
@@ -1674,7 +1674,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Location *</label>
+            <label className="fieldLabel">Location</label>
             <input
               className="input"
               value={form.location}
@@ -1684,7 +1684,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Application Deadline *</label>
+            <label className="fieldLabel">Application Deadline</label>
             <input
               className="input"
               type="date"
@@ -1695,7 +1695,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Status *</label>
+            <label className="fieldLabel">Status</label>
             <select
               className="input"
               value={form.status}
@@ -1707,7 +1707,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field">
-            <label className="fieldLabel">Work Mode *</label>
+            <label className="fieldLabel">Work Mode</label>
             <select
               className="input"
               value={form.work_mode}
@@ -1720,7 +1720,7 @@ function CompanyPostJobPanel({
           </div>
 
           <div className="field fieldFull">
-            <label className="fieldLabel">Description *</label>
+            <label className="fieldLabel">Description</label>
             <RichTextEditor
               value={form.description}
               onChange={(html) => onChange((prev) => ({ ...prev, description: html }))}
@@ -1844,7 +1844,7 @@ function CompanyEditPanel({
 
       <div className="editGrid">
         <div className="field">
-          <label className="fieldLabel">Company Name *</label>
+          <label className="fieldLabel">Company Name</label>
           <input
             className="input"
             value={form.name}
@@ -1915,7 +1915,7 @@ function CompanyEditPanel({
         </div>
 
         <div className="field fieldFull">
-          <label className="fieldLabel">Assign Users (comma separated) *</label>
+          <label className="fieldLabel">Assign Users (comma separated)</label>
 
           {assignedUsersLoading ? (
             <div className="confirmLabel" style={{ marginBottom: 8 }}>

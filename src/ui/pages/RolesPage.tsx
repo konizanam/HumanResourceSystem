@@ -436,7 +436,7 @@ export function RolesPage() {
             <h2 className="editFormTitle">Add Role</h2>
             <div className="editGrid">
               <div className="field">
-                <label className="fieldLabel">Role Name *</label>
+                <label className="fieldLabel">Role Name</label>
                 <input
                   className="input"
                   value={addName}
@@ -543,7 +543,7 @@ export function RolesPage() {
                               <h2 className="editFormTitle">Edit Role</h2>
                               <div className="editGrid">
                                 <div className="field">
-                                  <label className="fieldLabel">Role Name *</label>
+                                  <label className="fieldLabel">Role Name</label>
                                   <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
                                 </div>
                                 <div className="field">

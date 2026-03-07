@@ -367,7 +367,7 @@ export function JobCategoriesPage() {
             <h2 className="editFormTitle">Add Category</h2>
             <div className="editGrid">
               <div className="field">
-                <label className="fieldLabel">Category Name *</label>
+                <label className="fieldLabel">Category Name</label>
                 <input
                   className="input"
                   value={addName}
@@ -430,7 +430,7 @@ export function JobCategoriesPage() {
                               <h2 className="editFormTitle">Edit Category</h2>
                               <div className="editGrid">
                                 <div className="field">
-                                  <label className="fieldLabel">Category Name *</label>
+                                  <label className="fieldLabel">Category Name</label>
                                   <input className="input" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
                                 </div>
                               </div>

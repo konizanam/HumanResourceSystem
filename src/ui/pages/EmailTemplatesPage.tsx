@@ -240,7 +240,7 @@ export function EmailTemplatesPage() {
             <h2 className="editFormTitle">Add Template</h2>
             <div className="editGrid">
               <div className="field">
-                <label className="fieldLabel">Key *</label>
+                <label className="fieldLabel">Key</label>
                 <input
                   className="input"
                   value={addKey}
@@ -251,7 +251,7 @@ export function EmailTemplatesPage() {
                 <div className="hintText">Allowed: lowercase letters, numbers, _ or -</div>
               </div>
               <div className="field">
-                <label className="fieldLabel">Title *</label>
+                <label className="fieldLabel">Title</label>
                 <input
                   className="input"
                   value={addTitle}
@@ -271,7 +271,7 @@ export function EmailTemplatesPage() {
                 />
               </div>
               <div className="field fieldFull">
-                <label className="fieldLabel">Subject *</label>
+                <label className="fieldLabel">Subject</label>
                 <input
                   className="input"
                   value={addSubject}
@@ -281,7 +281,7 @@ export function EmailTemplatesPage() {
                 />
               </div>
               <div className="field fieldFull">
-                <label className="fieldLabel">Body (plain text) *</label>
+                <label className="fieldLabel">Body (plain text)</label>
                 <textarea
                   className="input textarea"
                   value={addBody}
