@@ -60,6 +60,16 @@ function getLoginTokenFromLocation(location: { search: string; hash: string }): 
   );
 }
 
+function hasActivationFlag(location: { search: string; hash: string }): boolean {
+  const searchParams = new URLSearchParams(location.search);
+  const rawHash = String(location.hash ?? "").replace(/^#/, "");
+  const hashParams = new URLSearchParams(rawHash);
+  return (
+    hashParams.get("activated") === "1" ||
+    searchParams.get("activated") === "1"
+  );
+}
+
 function maskEmail(rawEmail: string): string {
   const value = String(rawEmail ?? "").trim();
   const atIndex = value.indexOf("@");
@@ -120,6 +130,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [activationNotice, setActivationNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"credentials" | "twoFactor">("credentials");
   const [pending, setPending] = useState<{ challengeId: string; userEmail: string } | null>(null);
@@ -236,8 +247,24 @@ export function LoginPage() {
   }, [location.state]);
 
   useEffect(() => {
+    if (!hasActivationFlag(location)) return;
+    setActivationNotice("Your account has been activated successfully. You can now sign in.");
+  }, [location]);
+
+  useEffect(() => {
     const token = getLoginTokenFromLocation(location);
-    if (!token) return;
+    const activated = hasActivationFlag(location);
+
+    if (!token) {
+      if (!activated) return;
+
+      // Clean activation flag from URL after we show a notice.
+      navigate(
+        { pathname: location.pathname, search: "", hash: "" },
+        { replace: true, state: location.state }
+      );
+      return;
+    }
 
     const payload = decodeJwtPayload(token);
     const email = typeof payload?.email === "string" ? payload.email : "";
@@ -410,6 +437,12 @@ export function LoginPage() {
           </div>
 
           <form onSubmit={onSubmit} className="form" aria-busy={busy}>
+            {activationNotice ? (
+              <div className="hintBox" role="status" aria-live="polite">
+                {activationNotice}
+              </div>
+            ) : null}
+
             <div className="authModeRow" role="status" aria-live="polite">
               <span className={`authModePill ${step === "credentials" && !showForgot ? "authModePillActive" : ""}`}>
                 Sign In

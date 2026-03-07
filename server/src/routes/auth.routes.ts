@@ -525,10 +525,21 @@ authRouter.get("/activate", async (req, res, next) => {
     }
 
     const userId = decoded.sub as string;
-    await query(
-      "UPDATE users SET is_active = TRUE, email_verified = TRUE, updated_at = NOW() WHERE id = $1",
-      [userId]
+    const tokenEmail = typeof decoded?.email === "string" ? decoded.email : "";
+
+    const activationUpdate = await query(
+      `UPDATE users
+          SET is_active = TRUE,
+              email_verified = TRUE,
+              updated_at = NOW()
+        WHERE id = $1
+           OR (LOWER(email) = LOWER($2))`,
+      [userId, tokenEmail]
     );
+
+    if (!activationUpdate.rowCount || activationUpdate.rowCount < 1) {
+      return res.status(404).json({ error: { message: "User not found" } });
+    }
 
     const user = await findUserById(userId);
     if (!user) {
@@ -571,10 +582,8 @@ authRouter.get("/activate", async (req, res, next) => {
 
     const origin = webOrigin();
     if (origin) {
-      // Put the access token in the URL hash so it is not sent to the server.
-      return res.redirect(
-        `${origin}/login#activated=1&accessToken=${encodeURIComponent(accessToken)}`
-      );
+      // Keep activation feedback in URL while requiring an explicit login.
+      return res.redirect(`${origin}/login#activated=1`);
     }
 
     return res.json({
@@ -625,35 +634,43 @@ authRouter.post("/login", async (req, res, next) => {
 
     // Account not activated (email not verified)
     if (!user.email_verified) {
+      // Self-heal inconsistent records where account is already active.
+      if (user.is_active) {
+        await query(
+          "UPDATE users SET email_verified = TRUE, updated_at = NOW() WHERE id = $1",
+          [user.id]
+        );
+      } else {
       // Best-effort: resend activation email (only after verifying credentials).
-      try {
-        const activationToken = signActivationToken({ sub: user.id, email: user.email });
-        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
-          activationToken
-        )}`;
+        try {
+          const activationToken = signActivationToken({ sub: user.id, email: user.email });
+          const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+            activationToken
+          )}`;
 
-        await sendTemplatedEmail({
-          templateKey: "registration_activation",
-          to: user.email,
-          data: {
-            app_name: appName(),
-            user_full_name: publicUser(user).name || user.email,
-            activation_link: activationLink,
+          await sendTemplatedEmail({
+            templateKey: "registration_activation",
+            to: user.email,
+            data: {
+              app_name: appName(),
+              user_full_name: publicUser(user).name || user.email,
+              activation_link: activationLink,
+            },
+          });
+        } catch (e) {
+          console.error(
+            "[Email] Failed to resend activation email:",
+            e instanceof Error ? e.message : e
+          );
+        }
+
+        return res.status(403).json({
+          error: {
+            message:
+              "Your account is not activated. Please check your email for the activation link.",
           },
         });
-      } catch (e) {
-        console.error(
-          "[Email] Failed to resend activation email:",
-          e instanceof Error ? e.message : e
-        );
       }
-
-      return res.status(403).json({
-        error: {
-          message:
-            "Your account is not activated. Please check your email for the activation link.",
-        },
-      });
     }
 
     // Account deactivated
@@ -735,35 +752,43 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
     }
 
     if (!user.email_verified) {
+      // Self-heal inconsistent records where account is already active.
+      if (user.is_active) {
+        await query(
+          "UPDATE users SET email_verified = TRUE, updated_at = NOW() WHERE id = $1",
+          [user.id]
+        );
+      } else {
       // Best-effort: resend activation email (only after verifying credentials).
-      try {
-        const activationToken = signActivationToken({ sub: user.id, email: user.email });
-        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
-          activationToken
-        )}`;
+        try {
+          const activationToken = signActivationToken({ sub: user.id, email: user.email });
+          const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+            activationToken
+          )}`;
 
-        await sendTemplatedEmail({
-          templateKey: "registration_activation",
-          to: user.email,
-          data: {
-            app_name: appName(),
-            user_full_name: publicUser(user).name || user.email,
-            activation_link: activationLink,
+          await sendTemplatedEmail({
+            templateKey: "registration_activation",
+            to: user.email,
+            data: {
+              app_name: appName(),
+              user_full_name: publicUser(user).name || user.email,
+              activation_link: activationLink,
+            },
+          });
+        } catch (e) {
+          console.error(
+            "[Email] Failed to resend activation email:",
+            e instanceof Error ? e.message : e
+          );
+        }
+
+        return res.status(403).json({
+          error: {
+            message:
+              "Your account is not activated. Please check your email for the activation link.",
           },
         });
-      } catch (e) {
-        console.error(
-          "[Email] Failed to resend activation email:",
-          e instanceof Error ? e.message : e
-        );
       }
-
-      return res.status(403).json({
-        error: {
-          message:
-            "Your account is not activated. Please check your email for the activation link.",
-        },
-      });
     }
 
     if (!user.is_active) {
