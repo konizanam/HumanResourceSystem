@@ -95,6 +95,27 @@ html[data-theme="dark"] {
   border: 0;
 }
 
+.placeholderSpinnerWrap {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+}
+
+.placeholderSpinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid color-mix(in srgb, var(--stroke) 82%, transparent);
+  border-top-color: var(--menu-icon-active);
+  animation: placeholderSpin 0.8s linear infinite;
+}
+
+@keyframes placeholderSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 html,
 body {
   height: 100%;

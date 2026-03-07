@@ -390,7 +390,7 @@ function signActivationToken(payload: { sub: string; email: string }) {
 
 async function applyActivationToken(token: string): Promise<{
   userId: string;
-  user: Awaited<ReturnType<typeof findUserById>>;
+  user: NonNullable<Awaited<ReturnType<typeof findUserById>>>;
   accessToken: string;
 }> {
   const secret = process.env.JWT_SECRET;
@@ -623,9 +623,6 @@ authRouter.post("/activate", async (req, res, next) => {
     const { token } = activateSchema.parse(req.body ?? {});
     const activationResult = await applyActivationToken(token);
     const user = activationResult.user;
-    if (!user) {
-      return res.status(404).json({ error: { message: "User not found" } });
-    }
 
     const pub = publicUser(user);
 
