@@ -58,6 +58,23 @@ function validatePhone(raw: string): string | null {
   return null;
 }
 
+async function waitForSetupCompletion(maxAttempts = 12, delayMs = 500): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await getPublicSetupStatus();
+      if (!status.setup_required) return true;
+    } catch {
+      // Ignore transient polling errors and retry.
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+
+  return false;
+}
+
 export function MainCompanySetupPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<SetupFormState>(EMPTY_FORM);
@@ -150,10 +167,16 @@ export function MainCompanySetupPage() {
         country: form.country.trim(),
       });
 
+      const completed = await waitForSetupCompletion();
+      if (!completed) {
+        setError("Main company was saved, but setup status is still syncing. Please wait a moment and try again.");
+        return;
+      }
+
       setSuccess("Setup completed successfully. Redirecting to login...");
       window.setTimeout(() => {
         navigate("/login", { replace: true });
-      }, 1400);
+      }, 800);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete main company setup");
     } finally {

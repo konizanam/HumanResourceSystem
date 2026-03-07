@@ -538,6 +538,7 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
 export async function getPublicSetupStatus(): Promise<SetupStatus> {
   const res = await fetch(`${API_BASE}/public/setup-status`, {
     headers: publicHeaders(),
+    cache: "no-store",
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load setup status");
