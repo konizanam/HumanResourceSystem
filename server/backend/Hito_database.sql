@@ -900,6 +900,111 @@ FROM finance_cat, (VALUES
     ('Risk Management')
 ) AS s(subcat);
 
+-- Sales & Marketing subcategories
+WITH sales_cat AS (SELECT id FROM job_categories WHERE name = 'Sales & Marketing')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM sales_cat, (VALUES
+    ('Business Development'),
+    ('Account Management'),
+    ('Digital Marketing'),
+    ('Brand Management'),
+    ('Market Research'),
+    ('Content Marketing'),
+    ('Sales Operations'),
+    ('Customer Success')
+) AS s(subcat);
+
+-- Engineering subcategories
+WITH eng_cat AS (SELECT id FROM job_categories WHERE name = 'Engineering')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM eng_cat, (VALUES
+    ('Civil Engineering'),
+    ('Mechanical Engineering'),
+    ('Electrical Engineering'),
+    ('Industrial Engineering'),
+    ('Project Engineering'),
+    ('Quality Engineering'),
+    ('Maintenance Engineering'),
+    ('Process Engineering')
+) AS s(subcat);
+
+-- Human Resources subcategories
+WITH hr_cat AS (SELECT id FROM job_categories WHERE name = 'Human Resources')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM hr_cat, (VALUES
+    ('Recruitment'),
+    ('Talent Management'),
+    ('Compensation & Benefits'),
+    ('Employee Relations'),
+    ('Learning & Development'),
+    ('HR Operations'),
+    ('Performance Management'),
+    ('Payroll')
+) AS s(subcat);
+
+-- Legal subcategories
+WITH legal_cat AS (SELECT id FROM job_categories WHERE name = 'Legal')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM legal_cat, (VALUES
+    ('Corporate Law'),
+    ('Commercial Contracts'),
+    ('Litigation'),
+    ('Compliance & Regulatory'),
+    ('Labour Law'),
+    ('Intellectual Property'),
+    ('Legal Research'),
+    ('Paralegal Services')
+) AS s(subcat);
+
+-- Education subcategories
+WITH edu_cat AS (SELECT id FROM job_categories WHERE name = 'Education')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM edu_cat, (VALUES
+    ('Primary Education'),
+    ('Secondary Education'),
+    ('Higher Education'),
+    ('Curriculum Development'),
+    ('Special Education'),
+    ('Educational Administration'),
+    ('Instructional Design'),
+    ('Training & Facilitation')
+) AS s(subcat);
+
+-- Hospitality subcategories
+WITH hosp_cat AS (SELECT id FROM job_categories WHERE name = 'Hospitality')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM hosp_cat, (VALUES
+    ('Hotel Operations'),
+    ('Front Office'),
+    ('Food & Beverage Service'),
+    ('Culinary Arts'),
+    ('Housekeeping'),
+    ('Event Management'),
+    ('Guest Relations'),
+    ('Travel & Tourism')
+) AS s(subcat);
+
+-- Retail subcategories
+WITH retail_cat AS (SELECT id FROM job_categories WHERE name = 'Retail')
+INSERT INTO job_subcategories (category_id, name)
+SELECT id, subcat
+FROM retail_cat, (VALUES
+    ('Store Management'),
+    ('Merchandising'),
+    ('Cashier & Point of Sale'),
+    ('Inventory Control'),
+    ('Retail Sales'),
+    ('E-commerce Operations'),
+    ('Procurement & Sourcing'),
+    ('Customer Service')
+) AS s(subcat);
+
 -- =====================================================
 -- VERIFICATION
 -- =====================================================
