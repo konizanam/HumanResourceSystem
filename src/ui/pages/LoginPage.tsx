@@ -15,6 +15,27 @@ const DEFAULT_LOGIN_WELCOME_TITLE = "Welcome to your recruitment command center"
 const DEFAULT_LOGIN_WELCOME_SUBTITLE =
   "Sign in to hire, apply, and stay updated on applications - all in one secure place.";
 
+function joinBaseAndPath(base: string, path: string): string {
+  const cleanBase = String(base ?? "").trim().replace(/\/$/, "");
+  const cleanPath = String(path ?? "").trim();
+  if (!cleanBase) return cleanPath;
+  if (!cleanPath) return cleanBase;
+  return `${cleanBase}${cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`}`;
+}
+
+function resolvePublicAssetPath(fileName: string): string {
+  const baseUrl = String(import.meta.env.BASE_URL ?? "/").trim() || "/";
+  return joinBaseAndPath(baseUrl, fileName);
+}
+
+function resolveBrandingUrl(rawValue: string, apiBase: string): string {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) return "";
+  if (/^(https?:\/\/|data:|blob:)/i.test(raw)) return raw;
+  if (apiBase) return joinBaseAndPath(apiBase, raw);
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const [, payload] = token.split(".");
@@ -108,6 +129,13 @@ export function LoginPage() {
   const [twoFactorExpiresAt, setTwoFactorExpiresAt] = useState<number | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+
+  const apiBase = useMemo(
+    () => String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, ""),
+    [],
+  );
+  const fallbackLogoSrc = useMemo(() => resolvePublicAssetPath("hito-logo.png"), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +165,6 @@ export function LoginPage() {
           setWelcomeSubtitle(nextWelcomeSubtitle || DEFAULT_LOGIN_WELCOME_SUBTITLE);
         }
 
-        const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
         const mainCompanyLogo = mainCompanyId && apiBase
           ? `${apiBase}/api/v1/public/companies/${encodeURIComponent(mainCompanyId)}/logo`
           : "";
@@ -162,40 +189,39 @@ export function LoginPage() {
     document.title = name || "Login";
   }, [systemName]);
 
-  useEffect(() => {
-    const raw = String(brandingLogoUrl ?? "").trim();
-    if (!raw) return;
+  const resolvedBrandingLogoUrl = useMemo(
+    () => resolveBrandingUrl(brandingLogoUrl, apiBase),
+    [apiBase, brandingLogoUrl],
+  );
 
-    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-    const href = /^(https?:\/\/|data:)/i.test(raw)
-      ? raw
-      : apiBase
-        ? `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`
-        : raw;
+  useEffect(() => {
+    if (!resolvedBrandingLogoUrl) return;
 
     const link =
       (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null) ??
       (document.querySelector('link[rel~="icon"]') as HTMLLinkElement | null);
 
     if (link) {
-      link.href = href;
+      link.href = resolvedBrandingLogoUrl;
       return;
     }
 
     const created = document.createElement("link");
     created.rel = "icon";
-    created.href = href;
+    created.href = resolvedBrandingLogoUrl;
     document.head.appendChild(created);
-  }, [brandingLogoUrl]);
+  }, [resolvedBrandingLogoUrl]);
 
   const resolvedLogoSrc = useMemo(() => {
-    const raw = String(brandingLogoUrl ?? "").trim();
-    if (!raw) return "/hito-logo.png";
-    if (/^(https?:\/\/|data:)/i.test(raw)) return raw;
-    const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-    if (!apiBase) return raw;
-    return `${apiBase}${raw.startsWith("/") ? raw : `/${raw}`}`;
-  }, [brandingLogoUrl]);
+    if (!resolvedBrandingLogoUrl) return fallbackLogoSrc;
+    return resolvedBrandingLogoUrl;
+  }, [fallbackLogoSrc, resolvedBrandingLogoUrl]);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [resolvedLogoSrc]);
+
+  const displayLogoSrc = logoLoadFailed ? fallbackLogoSrc : resolvedLogoSrc;
 
   const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
@@ -368,7 +394,16 @@ export function LoginPage() {
         <div className="loginCard authPanel">
           <div className="loginHeader">
             <div className="loginLogo">
-              <img src={resolvedLogoSrc} alt={systemName ? `${systemName} Logo` : "Company Logo"} className="loginLogoImg" />
+              <img
+                src={displayLogoSrc}
+                alt={systemName ? `${systemName} Logo` : "Company Logo"}
+                className="loginLogoImg"
+                onError={() => {
+                  if (displayLogoSrc !== fallbackLogoSrc) {
+                    setLogoLoadFailed(true);
+                  }
+                }}
+              />
             </div>
             <h1 className="loginTitle">Welcome Back</h1>
             <p className="loginSubtitle">Please enter your details to sign in.</p>

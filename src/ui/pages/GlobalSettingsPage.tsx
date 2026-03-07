@@ -436,19 +436,18 @@ export function GlobalSettingsPage() {
             <div className="editGrid" style={{ marginBottom: 0 }}>
               <div className="field fieldFull">
                 <span className="fieldLabel">Current: {currentAppColor}</span>
-                <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
+                <div className="appColorControls">
                   <input
-                    className="input"
+                    className="input appColorPickerInput"
                     type="color"
                     value={currentAppColor}
-                    onChange={(e) => {
-                      applySelectedColor(e.target.value);
-                    }}
+                    onChange={(e) => applySelectedColor(e.target.value)}
+                    onInput={(e) => applySelectedColor((e.target as HTMLInputElement).value)}
                     disabled={!canChangeAppColor || saving || loading}
                     aria-label="Select app color"
                   />
                   <input
-                    className="input"
+                    className="input appColorHexInput"
                     value={appColor}
                     onChange={(e) => {
                       const raw = e.target.value;

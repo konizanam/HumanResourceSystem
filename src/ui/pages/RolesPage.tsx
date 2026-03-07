@@ -467,8 +467,8 @@ export function RolesPage() {
       )}
 
       {/* Table */}
-      <div className="tableWrap" role="region" aria-label="Roles table">
-        <table className="table companiesTable">
+      <div className="tableWrap rolesTableWrap" role="region" aria-label="Roles table">
+        <table className="table rolesTable">
           <thead>
             <tr>
               <th>Name</th>
@@ -661,7 +661,7 @@ export function RolesPage() {
                                 </button>
                               </div>
                               <div className="tableWrap">
-                                <table className="table companiesTable">
+                                <table className="table rolesUsersTable">
                                   <thead>
                                     <tr>
                                       <th>Name</th>
@@ -780,12 +780,12 @@ function RoleRow({
   return (
     <>
       <tr className={open ? "tableRowActive" : undefined}>
-        <td className="tdStrong">{role.name}</td>
-        <td>{role.description ?? "—"}</td>
-        <td className="tdRight">{role.user_count ?? 0}</td>
-        <td className="tdRight">{role.permission_count ?? 0}</td>
-        <td>{created}</td>
-        <td className="tdRight">
+        <td className="tdStrong" data-label="Name">{role.name}</td>
+        <td data-label="Description">{role.description ?? "—"}</td>
+        <td className="tdRight" data-label="Users">{role.user_count ?? 0}</td>
+        <td className="tdRight" data-label="Permissions">{role.permission_count ?? 0}</td>
+        <td data-label="Created">{created}</td>
+        <td className="tdRight" data-label="Action">
           <ActionMenu
             disabled={saving}
             label="Action"

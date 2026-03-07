@@ -2897,6 +2897,82 @@ input[type="radio"][required] {
   }
 }
 
+/* Roles table: keep desktop as table, switch to stacked cards on mobile to avoid horizontal scroll. */
+@media (max-width: 700px) {
+  .rolesTableWrap {
+    border: 0;
+    background: transparent;
+    overflow-x: visible;
+  }
+
+  .rolesTable {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .rolesTable thead {
+    display: none;
+  }
+
+  .rolesTable,
+  .rolesTable tbody,
+  .rolesTable tr,
+  .rolesTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .rolesTable tbody tr:not(.tableExpandRow) {
+    margin: 0 0 10px;
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--card);
+  }
+
+  .rolesTable tbody tr:not(.tableExpandRow) td {
+    display: grid;
+    grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--stroke);
+    text-align: left;
+    white-space: normal;
+  }
+
+  .rolesTable tbody tr:not(.tableExpandRow) td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .rolesTable tbody tr:not(.tableExpandRow) td:last-child {
+    border-bottom: 0;
+  }
+
+  .rolesTable .tdRight {
+    text-align: left;
+  }
+
+  .rolesTable .actionMenu,
+  .rolesTable .actionMenu .actionMenuBtn {
+    width: fit-content;
+  }
+
+  .rolesTable .tableExpandRow td {
+    display: block;
+    width: 100%;
+    padding: 8px 0 0;
+    border: 0;
+    background: transparent;
+  }
+}
+
 .table th,
 .table td {
   padding: 10px 12px;
@@ -3219,6 +3295,35 @@ input[type="radio"][required] {
 
 .actionMenuItemDanger {
   color: var(--danger);
+}
+
+.appColorControls {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.appColorPickerInput {
+  width: 80px;
+  min-width: 80px;
+}
+
+@media (max-width: 560px) {
+  .appColorControls {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .appColorPickerInput {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+  }
+
+  .appColorHexInput {
+    width: 100%;
+  }
 }
 
 .usersCell {
