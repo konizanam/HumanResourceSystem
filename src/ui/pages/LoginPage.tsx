@@ -432,7 +432,7 @@ export function LoginPage() {
                 }}
               />
             </div>
-            <h1 className="loginTitle">Welcome Back</h1>
+            <h1 className="loginTitle">Hi, Welcome Back!</h1>
             <p className="loginSubtitle">Please enter your details to sign in.</p>
           </div>
 

@@ -388,6 +388,56 @@ function signActivationToken(payload: { sub: string; email: string }) {
   );
 }
 
+async function applyActivationToken(token: string): Promise<{
+  userId: string;
+  user: Awaited<ReturnType<typeof findUserById>>;
+  accessToken: string;
+}> {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured");
+
+  const decoded = jwt.verify(token, secret) as any;
+  if (decoded?.type !== "activation" || typeof decoded?.sub !== "string") {
+    throw Object.assign(new Error("Invalid activation token"), { statusCode: 400, isOperational: true });
+  }
+
+  const userId = decoded.sub as string;
+  const tokenEmail = typeof decoded?.email === "string" ? decoded.email : "";
+
+  const activationUpdate = await query(
+    `UPDATE users
+        SET is_active = TRUE,
+            email_verified = TRUE,
+            updated_at = NOW()
+      WHERE id = $1
+         OR (LOWER(email) = LOWER($2))`,
+    [userId, tokenEmail]
+  );
+
+  if (!activationUpdate.rowCount || activationUpdate.rowCount < 1) {
+    throw Object.assign(new Error("User not found"), { statusCode: 404, isOperational: true });
+  }
+
+  const user = (await findUserById(userId)) ?? (tokenEmail ? await findUserByEmail(tokenEmail) : null);
+  if (!user) {
+    throw Object.assign(new Error("User not found"), { statusCode: 404, isOperational: true });
+  }
+
+  const pub = publicUser(user);
+  const accessToken = signToken({
+    sub: user.id,
+    email: pub.email,
+    name: pub.name,
+    roles: user.roles,
+  });
+
+  return {
+    userId: user.id,
+    user,
+    accessToken,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  POST /api/auth/register                                            */
 /* ------------------------------------------------------------------ */
@@ -466,7 +516,7 @@ authRouter.post("/register", async (req, res, next) => {
     // Send activation email (best-effort). This does NOT block signup.
     try {
       const activationToken = signActivationToken({ sub: userId, email: data.email });
-      const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+      const activationLink = `${webOrigin()}/activate?token=${encodeURIComponent(
         activationToken
       )}`;
 
@@ -516,43 +566,12 @@ const activateSchema = z.object({
 authRouter.get("/activate", async (req, res, next) => {
   try {
     const { token } = activateSchema.parse(req.query);
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error("JWT_SECRET is not configured");
-
-    const decoded = jwt.verify(token, secret) as any;
-    if (decoded?.type !== "activation" || typeof decoded?.sub !== "string") {
-      return res.status(400).json({ error: { message: "Invalid activation token" } });
-    }
-
-    const userId = decoded.sub as string;
-    const tokenEmail = typeof decoded?.email === "string" ? decoded.email : "";
-
-    const activationUpdate = await query(
-      `UPDATE users
-          SET is_active = TRUE,
-              email_verified = TRUE,
-              updated_at = NOW()
-        WHERE id = $1
-           OR (LOWER(email) = LOWER($2))`,
-      [userId, tokenEmail]
-    );
-
-    if (!activationUpdate.rowCount || activationUpdate.rowCount < 1) {
-      return res.status(404).json({ error: { message: "User not found" } });
-    }
-
-    const user = await findUserById(userId);
-    if (!user) {
-      return res.status(404).json({ error: { message: "User not found" } });
-    }
+    const activationResult = await applyActivationToken(token);
+    const user = activationResult.user;
+    const userId = activationResult.userId;
+    const accessToken = activationResult.accessToken;
 
     const pub = publicUser(user);
-    const accessToken = signToken({
-      sub: userId,
-      email: pub.email,
-      name: pub.name,
-      roles: user.roles,
-    });
 
     await persistUserSession({
       userId,
@@ -591,6 +610,30 @@ authRouter.get("/activate", async (req, res, next) => {
       message: "Account activated successfully",
       tokenType: "Bearer",
       accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: pub,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+authRouter.post("/activate", async (req, res, next) => {
+  try {
+    const { token } = activateSchema.parse(req.body ?? {});
+    const activationResult = await applyActivationToken(token);
+    const user = activationResult.user;
+    if (!user) {
+      return res.status(404).json({ error: { message: "User not found" } });
+    }
+
+    const pub = publicUser(user);
+
+    return res.json({
+      status: "success",
+      message: "Account activated successfully",
+      tokenType: "Bearer",
+      accessToken: activationResult.accessToken,
       expiresIn: jwtExpiresIn(),
       user: pub,
     });
@@ -644,7 +687,7 @@ authRouter.post("/login", async (req, res, next) => {
       // Best-effort: resend activation email (only after verifying credentials).
         try {
           const activationToken = signActivationToken({ sub: user.id, email: user.email });
-          const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          const activationLink = `${webOrigin()}/activate?token=${encodeURIComponent(
             activationToken
           )}`;
 
@@ -762,7 +805,7 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
       // Best-effort: resend activation email (only after verifying credentials).
         try {
           const activationToken = signActivationToken({ sub: user.id, email: user.email });
-          const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          const activationLink = `${webOrigin()}/activate?token=${encodeURIComponent(
             activationToken
           )}`;
 

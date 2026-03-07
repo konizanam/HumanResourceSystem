@@ -28,6 +28,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { PublicJobsPage } from "./pages/PublicJobsPage";
 import { MyPermissionsPage } from "./pages/MyPermissionsPage";
 import { MainCompanySetupPage } from "./pages/MainCompanySetupPage";
+import { ActivateAccountPage } from "./pages/ActivateAccountPage";
 import { getPublicSetupStatus, getPublicSystemSettings } from "./api/client";
 import { useAuth } from "./auth/AuthContext";
 
@@ -330,6 +331,7 @@ export function App() {
       <>
       <Routes>
         <Route path="/login" element={<LoginEntryRoute />} />
+        <Route path="/activate" element={<ActivateAccountPage />} />
         <Route path="/setup/main-company" element={<MainCompanySetupRoute />} />
         <Route path="/register" element={<SignupPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

@@ -1,8 +1,7 @@
 export function PlaceholderPage({ title }: { title: string }) {
   return (
-    <div className="page">
-      <h1 className="pageTitle">{title}</h1>
-      <p className="pageText">Please wait while we load this page.</p>
+    <div className="page" aria-busy="true" aria-live="polite" role="status">
+      <span className="srOnly">{title}</span>
     </div>
   );
 }

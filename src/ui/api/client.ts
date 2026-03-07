@@ -971,6 +971,21 @@ export async function register(
   return (await res.json()) as LoginResponse;
 }
 
+export async function activateAccount(token: string): Promise<{ message?: string }> {
+  const res = await fetch(`${API_BASE}/auth/activate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) {
+    throw apiError(res, body, "Activation failed");
+  }
+
+  return body as { message?: string };
+}
+
 export async function forgotPassword(email: string) {
   const res = await fetch(`${API_BASE}/auth/forgot-password`, {
     method: "POST",
