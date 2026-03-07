@@ -248,6 +248,63 @@ export function App() {
   const [footerCompanyName, setFooterCompanyName] = useState("Global Company Name");
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const targetSelector = ".errorBox, .successBox, .hintBox";
+
+    const decorateNode = (node: Element) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (node.dataset.dismissibleReady === "1") return;
+
+      node.dataset.dismissibleReady = "1";
+      node.classList.add("dismissibleNotice");
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "alertCloseBtn";
+      closeBtn.setAttribute("aria-label", "Dismiss message");
+      closeBtn.title = "Dismiss";
+      closeBtn.textContent = "x";
+      closeBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        node.remove();
+      });
+
+      node.appendChild(closeBtn);
+    };
+
+    const decorateAll = (root: ParentNode) => {
+      const nodes = root.querySelectorAll(targetSelector);
+      nodes.forEach((node) => decorateNode(node));
+    };
+
+    decorateAll(document);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((addedNode) => {
+          if (!(addedNode instanceof Element)) return;
+
+          if (addedNode.matches(targetSelector)) {
+            decorateNode(addedNode);
+          }
+          decorateAll(addedNode);
+        });
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadFooterCompanyName = async () => {
