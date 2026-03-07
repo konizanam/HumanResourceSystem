@@ -91,7 +91,7 @@ export function IndustriesPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await listIndustries(accessToken, { page: 1, limit: 500 });
+      const response = await listIndustries(accessToken, { page: 1, limit: 100 });
       setIndustries(Array.isArray(response.industries) ? response.industries : []);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load industries");

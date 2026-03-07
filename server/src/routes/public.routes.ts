@@ -202,9 +202,15 @@ router.post('/setup/main-company', async (req, res) => {
     }
 
     const insertResult = await query(
-      `INSERT INTO companies (
+      `WITH upsert_industry AS (
+         INSERT INTO industries (name)
+         VALUES ($2)
+         ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id
+       )
+       INSERT INTO companies (
          name,
-         industry,
+         industry_id,
          description,
          website,
          logo_url,
@@ -216,7 +222,22 @@ router.post('/setup/main-company', async (req, res) => {
          country,
          created_by,
          status
-       ) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, NULL, 'active')
+       )
+       VALUES (
+         $1,
+         (SELECT id FROM upsert_industry),
+         $3,
+         $4,
+         NULL,
+         $5,
+         $6,
+         $7,
+         $8,
+         $9,
+         $10,
+         NULL,
+         'active'
+       )
        RETURNING id`,
       [
         name,
@@ -302,7 +323,8 @@ router.get('/jobs/:jobId/company', async (req, res) => {
       `SELECT
          c.id,
          c.name,
-         c.industry,
+         i.name AS industry,
+         c.industry_id,
          c.description,
          c.website,
          c.logo_url,
@@ -315,6 +337,7 @@ router.get('/jobs/:jobId/company', async (req, res) => {
          c.country
        FROM jobs j
        JOIN companies c ON c.id = j.company_id
+       LEFT JOIN industries i ON i.id = c.industry_id
        WHERE j.id = $1
        LIMIT 1`,
       [jobId],
@@ -339,21 +362,23 @@ router.get('/companies/:companyId', async (req, res) => {
 
     const { rows } = await query(
       `SELECT
-         id,
-         name,
-         industry,
-         description,
-         website,
-         logo_url,
-         (logo_data IS NOT NULL) as has_logo,
-         contact_email,
-         contact_phone,
-         address_line1,
-         address_line2,
-         city,
-         country
-       FROM companies
-       WHERE id = $1
+         c.id,
+         c.name,
+         i.name AS industry,
+         c.industry_id,
+         c.description,
+         c.website,
+         c.logo_url,
+         (c.logo_data IS NOT NULL) as has_logo,
+         c.contact_email,
+         c.contact_phone,
+         c.address_line1,
+         c.address_line2,
+         c.city,
+         c.country
+       FROM companies c
+       LEFT JOIN industries i ON i.id = c.industry_id
+       WHERE c.id = $1
        LIMIT 1`,
       [companyId],
     );

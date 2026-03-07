@@ -64,8 +64,8 @@ router.get(
            COUNT(DISTINCT c.id)::int AS company_count,
            COUNT(DISTINCT j.id)::int AS job_count
          FROM industries i
-         LEFT JOIN companies c ON LOWER(TRIM(c.industry)) = LOWER(TRIM(i.name))
-         LEFT JOIN jobs j ON LOWER(TRIM(j.industry)) = LOWER(TRIM(i.name))
+         LEFT JOIN companies c ON c.industry_id = i.id
+         LEFT JOIN jobs j ON j.company_id = c.id
          ${whereClause}
          GROUP BY i.id, i.name, i.created_at, i.updated_at
          ORDER BY i.name ASC

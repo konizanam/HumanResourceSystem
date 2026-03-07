@@ -49,23 +49,95 @@ async function ensureSchema() {
     )`,
   );
 
-  // Backfill industries from existing companies and jobs data.
+  // Ensure companies use industry_id FK as source of truth.
   await query(
-    `INSERT INTO industries (name)
-     SELECT DISTINCT TRIM(industry) AS name
-       FROM companies
-      WHERE industry IS NOT NULL
-        AND TRIM(industry) <> ''
-     ON CONFLICT (name) DO NOTHING`,
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS industry_id UUID",
+  );
+
+  // Backfill industries from legacy companies.industry text column when present.
+  await query(
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'companies'
+           AND column_name = 'industry'
+       ) THEN
+         INSERT INTO industries (name)
+         SELECT DISTINCT TRIM(industry) AS name
+         FROM companies
+         WHERE industry IS NOT NULL
+           AND TRIM(industry) <> ''
+         ON CONFLICT (name) DO NOTHING;
+       END IF;
+     END $$;`,
+  );
+
+  // Backfill industries from jobs.industry only for legacy schemas where that column exists.
+  await query(
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'jobs'
+           AND column_name = 'industry'
+       ) THEN
+         INSERT INTO industries (name)
+         SELECT DISTINCT TRIM(industry) AS name
+         FROM jobs
+         WHERE industry IS NOT NULL
+           AND TRIM(industry) <> ''
+         ON CONFLICT (name) DO NOTHING;
+       END IF;
+     END $$;`,
+  );
+
+  // Map legacy companies.industry values into companies.industry_id.
+  await query(
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'companies'
+           AND column_name = 'industry'
+       ) THEN
+         UPDATE companies c
+         SET industry_id = i.id
+         FROM industries i
+         WHERE c.industry_id IS NULL
+           AND c.industry IS NOT NULL
+           AND TRIM(c.industry) <> ''
+           AND LOWER(TRIM(i.name)) = LOWER(TRIM(c.industry));
+       END IF;
+     END $$;`,
   );
 
   await query(
-    `INSERT INTO industries (name)
-     SELECT DISTINCT TRIM(industry) AS name
-       FROM jobs
-      WHERE industry IS NOT NULL
-        AND TRIM(industry) <> ''
-     ON CONFLICT (name) DO NOTHING`,
+    "CREATE INDEX IF NOT EXISTS idx_companies_industry_id ON companies(industry_id)",
+  );
+
+  await query(
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1
+         FROM pg_constraint
+         WHERE conname = 'companies_industry_id_fkey'
+       ) THEN
+         ALTER TABLE companies
+         ADD CONSTRAINT companies_industry_id_fkey
+         FOREIGN KEY (industry_id)
+         REFERENCES industries(id)
+         ON UPDATE CASCADE
+         ON DELETE RESTRICT;
+       END IF;
+     END $$;`,
   );
 
   // Ensure company delete permission exists for role assignment.

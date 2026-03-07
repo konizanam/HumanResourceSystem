@@ -32,7 +32,7 @@ const poolConfig = {
       }),
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 10000),
 };
 
 const LOG_DB_CONFIG = process.env.DB_LOG_CONFIG === 'true';
@@ -53,7 +53,7 @@ export const pool = new Pool(poolConfig);
 // Test the connection on startup
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('❌ Error acquiring client from pool:', err.stack);
+    console.error('❌ Error acquiring client from pool:', err.message);
     return;
   }
   if (LOG_DB_CONFIG) {
@@ -65,7 +65,7 @@ pool.connect((err, client, release) => {
 // Handle pool errors
 pool.on('error', (err) => {
   console.error('❌ Unexpected error on idle client:', err);
-  process.exit(-1);
+  // Keep process alive; next query can recover on transient DB/network issues.
 });
 
 // Query helper function with error handling

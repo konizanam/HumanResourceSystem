@@ -79,11 +79,19 @@ CREATE TABLE user_roles (
 -- MODULE 2: Company Management
 -- =====================================================
 
+-- 2.0 industries table
+CREATE TABLE industries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(120) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 2.1 companies table
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(150) NOT NULL,
-    industry VARCHAR(100),
+    industry_id UUID REFERENCES industries(id) ON UPDATE CASCADE ON DELETE RESTRICT,
     description TEXT,
     website VARCHAR(255),
     logo_url TEXT,
@@ -614,7 +622,7 @@ CREATE INDEX idx_daily_visitors_last_seen ON daily_unique_visitors(last_seen_at)
 
 -- Company indexes
 CREATE INDEX idx_companies_name ON companies(name);
-CREATE INDEX idx_companies_industry ON companies(industry);
+CREATE INDEX idx_companies_industry_id ON companies(industry_id);
 CREATE INDEX idx_companies_country ON companies(country);
 
 -- Job alerts indexes

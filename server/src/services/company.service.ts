@@ -14,6 +14,38 @@ export class CompanyService {
     return String(input ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  }
+
+  private async resolveIndustryId(rawIndustry: unknown): Promise<string | null> {
+    const normalized = String(rawIndustry ?? '').trim();
+    if (!normalized) return null;
+
+    if (this.isUuid(normalized)) {
+      const byId = await query(
+        `SELECT id
+           FROM industries
+          WHERE id = $1
+          LIMIT 1`,
+        [normalized],
+      );
+      if (byId.rows.length === 0) {
+        throw new BadRequestError('Invalid industry id');
+      }
+      return String(byId.rows[0]?.id ?? '').trim() || null;
+    }
+
+    const upsert = await query(
+      `INSERT INTO industries (name)
+       VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [normalized],
+    );
+    return String(upsert.rows[0]?.id ?? '').trim() || null;
+  }
+
   private async isAdminUser(userId: string): Promise<boolean> {
     const roles = await this.db.getUserRoles(userId);
     return Array.isArray(roles) && roles.some((r) => String(r).toUpperCase() === 'ADMIN');
@@ -35,7 +67,8 @@ export class CompanyService {
     const safeCompanySelect = `
       c.id,
       c.name,
-      c.industry,
+      c.industry_id,
+      i.name AS industry,
       c.description,
       c.website,
       c.logo_url,
@@ -65,6 +98,7 @@ export class CompanyService {
             WHERE cu2.company_id = c.id) as user_names,
           u.first_name || ' ' || u.last_name as created_by_name
          FROM companies c
+        LEFT JOIN industries i ON i.id = c.industry_id
          LEFT JOIN users u ON c.created_by = u.id
          ORDER BY c.created_at DESC`
       );
@@ -75,13 +109,15 @@ export class CompanyService {
         `SELECT
            c.id,
            c.name,
-           c.industry,
+           c.industry_id,
+           i.name AS industry,
            c.logo_url,
            (c.logo_data IS NOT NULL) as has_logo,
            COALESCE(c.status, 'active') as status,
            (SELECT COUNT(*) FROM jobs j WHERE j.company_id = c.id) as jobs_count,
            c.created_at
          FROM companies c
+         LEFT JOIN industries i ON i.id = c.industry_id
          WHERE COALESCE(c.status, 'active') = 'active'
          ORDER BY c.created_at DESC`
       );
@@ -97,6 +133,7 @@ export class CompanyService {
             WHERE cu2.company_id = c.id) as user_names,
           u.first_name || ' ' || u.last_name as created_by_name
          FROM companies c
+         LEFT JOIN industries i ON i.id = c.industry_id
          LEFT JOIN users u ON c.created_by = u.id
          WHERE c.id IN (
            SELECT company_id FROM company_users WHERE user_id = $1
@@ -122,7 +159,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -143,6 +181,7 @@ export class CompanyService {
           WHERE cu2.company_id = c.id) as user_names,
         u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
       [companyId]
@@ -159,6 +198,10 @@ export class CompanyService {
     const { name, industry, description, website, contact_email, contact_phone, address_line1, address_line2, city, country } = companyData;
     const approvalMode = await getCompanyApprovalMode();
     const initialStatus = approvalMode === 'pending' ? 'pending' : 'active';
+    const industryId = await this.resolveIndustryId(industry);
+    if (!industryId) {
+      throw new BadRequestError('Industry is required');
+    }
 
     const logoData = logoFile?.buffer ?? null;
     const logoMime = logoFile?.mimetype ?? null;
@@ -167,13 +210,13 @@ export class CompanyService {
     // Create company
     const result = await query(
       `INSERT INTO companies (
-        name, industry, description, website, logo_url, logo_data, logo_mime, logo_filename, logo_updated_at,
+        name, industry_id, description, website, logo_url, logo_data, logo_mime, logo_filename, logo_updated_at,
         contact_email, contact_phone, address_line1, address_line2, city, country, created_by, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id`,
       [
         name,
-        industry,
+        industryId,
         description,
         website,
         null,
@@ -204,7 +247,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -225,6 +269,7 @@ export class CompanyService {
           WHERE cu2.company_id = c.id) as user_names,
         u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
       [company.id]
@@ -241,7 +286,7 @@ export class CompanyService {
     }
 
     // Build dynamic update query
-    const allowedFields = ['name', 'industry', 'description', 'website', 'contact_email', 'contact_phone', 'address_line1', 'address_line2', 'city', 'country'];
+    const allowedFields = ['name', 'description', 'website', 'contact_email', 'contact_phone', 'address_line1', 'address_line2', 'city', 'country'];
     const updateFields = [];
     const values = [];
     let paramIndex = 1;
@@ -252,6 +297,16 @@ export class CompanyService {
         values.push(updates[field]);
         paramIndex++;
       }
+    }
+
+    if (updates.industry !== undefined) {
+      const industryId = await this.resolveIndustryId(updates.industry);
+      if (!industryId) {
+        throw new BadRequestError('Industry is required');
+      }
+      updateFields.push(`industry_id = $${paramIndex}`);
+      values.push(industryId);
+      paramIndex++;
     }
 
     if (logoFile?.buffer) {
@@ -292,7 +347,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -307,6 +363,7 @@ export class CompanyService {
         COALESCE(c.status, 'active') as status,
         (c.logo_data IS NOT NULL) as has_logo
        FROM companies c
+       LEFT JOIN industries i ON i.id = c.industry_id
        WHERE c.id = $1`,
       [companyId]
     );
@@ -337,7 +394,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -358,6 +416,7 @@ export class CompanyService {
           WHERE cu2.company_id = c.id) as user_names,
         u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
       [companyId]
@@ -389,7 +448,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -410,6 +470,7 @@ export class CompanyService {
           WHERE cu2.company_id = c.id) as user_names,
         u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
       [companyId]
@@ -440,7 +501,8 @@ export class CompanyService {
       `SELECT
         c.id,
         c.name,
-        c.industry,
+        c.industry_id,
+        i.name AS industry,
         c.description,
         c.website,
         c.logo_url,
@@ -461,6 +523,7 @@ export class CompanyService {
           WHERE cu2.company_id = c.id) as user_names,
         u.first_name || ' ' || u.last_name as created_by_name
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        LEFT JOIN users u ON c.created_by = u.id
        WHERE c.id = $1`,
       [companyId]

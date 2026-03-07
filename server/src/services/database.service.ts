@@ -155,7 +155,8 @@ export class DatabaseService {
       `SELECT
          c.id,
          c.name,
-         c.industry,
+        c.industry_id,
+        i.name AS industry,
          c.description,
          c.website,
          c.logo_url,
@@ -170,6 +171,7 @@ export class DatabaseService {
          COALESCE(c.status, 'active') as status,
          (c.logo_data IS NOT NULL) as has_logo
        FROM companies c
+       LEFT JOIN industries i ON i.id = c.industry_id
        WHERE c.id = $1`,
       [companyId]
     );
@@ -207,7 +209,8 @@ export class DatabaseService {
       `SELECT
          c.id,
          c.name,
-         c.industry,
+        c.industry_id,
+        i.name AS industry,
          c.description,
          c.website,
          c.logo_url,
@@ -222,6 +225,7 @@ export class DatabaseService {
          COALESCE(c.status, 'active') as status,
          (c.logo_data IS NOT NULL) as has_logo
        FROM companies c
+      LEFT JOIN industries i ON i.id = c.industry_id
        JOIN company_users cu ON c.id = cu.company_id
        WHERE cu.user_id = $1
        ORDER BY c.created_at DESC`,

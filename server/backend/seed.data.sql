@@ -331,36 +331,45 @@ WHERE u.id IN (SELECT user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.
 -- 4. COMPANIES (4 companies)
 -- =====================================================
 
+-- Ensure company industries exist
+INSERT INTO industries (name)
+VALUES
+  ('Technology'),
+  ('Healthcare'),
+  ('Finance'),
+  ('Energy')
+ON CONFLICT (name) DO NOTHING;
+
 -- Insert companies
 WITH inserted_companies AS (
     INSERT INTO companies (
-        id, name, industry, description, website, 
+        id, name, industry_id, description, website, 
         contact_email, contact_phone, address_line1, city, country, 
         status, created_at
     ) VALUES 
         (
-            gen_random_uuid(), 'TechCorp Solutions', 'Technology',
+            gen_random_uuid(), 'TechCorp Solutions', (SELECT id FROM industries WHERE name = 'Technology' LIMIT 1),
             'Leading technology solutions provider specializing in cloud computing and AI',
             'https://www.techcorp.com',
             'contact@techcorp.com', '+1-800-TECH', '500 Tech Boulevard', 'San Francisco', 'USA',
             'active', NOW()
         ),
         (
-            gen_random_uuid(), 'Healthcare Plus', 'Healthcare',
+            gen_random_uuid(), 'Healthcare Plus', (SELECT id FROM industries WHERE name = 'Healthcare' LIMIT 1),
             'Comprehensive healthcare services and medical facilities',
             'https://www.healthcareplus.com',
             'hr@healthcareplus.com', '+1-800-HEALTH', '100 Health Park', 'Boston', 'USA',
             'active', NOW()
         ),
         (
-            gen_random_uuid(), 'Finance Group', 'Finance',
+            gen_random_uuid(), 'Finance Group', (SELECT id FROM industries WHERE name = 'Finance' LIMIT 1),
             'Investment banking and financial services',
             'https://www.financegroup.com',
             'careers@financegroup.com', '+1-800-FINANCE', '50 Wall Street', 'New York', 'USA',
             'active', NOW()
         ),
         (
-            gen_random_uuid(), 'Green Energy Solutions', 'Energy',
+            gen_random_uuid(), 'Green Energy Solutions', (SELECT id FROM industries WHERE name = 'Energy' LIMIT 1),
             'Renewable energy and sustainability solutions',
             'https://www.greenenergy.com',
             'hr@greenenergy.com', '+1-877-GREEN', '300 Solar Way', 'Denver', 'USA',
@@ -1279,10 +1288,16 @@ FROM users u
 WHERE u.email = 'llosper@konizanam.com'
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
+WITH upsert_demo_industry AS (
+    INSERT INTO industries (name)
+    VALUES ('Human Resources')
+    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id
+)
 INSERT INTO companies (
   id,
   name,
-  industry,
+    industry_id,
   description,
   website,
   contact_email,
@@ -1295,7 +1310,7 @@ INSERT INTO companies (
 SELECT
   'df2ba8ec-0c2d-497e-8d32-7f2d8bbf7d7a',
   'Konizanam Holdings (Demo)',
-  'Human Resources',
+    (SELECT id FROM upsert_demo_industry LIMIT 1),
   'Demo company for employer account seeding.',
   'https://konizanam.example.com',
   'careers@konizanam.com',
