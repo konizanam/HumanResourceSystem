@@ -8,6 +8,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('APPLY_JOB', 'Apply for jobs', 'Applications', 'CREATE'),
   ('APPROVE_COMPANY', 'Approve pending companies', 'Company', 'APPROVE'),
   ('APPROVE_JOB', 'Approve pending jobs', 'Jobs', 'APPROVE'),
+  ('ADD_USER', 'Create users except job seekers', 'Users', 'CREATE'),
   ('CHANGE_APP_COLOR', 'Change application color theme', 'System', 'UPDATE'),
   ('CHANGE_JOBSEEKER_APP_STATUS', 'Change job seeker application status', 'Applications', 'UPDATE'),
   ('CONTACT_REFERENCES', 'Contact candidate references', 'Candidates', 'UPDATE'),

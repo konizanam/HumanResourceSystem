@@ -789,6 +789,7 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
     ('ADMIN_DASHBOARD', 'Access admin dashboard widgets', 'Dashboard', 'VIEW'),
     ('EMPLOYER_DASHBOARD', 'Access employer dashboard widgets', 'Dashboard', 'VIEW'),
     ('JOB_SEEKER_DASHBOARD', 'Access job seeker dashboard widgets', 'Dashboard', 'VIEW'),
+    ('ADD_USER', 'Create users except job seekers', 'Users', 'CREATE'),
     ('MANAGE_USERS', 'Create and manage users', 'Users', 'MANAGE'),
     ('VIEW_AUDIT_LOGS', 'Access audit logs', 'System', 'VIEW');
 

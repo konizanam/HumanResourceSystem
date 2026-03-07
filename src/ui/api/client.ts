@@ -1935,6 +1935,26 @@ export async function blockUser(
   return body;
 }
 
+export async function createAdminUser(
+  token: string,
+  payload: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    password: string;
+    role_id: string;
+  },
+): Promise<{ message: string; user: AdminUser }> {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to create user");
+  return body as { message: string; user: AdminUser };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Admin Jobs                                                         */
 /* ------------------------------------------------------------------ */

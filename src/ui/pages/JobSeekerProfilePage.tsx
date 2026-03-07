@@ -4,6 +4,14 @@ import { useAuth } from "../auth/AuthContext";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
+  CALLING_CODE_OPTIONS,
+  DEFAULT_CALLING_CODE,
+  composeInternationalPhone,
+  sanitizePhoneLocalInput,
+  splitInternationalPhone,
+  validateInternationalPhone,
+} from "../utils/phoneCountryCodes";
+import {
   applyToJob,
   blockUser,
   listJobSeekerResumes,
@@ -3377,7 +3385,8 @@ function ReferencesSection({
     if (!form.relationship.trim()) errs.relationship = "Relationship is required";
     if (!form.company.trim()) errs.company = "Company is required";
     if (!form.email.trim()) errs.email = "Email is required";
-    if (!form.phone.trim()) errs.phone = "Phone is required";
+    const phoneErr = validateInternationalPhone(form.phone, "Phone is required");
+    if (phoneErr) errs.phone = phoneErr;
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -3513,14 +3522,40 @@ function ReferencesSection({
               required
               error={fieldErrors.email}
             />
-            <EditField
-              label="Phone"
-              value={form.phone}
-              onChange={(v) => setForm({ ...form, phone: v })}
-              type="tel"
-              required
-              error={fieldErrors.phone}
-            />
+            <div className="field">
+              <label className="fieldLabel">Phone</label>
+              {(() => {
+                const parts = splitInternationalPhone(form.phone, DEFAULT_CALLING_CODE);
+                return (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select
+                      className="input"
+                      value={parts.code}
+                      onChange={(e) => {
+                        const nextCode = e.target.value;
+                        setForm({ ...form, phone: composeInternationalPhone(nextCode, parts.local) });
+                      }}
+                      style={{ maxWidth: 220 }}
+                    >
+                      {CALLING_CODE_OPTIONS.map((option) => (
+                        <option key={option.label} value={option.code}>{option.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      className="input"
+                      type="tel"
+                      inputMode="tel"
+                      value={parts.local}
+                      onChange={(e) => {
+                        const nextLocal = sanitizePhoneLocalInput(e.target.value, 15);
+                        setForm({ ...form, phone: composeInternationalPhone(parts.code, nextLocal) });
+                      }}
+                    />
+                  </div>
+                );
+              })()}
+              {fieldErrors.phone ? <span className="fieldError">{fieldErrors.phone}</span> : null}
+            </div>
           </div>
           <div className="stepperActions">
             {editId && (

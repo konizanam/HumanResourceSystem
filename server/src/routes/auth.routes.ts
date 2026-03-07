@@ -496,6 +496,25 @@ authRouter.post("/register", async (req, res, next) => {
       [userId]
     );
 
+    // Keep legacy users.role column in sync when present.
+    const roleColumn = await client.query(
+      `SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'role'
+        LIMIT 1`,
+    );
+    if (roleColumn.rows.length > 0) {
+      await client.query(
+        `UPDATE users
+            SET role = 'JOB_SEEKER',
+                updated_at = NOW()
+          WHERE id = $1`,
+        [userId],
+      );
+    }
+
     // Create empty job seeker profile
     await client.query(
       `INSERT INTO job_seeker_profiles (user_id) VALUES ($1)`,

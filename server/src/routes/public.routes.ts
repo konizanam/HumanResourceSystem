@@ -180,17 +180,17 @@ router.post('/setup/main-company', async (req, res) => {
     }
 
     const phone = normalizePhone(contactPhone);
-    if (phone.digits.length > 13) {
+    if (phone.digits.length > 15) {
       return res.status(400).json({
         status: 'error',
-        message: 'Phone number must not exceed 13 digits',
+        message: 'Phone number must not exceed 15 digits',
       });
     }
 
-    if (!phone.digits.startsWith('264')) {
+    if (phone.digits.length < 6) {
       return res.status(400).json({
         status: 'error',
-        message: 'Phone number must start with +264',
+        message: 'Phone number appears too short',
       });
     }
 

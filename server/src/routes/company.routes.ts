@@ -43,11 +43,11 @@ const companyCreateValidation = [
     .custom((value) => {
       const raw = String(value ?? '').trim();
       const digits = raw.replace(/\D/g, '');
-      if (digits.length > 13) {
-        throw new Error('Phone number must not exceed 13 digits');
+      if (digits.length > 15) {
+        throw new Error('Phone number must not exceed 15 digits');
       }
-      if (!digits.startsWith('264')) {
-        throw new Error('Phone number must start with +264');
+      if (digits.length < 6) {
+        throw new Error('Phone number appears too short');
       }
       if (!/^\+?[\d\s]+$/.test(raw)) {
         throw new Error('Invalid phone format');
@@ -73,11 +73,11 @@ const companyUpdateValidation = [
     .custom((value) => {
       const raw = String(value ?? '').trim();
       const digits = raw.replace(/\D/g, '');
-      if (digits.length > 13) {
-        throw new Error('Phone number must not exceed 13 digits');
+      if (digits.length > 15) {
+        throw new Error('Phone number must not exceed 15 digits');
       }
-      if (!digits.startsWith('264')) {
-        throw new Error('Phone number must start with +264');
+      if (digits.length < 6) {
+        throw new Error('Phone number appears too short');
       }
       if (!/^\+?[\d\s]+$/.test(raw)) {
         throw new Error('Invalid phone format');

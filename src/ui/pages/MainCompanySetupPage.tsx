@@ -1,6 +1,14 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getPublicSetupStatus, setupMainCompany, type MainCompanySetupPayload } from "../api/client";
+import {
+  CALLING_CODE_OPTIONS,
+  DEFAULT_CALLING_CODE,
+  composeInternationalPhone,
+  sanitizePhoneLocalInput,
+  splitInternationalPhone,
+  validateInternationalPhone,
+} from "../utils/phoneCountryCodes";
 
 type SetupFormState = MainCompanySetupPayload;
 
@@ -17,45 +25,8 @@ const EMPTY_FORM: SetupFormState = {
   country: "",
 };
 
-function sanitizePhoneInput(raw: string): string {
-  let value = raw.replace(/[^\d+\s]/g, "");
-  value = value.replace(/\+(?=.)/g, (match, offset) => (offset === 0 ? match : ""));
-  value = value.replace(/\s+/g, " ").trimStart();
-
-  let digitCount = 0;
-  let out = "";
-
-  for (const char of value) {
-    if (char >= "0" && char <= "9") {
-      if (digitCount >= 13) continue;
-      digitCount += 1;
-      out += char;
-      continue;
-    }
-
-    if (char === "+") {
-      if (out.length === 0) out += char;
-      continue;
-    }
-
-    if (char === " ") {
-      if (out.length > 0 && out[out.length - 1] !== " ") {
-        out += char;
-      }
-    }
-  }
-
-  return out;
-}
-
 function validatePhone(raw: string): string | null {
-  const cleaned = sanitizePhoneInput(raw).trim();
-  if (!cleaned) return "Contact phone is required.";
-
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.length > 13) return "Phone number must not exceed 13 digits.";
-  if (!digits.startsWith("264")) return "Phone number must start with +264.";
-  return null;
+  return validateInternationalPhone(raw, "Contact phone is required.");
 }
 
 async function waitForSetupCompletion(maxAttempts = 12, delayMs = 500): Promise<boolean> {
@@ -78,6 +49,9 @@ async function waitForSetupCompletion(maxAttempts = 12, delayMs = 500): Promise<
 export function MainCompanySetupPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<SetupFormState>(EMPTY_FORM);
+  const initialPhone = splitInternationalPhone(EMPTY_FORM.contact_phone ?? "", DEFAULT_CALLING_CODE);
+  const [phoneCode, setPhoneCode] = useState(initialPhone.code);
+  const [phoneLocal, setPhoneLocal] = useState(initialPhone.local);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -160,7 +134,7 @@ export function MainCompanySetupPage() {
         description: form.description.trim(),
         website,
         contact_email: email,
-        contact_phone: sanitizePhoneInput(form.contact_phone).trim(),
+        contact_phone: composeInternationalPhone(phoneCode, phoneLocal),
         address_line1: form.address_line1.trim(),
         address_line2: form.address_line2.trim(),
         city: form.city.trim(),
@@ -253,15 +227,35 @@ export function MainCompanySetupPage() {
 
             <label className="field">
               <span className="fieldLabel">Contact phone</span>
-              <input
-                className="input"
-                value={form.contact_phone}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, contact_phone: sanitizePhoneInput(e.target.value) }))
-                }
-                placeholder="+264 61 123 4567"
-                required
-              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <select
+                  className="input"
+                  value={phoneCode}
+                  onChange={(e) => {
+                    const nextCode = e.target.value;
+                    setPhoneCode(nextCode);
+                    setForm((prev) => ({ ...prev, contact_phone: composeInternationalPhone(nextCode, phoneLocal) }));
+                  }}
+                  style={{ maxWidth: 220 }}
+                >
+                  {CALLING_CODE_OPTIONS.map((option) => (
+                    <option key={option.label} value={option.code}>{option.label}</option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  type="tel"
+                  inputMode="tel"
+                  value={phoneLocal}
+                  onChange={(e) => {
+                    const nextLocal = sanitizePhoneLocalInput(e.target.value, 15);
+                    setPhoneLocal(nextLocal);
+                    setForm((prev) => ({ ...prev, contact_phone: composeInternationalPhone(phoneCode, nextLocal) }));
+                  }}
+                  placeholder="Phone number"
+                  required
+                />
+              </div>
             </label>
 
             <label className="field">

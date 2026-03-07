@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   type AdminUser,
+  createAdminUser,
+  listRoles,
   listAdminUsers,
   getAdminUser,
   blockUser,
   getUserRoles,
+  type Role,
   setUserRoles,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -75,6 +78,7 @@ export function UsersPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
   const canManageUsers = hasPermission("MANAGE_USERS");
+  const canAddUser = hasPermission("ADD_USER");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,6 +91,16 @@ export function UsersPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
   const [summary, setSummary] = useState({ total_users: 0, active_users: 0, blocked_users: 0 });
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [assignableRoles, setAssignableRoles] = useState<Role[]>([]);
+  const [addForm, setAddForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    password: "",
+    role_id: "",
+  });
 
   // Detail panel
   const [openUserId, setOpenUserId] = useState<string | null>(null);
@@ -127,6 +141,34 @@ export function UsersPage() {
   }, [accessToken, pagination.limit, search, roleFilter, statusFilter]);
 
   useEffect(() => { load(1); }, [load]);
+
+  useEffect(() => {
+    if (!accessToken || !canAddUser) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const data = await listRoles(accessToken, { page: 1, limit: 200 });
+        if (cancelled) return;
+        const filtered = (data.roles ?? []).filter(
+          (role) => String(role.name ?? "").trim().toUpperCase() !== "JOB_SEEKER",
+        );
+        setAssignableRoles(filtered);
+        setAddForm((prev) => ({
+          ...prev,
+          role_id: prev.role_id || String(filtered[0]?.id ?? ""),
+        }));
+      } catch {
+        if (!cancelled) {
+          setAssignableRoles([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, canAddUser]);
 
   function clearMessages() { setError(null); setSuccess(null); }
 
@@ -236,6 +278,56 @@ export function UsersPage() {
     }
   }
 
+  async function onAddUser() {
+    if (!accessToken || !canAddUser) return;
+
+    const firstName = addForm.first_name.trim();
+    const lastName = addForm.last_name.trim();
+    const email = addForm.email.trim();
+    const password = addForm.password;
+    const roleId = addForm.role_id;
+    if (!firstName || !lastName || !email || !password || !roleId) {
+      setError("First name, last name, email, password and role are required");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+
+    const selectedRole = assignableRoles.find((role) => role.id === roleId);
+    if (String(selectedRole?.name ?? "").trim().toUpperCase() === "JOB_SEEKER") {
+      setError("JOB_SEEKER users must be added via registration");
+      return;
+    }
+
+    try {
+      clearMessages();
+      setSaving(true);
+      const result = await createAdminUser(accessToken, {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password,
+        role_id: roleId,
+      });
+      setSuccess(result.message || "User added successfully");
+      setAddOpen(false);
+      setAddForm({
+        first_name: "",
+        last_name: "",
+        email: "",
+        password: "",
+        role_id: String(assignableRoles[0]?.id ?? ""),
+      });
+      await load(1);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to add user");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   /* -- Pagination -- */
   function goToPage(page: number) {
     if (page < 1 || page > pagination.pages) return;
@@ -340,6 +432,26 @@ export function UsersPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
+        {canAddUser ? (
+          <button
+            type="button"
+            className="btn btnPrimary btnSm"
+            style={{
+              background: "var(--menu-icon-active)",
+              borderColor: "var(--menu-icon-active)",
+              fontWeight: 700,
+            }}
+            onClick={() => {
+              clearMessages();
+              setAddOpen((prev) => !prev);
+            }}
+            disabled={saving}
+          >
+            {addOpen ? "Cancel" : "Add User"}
+          </button>
+        ) : null}
+
         <div style={{ minWidth: 140 }}>
           <label className="fieldLabel">Role</label>
           <select
@@ -372,6 +484,85 @@ export function UsersPage() {
           {renderUsersPager("Users pagination top inline", 0)}
         </div>
       </div>
+
+      {addOpen && canAddUser ? (
+        <div className="dropPanel" role="region" aria-label="Add user" style={{ marginBottom: 16 }}>
+          <div className="editForm">
+            <h2 className="editFormTitle">Add User</h2>
+            <div className="editGrid">
+              <label className="field">
+                <span className="fieldLabel">First Name</span>
+                <input
+                  className="input"
+                  value={addForm.first_name}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, first_name: e.target.value }))}
+                  placeholder="First name"
+                />
+              </label>
+              <label className="field">
+                <span className="fieldLabel">Last Name</span>
+                <input
+                  className="input"
+                  value={addForm.last_name}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, last_name: e.target.value }))}
+                  placeholder="Last name"
+                />
+              </label>
+              <label className="field">
+                <span className="fieldLabel">Email</span>
+                <input
+                  className="input"
+                  type="email"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="user@example.com"
+                />
+              </label>
+              <label className="field">
+                <span className="fieldLabel">Temporary Password</span>
+                <input
+                  className="input"
+                  type="password"
+                  value={addForm.password}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="Minimum 8 characters"
+                />
+              </label>
+              <label className="field">
+                <span className="fieldLabel">Role</span>
+                <select
+                  className="input"
+                  value={addForm.role_id}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, role_id: e.target.value }))}
+                >
+                  {assignableRoles.length === 0 ? <option value="">No roles available</option> : null}
+                  {assignableRoles.map((role) => (
+                    <option key={role.id} value={role.id}>{role.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="stepperActions">
+              <button
+                className="btn btnGhost"
+                type="button"
+                onClick={() => setAddOpen(false)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={() => void onAddUser()}
+                disabled={saving || !addForm.first_name.trim() || !addForm.last_name.trim() || !addForm.email.trim() || !addForm.password || !addForm.role_id}
+              >
+                {saving ? "Adding..." : "Add User"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Table */}
       <div className="tableWrap" role="region" aria-label="Users table">

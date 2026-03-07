@@ -24,6 +24,14 @@ import { RichTextEditor, normalizeRichTextForSave, richTextToPlainText } from ".
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { useNavigate } from "react-router-dom";
+import {
+  CALLING_CODE_OPTIONS,
+  DEFAULT_CALLING_CODE,
+  composeInternationalPhone,
+  sanitizePhoneLocalInput,
+  splitInternationalPhone,
+  validateInternationalPhone,
+} from "../utils/phoneCountryCodes";
 
 const COMPANY_PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
 
@@ -107,43 +115,8 @@ function normalizePayload(form: CompanyUpsertPayload): CompanyUpsertPayload {
   return cleaned;
 }
 
-function sanitizePhoneInput(raw: string): string {
-  // Allow: leading '+', digits, spaces. Strip everything else.
-  let v = raw.replace(/[^\d+\s]/g, "");
-
-  // Only keep '+' if it's the first non-space character.
-  v = v.replace(/\+(?=.)/g, (_match, offset) => (offset === 0 ? "+" : ""));
-
-  // Normalize spaces.
-  v = v.replace(/\s+/g, " ").trimStart();
-
-  // Enforce max 13 digits (keep spaces, but stop adding more digits).
-  let digitCount = 0;
-  let out = "";
-  for (const ch of v) {
-    if (ch >= "0" && ch <= "9") {
-      if (digitCount >= 13) continue;
-      digitCount += 1;
-      out += ch;
-    } else if (ch === "+") {
-      if (out.length === 0) out += ch;
-    } else if (ch === " ") {
-      if (out.length > 0 && out[out.length - 1] !== " ") out += ch;
-    }
-  }
-
-  return out;
-}
-
-function validateNamibiaPhone(raw: string): string | null {
-  const cleaned = sanitizePhoneInput(raw).trim();
-  if (!cleaned) return "Contact phone is required";
-
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.length > 13) return "Phone number must not exceed 13 digits";
-  if (!digits.startsWith("264")) return "Phone number must start with +264";
-
-  return null;
+function validateContactPhone(raw: string): string | null {
+  return validateInternationalPhone(raw, "Contact phone is required");
 }
 
 function formatCompanyUsers(company: Company | null): { text: string; title?: string } {
@@ -645,7 +618,7 @@ export function CompaniesPage() {
       if (!(addForm.description ?? "").trim()) errs.description = "Description is required";
       if (!addForm.logoFile) errs.logo = "Company logo is required";
       if (!(addForm.contact_email ?? "").trim()) errs.contact_email = "Contact email is required";
-      const phoneErr = validateNamibiaPhone(addForm.contact_phone ?? "");
+      const phoneErr = validateContactPhone(addForm.contact_phone ?? "");
       if (phoneErr) errs.contact_phone = phoneErr;
       if (!(addForm.address_line1 ?? "").trim()) errs.address_line1 = "Address line 1 is required";
       if (!(addForm.address_line2 ?? "").trim()) errs.address_line2 = "Address line 2 is required";
@@ -976,19 +949,40 @@ export function CompaniesPage() {
 
               <div className="field">
                 <label className="fieldLabel">Contact Phone *</label>
-                <input
-                  className="input"
-                  type="tel"
-                  inputMode="tel"
-                  value={addForm.contact_phone}
-                  onChange={(e) => {
-                    clearAddFieldError("contact_phone");
-                    const next = sanitizePhoneInput(e.target.value);
-                    setAddForm((p) => ({ ...p, contact_phone: next }));
-                  }}
-                  placeholder="+264 81 123 4567 or +264 61 123 456"
-                  required
-                />
+                {(() => {
+                  const parts = splitInternationalPhone(addForm.contact_phone ?? "", DEFAULT_CALLING_CODE);
+                  return (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select
+                        className="input"
+                        value={parts.code}
+                        onChange={(e) => {
+                          clearAddFieldError("contact_phone");
+                          const nextCode = e.target.value;
+                          setAddForm((p) => ({ ...p, contact_phone: composeInternationalPhone(nextCode, parts.local) }));
+                        }}
+                        style={{ maxWidth: 220 }}
+                      >
+                        {CALLING_CODE_OPTIONS.map((option) => (
+                          <option key={option.label} value={option.code}>{option.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        className="input"
+                        type="tel"
+                        inputMode="tel"
+                        value={parts.local}
+                        onChange={(e) => {
+                          clearAddFieldError("contact_phone");
+                          const nextLocal = sanitizePhoneLocalInput(e.target.value, 15);
+                          setAddForm((p) => ({ ...p, contact_phone: composeInternationalPhone(parts.code, nextLocal) }));
+                        }}
+                        placeholder="Phone number"
+                        required
+                      />
+                    </div>
+                  );
+                })()}
                 {addFieldErrors.contact_phone && (
                   <span className="fieldError">{addFieldErrors.contact_phone}</span>
                 )}
@@ -2008,13 +2002,36 @@ function CompanyEditPanel({
 
         <div className="field">
           <label className="fieldLabel">Contact Phone</label>
-          <input
-            className="input"
-            type="tel"
-            inputMode="tel"
-            value={form.contact_phone ?? ""}
-            onChange={(e) => onChange({ ...form, contact_phone: sanitizePhoneInput(e.target.value) })}
-          />
+          {(() => {
+            const parts = splitInternationalPhone(form.contact_phone ?? "", DEFAULT_CALLING_CODE);
+            return (
+              <div style={{ display: "flex", gap: 8 }}>
+                <select
+                  className="input"
+                  value={parts.code}
+                  onChange={(e) => {
+                    const nextCode = e.target.value;
+                    onChange({ ...form, contact_phone: composeInternationalPhone(nextCode, parts.local) });
+                  }}
+                  style={{ maxWidth: 220 }}
+                >
+                  {CALLING_CODE_OPTIONS.map((option) => (
+                    <option key={option.label} value={option.code}>{option.label}</option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  type="tel"
+                  inputMode="tel"
+                  value={parts.local}
+                  onChange={(e) => {
+                    const nextLocal = sanitizePhoneLocalInput(e.target.value, 15);
+                    onChange({ ...form, contact_phone: composeInternationalPhone(parts.code, nextLocal) });
+                  }}
+                />
+              </div>
+            );
+          })()}
         </div>
 
         <div className="field">

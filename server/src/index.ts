@@ -175,6 +175,24 @@ async function ensureSchema() {
            module_name = EXCLUDED.module_name,
            action_type = EXCLUDED.action_type`,
   );
+
+  await query(
+    `INSERT INTO permissions (name, description, module_name, action_type)
+     VALUES ('ADD_USER', 'Create users except job seekers', 'Users', 'CREATE')
+     ON CONFLICT (name) DO UPDATE
+       SET description = EXCLUDED.description,
+           module_name = EXCLUDED.module_name,
+           action_type = EXCLUDED.action_type`,
+  );
+
+  await query(
+    `INSERT INTO role_permissions (role_id, permission_id)
+     SELECT r.id, p.id
+       FROM roles r
+       JOIN permissions p ON p.name = 'ADD_USER'
+      WHERE r.name = 'ADMIN'
+     ON CONFLICT (role_id, permission_id) DO NOTHING`,
+  );
 }
 
 async function start() {

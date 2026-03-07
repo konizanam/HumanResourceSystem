@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import { query as dbQuery } from '../config/database';
+import bcrypt from 'bcrypt';
+import { query as dbQuery, transaction as dbTransaction } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import fs from 'node:fs/promises';
@@ -188,6 +189,126 @@ const validateJobId = [
  *   name: Admin
  *   description: Administrative endpoints (Admin only)
  */
+
+// ============================================================================
+// POST /api/admin/users - Create a non-job-seeker user
+// ============================================================================
+router.post('/users',
+  authenticate,
+  authorizePermission('ADD_USER'),
+  logAdminAction('CREATE_USER', 'user'),
+  [
+    body('first_name').isString().trim().isLength({ min: 1, max: 100 }).withMessage('First name is required'),
+    body('last_name').isString().trim().isLength({ min: 1, max: 100 }).withMessage('Last name is required'),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').isString().isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters'),
+    body('role_id').isUUID().withMessage('A valid role is required'),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const firstName = String(req.body.first_name ?? '').trim();
+      const lastName = String(req.body.last_name ?? '').trim();
+      const email = String(req.body.email ?? '').trim().toLowerCase();
+      const password = String(req.body.password ?? '');
+      const roleId = String(req.body.role_id ?? '').trim();
+
+      const roleResult = await dbQuery(
+        `SELECT id, name
+           FROM roles
+          WHERE id = $1
+          LIMIT 1`,
+        [roleId],
+      );
+      if (roleResult.rows.length === 0) {
+        return res.status(400).json({ error: 'Selected role does not exist' });
+      }
+
+      const roleName = String(roleResult.rows[0]?.name ?? '').trim().toUpperCase();
+      if (roleName === 'JOB_SEEKER') {
+        return res.status(400).json({
+          error: 'JOB_SEEKER users must be created via registration',
+        });
+      }
+
+      const existing = await dbQuery(
+        `SELECT id
+           FROM users
+          WHERE LOWER(email) = LOWER($1)
+          LIMIT 1`,
+        [email],
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: 'Email is already registered' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      const createdUser = await dbTransaction(async (client) => {
+        const inserted = await client.query(
+          `INSERT INTO users (first_name, last_name, email, password_hash, is_active, email_verified)
+           VALUES ($1, $2, $3, $4, TRUE, TRUE)
+           RETURNING id, email, first_name, last_name, is_active, is_blocked, created_at`,
+          [firstName, lastName, email, passwordHash],
+        );
+
+        const userId = String(inserted.rows[0]?.id ?? '').trim();
+        await client.query(
+          `INSERT INTO user_roles (user_id, role_id)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, role_id) DO NOTHING`,
+          [userId, roleId],
+        );
+
+        const roleColumnExists = await client.query(
+          `SELECT 1
+             FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'users'
+              AND column_name = 'role'
+            LIMIT 1`,
+        );
+        if (roleColumnExists.rows.length > 0) {
+          await client.query(
+            `UPDATE users
+                SET role = $1,
+                    updated_at = NOW()
+              WHERE id = $2`,
+            [roleName, userId],
+          );
+        }
+
+        return {
+          ...inserted.rows[0],
+          role: roleName,
+        };
+      });
+
+      await logAudit({
+        userId: String(req.user?.userId ?? ''),
+        action: 'USER_CREATE',
+        targetType: 'user',
+        targetId: String(createdUser.id ?? ''),
+        details: {
+          email,
+          role: roleName,
+        },
+      });
+
+      return res.status(201).json({
+        message: 'User created successfully',
+        user: createdUser,
+      });
+    } catch (error) {
+      console.error('Error creating user:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  },
+);
 
 // ============================================================================
 // GET /api/admin/users - Get all users with filters
