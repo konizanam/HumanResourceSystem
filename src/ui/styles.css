@@ -1340,6 +1340,19 @@ input[type="radio"][required] {
   grid-template-columns: 1fr minmax(360px, 480px);
 }
 
+.setupOnlyWrap {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.setupOnlyCard {
+  width: 100%;
+  max-width: none;
+}
+
+.setupOnlyCard .loginHeader {
+  text-align: left;
+}
+
 .authVisual {
   position: relative;
   overflow: hidden;

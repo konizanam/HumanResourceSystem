@@ -186,17 +186,8 @@ export function MainCompanySetupPage() {
 
   return (
     <div className="loginPage authScreen">
-      <div className="authWrap">
-        <aside className="authVisual" aria-hidden="true">
-          <div className="authVisualBadge">System Setup</div>
-          <h2 className="authVisualTitle">Setup Main Company Information</h2>
-          <p className="authVisualText">
-            Complete this one-time setup before users can sign in.
-          </p>
-          <div className="authVisualMeta">Initial Configuration</div>
-        </aside>
-
-        <div className="loginCard authPanel">
+      <div className="authWrap setupOnlyWrap">
+        <div className="loginCard authPanel setupOnlyCard">
           <div className="loginHeader">
             <h1 className="loginTitle">Setup Main Company Information</h1>
             <p className="loginSubtitle">This main company becomes the default system identity.</p>

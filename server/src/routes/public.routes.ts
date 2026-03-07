@@ -44,9 +44,56 @@ function sniffImageMime(data: Buffer): string | null {
 router.get('/setup-status', async (_req, res) => {
   try {
     const settings = await getSystemSettings();
-    const mainCompanyId = String(settings.main_company_id ?? '').trim() || null;
+    const configuredMainCompanyId = String(settings.main_company_id ?? '').trim();
 
-    if (!mainCompanyId) {
+    if (configuredMainCompanyId) {
+      const result = await query<{ id: string }>(
+        `SELECT id
+           FROM companies
+          WHERE id = $1
+          LIMIT 1`,
+        [configuredMainCompanyId],
+      );
+
+      if (result.rows.length > 0) {
+        return res.json({
+          status: 'success',
+          data: {
+            setup_required: false,
+            main_company_id: configuredMainCompanyId,
+          },
+        });
+      }
+    }
+
+    // Legacy/partial setup fallback:
+    // If a company already exists (prefer one matching system_name), adopt it as main company.
+    const systemName = String(settings.system_name ?? '').trim();
+    let resolvedCompanyId = '';
+
+    if (systemName) {
+      const byName = await query<{ id: string }>(
+        `SELECT id
+           FROM companies
+          WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [systemName],
+      );
+      resolvedCompanyId = String(byName.rows[0]?.id ?? '').trim();
+    }
+
+    if (!resolvedCompanyId) {
+      const anyCompany = await query<{ id: string; name: string }>(
+        `SELECT id, name
+           FROM companies
+          ORDER BY created_at ASC
+          LIMIT 1`,
+      );
+      resolvedCompanyId = String(anyCompany.rows[0]?.id ?? '').trim();
+    }
+
+    if (!resolvedCompanyId) {
       return res.json({
         status: 'success',
         data: {
@@ -56,21 +103,15 @@ router.get('/setup-status', async (_req, res) => {
       });
     }
 
-    const result = await query(
-      `SELECT id
-         FROM companies
-        WHERE id = $1
-        LIMIT 1`,
-      [mainCompanyId],
-    );
-
-    const exists = result.rows.length > 0;
+    await updateSystemSettings({
+      main_company_id: resolvedCompanyId,
+    });
 
     return res.json({
       status: 'success',
       data: {
-        setup_required: !exists,
-        main_company_id: exists ? mainCompanyId : null,
+        setup_required: false,
+        main_company_id: resolvedCompanyId,
       },
     });
   } catch {
