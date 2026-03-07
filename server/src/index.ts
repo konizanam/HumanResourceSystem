@@ -44,9 +44,35 @@ async function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS industries (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name VARCHAR(120) NOT NULL UNIQUE,
+      status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )`,
+  );
+
+  // Ensure status exists for activate/deactivate controls.
+  await query(
+    "ALTER TABLE industries ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active'",
+  );
+  await query(
+    "ALTER TABLE industries ALTER COLUMN status SET DEFAULT 'active'",
+  );
+  await query(
+    "UPDATE industries SET status = 'active' WHERE status IS NULL OR TRIM(status) = ''",
+  );
+  await query(
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1
+         FROM pg_constraint
+         WHERE conname = 'industries_status_check'
+       ) THEN
+         ALTER TABLE industries
+         ADD CONSTRAINT industries_status_check
+         CHECK (status IN ('active', 'inactive'));
+       END IF;
+     END $$;`,
   );
 
   // Ensure companies use industry_id FK as source of truth.

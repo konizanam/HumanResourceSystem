@@ -83,6 +83,7 @@ CREATE TABLE user_roles (
 CREATE TABLE industries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(120) UNIQUE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

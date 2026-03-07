@@ -1202,11 +1202,6 @@ export function JobsPage() {
     <div className="page">
       <div className="companiesHeader">
         <h1 className="pageTitle">Jobs</h1>
-        {canCreate && (
-          <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={openCreateModal}>
-            {addInlineOpen ? "Cancel" : "Add Job"}
-          </button>
-        )}
       </div>
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
@@ -1353,6 +1348,21 @@ export function JobsPage() {
                 <option value="draft">Draft</option>
               </select>
             </div>
+          ) : null}
+
+          {!isJobSeekerView && canCreate ? (
+            <button
+              type="button"
+              className="btn btnPrimary btnSm"
+              style={{
+                background: "var(--menu-icon-active)",
+                borderColor: "var(--menu-icon-active)",
+                fontWeight: 700,
+              }}
+              onClick={openCreateModal}
+            >
+              {addInlineOpen ? "Cancel" : "Add Job"}
+            </button>
           ) : null}
         </div>
 

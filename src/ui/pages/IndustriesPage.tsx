@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  activateIndustry,
   createIndustry,
+  deactivateIndustry,
   deleteIndustry,
   listIndustries,
   type Industry,
@@ -91,7 +93,7 @@ export function IndustriesPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await listIndustries(accessToken, { page: 1, limit: 100 });
+      const response = await listIndustries(accessToken, { page: 1, limit: 100, includeInactive: true });
       setIndustries(Array.isArray(response.industries) ? response.industries : []);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to load industries");
@@ -165,6 +167,46 @@ export function IndustriesPage() {
       setConfirmDeleteId(null);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to delete industry");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDeactivateIndustry(industryId: string) {
+    if (!accessToken || !canManageIndustries) return;
+
+    try {
+      clearMessages();
+      setSaving(true);
+      const updated = await deactivateIndustry(accessToken, industryId);
+      setIndustries((prev) =>
+        prev
+          .map((item) => (item.id === industryId ? { ...item, ...updated } : item))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+      );
+      setSuccess("Industry deactivated successfully");
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to deactivate industry");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onActivateIndustry(industryId: string) {
+    if (!accessToken || !canManageIndustries) return;
+
+    try {
+      clearMessages();
+      setSaving(true);
+      const updated = await activateIndustry(accessToken, industryId);
+      setIndustries((prev) =>
+        prev
+          .map((item) => (item.id === industryId ? { ...item, ...updated } : item))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+      );
+      setSuccess("Industry activated successfully");
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to activate industry");
     } finally {
       setSaving(false);
     }
@@ -347,6 +389,9 @@ export function IndustriesPage() {
                 const updated = industry.updated_at
                   ? new Date(industry.updated_at).toLocaleDateString("en-GB")
                   : "-";
+                const companyCount = Number(industry.company_count ?? 0);
+                const isActive = String(industry.status ?? "active").toLowerCase() !== "inactive";
+                const canDelete = companyCount === 0;
 
                 return (
                   <tr key={industry.id}>
@@ -365,12 +410,27 @@ export function IndustriesPage() {
                               label: "Edit",
                               onClick: () => setEditIndustry({ id: industry.id, name: industry.name }),
                             },
-                            {
-                              key: "delete",
-                              label: "Delete",
-                              onClick: () => setConfirmDeleteId(industry.id),
-                              danger: true,
-                            },
+                            isActive
+                              ? {
+                                  key: "deactivate",
+                                  label: "Deactivate",
+                                  onClick: () => void onDeactivateIndustry(industry.id),
+                                }
+                              : {
+                                  key: "activate",
+                                  label: "Activate",
+                                  onClick: () => void onActivateIndustry(industry.id),
+                                },
+                            ...(canDelete
+                              ? [
+                                  {
+                                    key: "delete",
+                                    label: "Delete",
+                                    onClick: () => setConfirmDeleteId(industry.id),
+                                    danger: true,
+                                  },
+                                ]
+                              : []),
                           ]}
                         />
                       ) : (

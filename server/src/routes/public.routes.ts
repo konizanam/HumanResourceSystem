@@ -292,8 +292,9 @@ router.get('/system-settings', async (_req, res) => {
 router.get('/industries', async (_req, res) => {
   try {
     const industriesResult = await query(
-      `SELECT id, name, created_at, updated_at
+      `SELECT id, name, COALESCE(status, 'active') AS status, created_at, updated_at
          FROM industries
+        WHERE COALESCE(status, 'active') = 'active'
         ORDER BY name ASC`
     );
 

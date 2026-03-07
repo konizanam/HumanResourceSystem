@@ -1603,6 +1603,7 @@ export type JobCategory = {
 export type Industry = {
   id: string;
   name: string;
+  status?: "active" | "inactive";
   created_at?: string;
   updated_at?: string;
   company_count?: number;
@@ -1714,12 +1715,13 @@ export async function deleteJobSubcategory(token: string, id: string): Promise<v
 
 export async function listIndustries(
   token: string,
-  params?: { page?: number; limit?: number; search?: string },
+  params?: { page?: number; limit?: number; search?: string; includeInactive?: boolean },
 ): Promise<{ industries: Industry[]; pagination: Pagination }> {
   const url = new URL(`${API_BASE}/industries`);
   if (params?.page) url.searchParams.set("page", String(params.page));
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.includeInactive) url.searchParams.set("include_inactive", "1");
 
   const res = await fetch(url, { headers: authHeaders(token) });
   const body = await safeJson(res);
@@ -1778,6 +1780,26 @@ export async function deleteIndustry(token: string, id: string): Promise<void> {
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to delete industry");
+}
+
+export async function deactivateIndustry(token: string, id: string): Promise<Industry> {
+  const res = await fetch(`${API_BASE}/industries/${encodeURIComponent(id)}/deactivate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to deactivate industry");
+  return body as Industry;
+}
+
+export async function activateIndustry(token: string, id: string): Promise<Industry> {
+  const res = await fetch(`${API_BASE}/industries/${encodeURIComponent(id)}/activate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to activate industry");
+  return body as Industry;
 }
 
 /* ------------------------------------------------------------------ */

@@ -18,6 +18,11 @@ function parsePagination(input: { page?: unknown; limit?: unknown }) {
   return { page, limit, offset };
 }
 
+function parseIncludeInactive(value: unknown): boolean {
+  const raw = String(value ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
 // GET /api/v1/industries
 router.get(
   '/',
@@ -26,6 +31,7 @@ router.get(
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('search').optional().isString().trim().isLength({ max: 120 }),
+    query('include_inactive').optional().isString().trim().isLength({ max: 8 }),
   ],
   async (req: Request, res: Response) => {
     try {
@@ -36,9 +42,13 @@ router.get(
 
       const { page, limit, offset } = parsePagination(req.query);
       const search = String(req.query.search ?? '').trim();
+      const includeInactive = parseIncludeInactive(req.query.include_inactive);
 
       const whereParts: string[] = [];
       const params: unknown[] = [];
+      if (!includeInactive) {
+        whereParts.push(`COALESCE(i.status, 'active') = 'active'`);
+      }
       if (search) {
         whereParts.push(`i.name ILIKE $${params.length + 1}`);
         params.push(`%${search}%`);
@@ -59,6 +69,7 @@ router.get(
         `SELECT
            i.id,
            i.name,
+            COALESCE(i.status, 'active') AS status,
            i.created_at,
            i.updated_at,
            COUNT(DISTINCT c.id)::int AS company_count,
@@ -67,7 +78,7 @@ router.get(
          LEFT JOIN companies c ON c.industry_id = i.id
          LEFT JOIN jobs j ON j.company_id = c.id
          ${whereClause}
-         GROUP BY i.id, i.name, i.created_at, i.updated_at
+         GROUP BY i.id, i.name, i.status, i.created_at, i.updated_at
          ORDER BY i.name ASC
          LIMIT $${params.length + 1}
          OFFSET $${params.length + 2}`,
@@ -119,7 +130,7 @@ router.post(
       const created = await dbQuery(
         `INSERT INTO industries (name)
          VALUES ($1)
-         RETURNING id, name, created_at, updated_at`,
+         RETURNING id, name, COALESCE(status, 'active') AS status, created_at, updated_at`,
         [name],
       );
 
@@ -182,7 +193,7 @@ router.put(
             SET name = $1,
                 updated_at = NOW()
           WHERE id = $2
-          RETURNING id, name, created_at, updated_at`,
+          RETURNING id, name, COALESCE(status, 'active') AS status, created_at, updated_at`,
         [name, id],
       );
 
@@ -229,6 +240,19 @@ router.delete(
         return res.status(404).json({ error: 'Industry not found' });
       }
 
+      const usage = await dbQuery(
+        `SELECT COUNT(*)::int AS company_count
+           FROM companies
+          WHERE industry_id = $1`,
+        [id],
+      );
+      const companyCount = Number(usage.rows[0]?.company_count ?? 0);
+      if (companyCount > 0) {
+        return res.status(409).json({
+          error: 'Industry is linked to one or more companies and cannot be deleted',
+        });
+      }
+
       await dbQuery(`DELETE FROM industries WHERE id = $1`, [id]);
 
       await logAudit({
@@ -245,6 +269,112 @@ router.delete(
       });
     } catch (error) {
       console.error('Error deleting industry:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  },
+);
+
+// POST /api/v1/industries/:id/deactivate
+router.post(
+  '/:id/deactivate',
+  authenticate,
+  authorizePermission('MANAGE_COMPANY', 'MANAGE_USERS'),
+  [param('id').isUUID().withMessage('Invalid industry ID')],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const id = String(req.params.id);
+      const existing = await dbQuery(
+        `SELECT id, name, COALESCE(status, 'active') AS status
+           FROM industries
+          WHERE id = $1
+          LIMIT 1`,
+        [id],
+      );
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: 'Industry not found' });
+      }
+
+      const updated = await dbQuery(
+        `UPDATE industries
+            SET status = 'inactive',
+                updated_at = NOW()
+          WHERE id = $1
+          RETURNING id, name, COALESCE(status, 'active') AS status, created_at, updated_at`,
+        [id],
+      );
+
+      await logAudit({
+        userId: String(req.user?.userId ?? ''),
+        action: 'INDUSTRY_DEACTIVATE',
+        targetType: 'industries',
+        targetId: id,
+        details: {
+          before: existing.rows[0],
+          after: updated.rows[0],
+        },
+      });
+
+      return res.json(updated.rows[0]);
+    } catch (error) {
+      console.error('Error deactivating industry:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  },
+);
+
+// POST /api/v1/industries/:id/activate
+router.post(
+  '/:id/activate',
+  authenticate,
+  authorizePermission('MANAGE_COMPANY', 'MANAGE_USERS'),
+  [param('id').isUUID().withMessage('Invalid industry ID')],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const id = String(req.params.id);
+      const existing = await dbQuery(
+        `SELECT id, name, COALESCE(status, 'active') AS status
+           FROM industries
+          WHERE id = $1
+          LIMIT 1`,
+        [id],
+      );
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: 'Industry not found' });
+      }
+
+      const updated = await dbQuery(
+        `UPDATE industries
+            SET status = 'active',
+                updated_at = NOW()
+          WHERE id = $1
+          RETURNING id, name, COALESCE(status, 'active') AS status, created_at, updated_at`,
+        [id],
+      );
+
+      await logAudit({
+        userId: String(req.user?.userId ?? ''),
+        action: 'INDUSTRY_ACTIVATE',
+        targetType: 'industries',
+        targetId: id,
+        details: {
+          before: existing.rows[0],
+          after: updated.rows[0],
+        },
+      });
+
+      return res.json(updated.rows[0]);
+    } catch (error) {
+      console.error('Error activating industry:', error);
       return res.status(500).json({ error: 'Server error' });
     }
   },
