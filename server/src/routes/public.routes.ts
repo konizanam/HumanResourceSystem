@@ -47,15 +47,16 @@ router.get('/setup-status', async (_req, res) => {
     const configuredMainCompanyId = String(settings.main_company_id ?? '').trim();
 
     if (configuredMainCompanyId) {
-      const result = await query<{ id: string }>(
+      const result = await query(
         `SELECT id
            FROM companies
           WHERE id = $1
           LIMIT 1`,
         [configuredMainCompanyId],
       );
+      const rows = result.rows as Array<{ id: string }>;
 
-      if (result.rows.length > 0) {
+      if (rows.length > 0) {
         return res.json({
           status: 'success',
           data: {
@@ -72,7 +73,7 @@ router.get('/setup-status', async (_req, res) => {
     let resolvedCompanyId = '';
 
     if (systemName) {
-      const byName = await query<{ id: string }>(
+      const byName = await query(
         `SELECT id
            FROM companies
           WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
@@ -80,17 +81,19 @@ router.get('/setup-status', async (_req, res) => {
           LIMIT 1`,
         [systemName],
       );
-      resolvedCompanyId = String(byName.rows[0]?.id ?? '').trim();
+      const byNameRows = byName.rows as Array<{ id: string }>;
+      resolvedCompanyId = String(byNameRows[0]?.id ?? '').trim();
     }
 
     if (!resolvedCompanyId) {
-      const anyCompany = await query<{ id: string; name: string }>(
+      const anyCompany = await query(
         `SELECT id, name
            FROM companies
           ORDER BY created_at ASC
           LIMIT 1`,
       );
-      resolvedCompanyId = String(anyCompany.rows[0]?.id ?? '').trim();
+      const anyCompanyRows = anyCompany.rows as Array<{ id: string; name: string }>;
+      resolvedCompanyId = String(anyCompanyRows[0]?.id ?? '').trim();
     }
 
     if (!resolvedCompanyId) {
