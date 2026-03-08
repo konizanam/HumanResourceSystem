@@ -520,6 +520,11 @@ type ProfileDocumentEntry = {
   fileName?: string;
 };
 
+function isGeneratedProfileExportDoc(entry: { title?: string; fileName?: string; url?: string }): boolean {
+  const probe = `${entry.title ?? ""} ${entry.fileName ?? ""} ${entry.url ?? ""}`.toLowerCase();
+  return /(full[_\s-]?profile|candidate[_\s-]?profile)/i.test(probe);
+}
+
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -666,6 +671,7 @@ function collectProfileDocuments(params: {
 
   const seen = new Set<string>();
   return cards.filter((c) => {
+    if (isGeneratedProfileExportDoc(c)) return false;
     const resolved = resolveFileUrl(c.url);
     const key = (resolved || c.url || c.title || "")
       .split("#")[0]
@@ -1039,6 +1045,7 @@ async function createProfilePdfReport(params: {
   const seenAttachmentSources = new Set<string>();
   if (params.documents.length > 0) {
     for (const entry of params.documents) {
+      if (isGeneratedProfileExportDoc(entry)) continue;
       const resolvedUrl = resolveFileUrl(entry.url);
       if (!resolvedUrl) continue;
       const sourceKey = resolvedUrl.split("#")[0].split("?")[0].trim().toLowerCase();
@@ -1388,10 +1395,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       const email = String(readProfileValue(personal, "email") ?? "").trim();
       const phone = String(readProfileValue(personal, "phone", "contact_phone", "contactPhone") ?? "").trim();
 
-      const resumeList = [
-        ...(resumes.primary_resume ? [resumes.primary_resume] : []),
-        ...(Array.isArray(resumes.resumes) ? resumes.resumes : []),
-      ];
+      const resumeList = resumes.primary_resume ? [resumes.primary_resume] : [];
 
       await createProfilePdfReport({
         fileName: `${toFileSafeName(fullName, "job_seeker")}_full_profile.pdf`,
@@ -1492,10 +1496,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           profile: mainProfile,
           education,
           docs: Array.isArray(docs) ? docs : [],
-          resumes: [
-            ...(resumeResult?.primary_resume ? [resumeResult.primary_resume] : []),
-            ...(Array.isArray(resumeResult?.resumes) ? resumeResult.resumes : []),
-          ],
+          resumes: resumeResult?.primary_resume ? [resumeResult.primary_resume] : [],
         }),
         profilePictureDataUrl: profilePicDataUrl ?? undefined,
       });
@@ -2020,7 +2021,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       <div className="page">
         <div className="profileHeader">
           <h1 className="pageTitle">Job Seeker Profiles</h1>
-          <p className="pageText">Browse job seeker profiles</p>
         </div>
 
         {error && <div className="errorBox">{error}</div>}
