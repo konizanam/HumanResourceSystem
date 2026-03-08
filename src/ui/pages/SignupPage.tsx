@@ -12,6 +12,9 @@ import {
 } from "../api/client";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
+import { applyAppThemeColor } from "../utils/themeColor";
+
+const DEFAULT_APP_COLOR = "#6b7280";
 
 const QUALIFICATION_LEVELS = [
   "Primary School",
@@ -175,6 +178,8 @@ export function SignupPage() {
       try {
         const settings = await getPublicSystemSettings();
         if (cancelled) return;
+        const nextAppColor = String(settings.app_color ?? "").trim() || DEFAULT_APP_COLOR;
+        applyAppThemeColor(nextAppColor);
         const mainCompanyId = String(settings.main_company_id ?? "").trim();
         if (mainCompanyId) {
           try {
@@ -198,6 +203,7 @@ export function SignupPage() {
         if (!cancelled) {
           setSystemName("");
           setBrandingLogoUrl("");
+          applyAppThemeColor(DEFAULT_APP_COLOR);
         }
       }
     };

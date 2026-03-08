@@ -9,8 +9,10 @@ import {
   requestTwoFactorChallenge,
   verifyTwoFactor,
 } from "../api/client";
+import { applyAppThemeColor } from "../utils/themeColor";
 
 const THEME_KEY = "hrs-theme";
+const DEFAULT_APP_COLOR = "#6b7280";
 const DEFAULT_LOGIN_WELCOME_TITLE = "Welcome to your recruitment command center";
 const DEFAULT_LOGIN_WELCOME_SUBTITLE =
   "Sign in to hire, apply, and stay updated on applications - all in one secure place.";
@@ -141,6 +143,7 @@ export function LoginPage() {
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const [lastAppColor, setLastAppColor] = useState<string>(DEFAULT_APP_COLOR);
 
   const apiBase = useMemo(
     () => String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, ""),
@@ -177,6 +180,9 @@ export function LoginPage() {
         }
         if (!cancelled) {
           setSystemName(resolvedName);
+          const nextAppColor = String(settings.app_color ?? "").trim() || DEFAULT_APP_COLOR;
+          setLastAppColor(nextAppColor);
+          applyAppThemeColor(nextAppColor);
           const nextWelcomeTitle = String((settings as any).login_welcome_title ?? "").trim();
           const nextWelcomeSubtitle = String((settings as any).login_welcome_subtitle ?? "").trim();
           setWelcomeTitle(nextWelcomeTitle || DEFAULT_LOGIN_WELCOME_TITLE);
@@ -191,6 +197,8 @@ export function LoginPage() {
         if (cancelled) return;
         setSystemName("");
         setBrandingLogoUrl("");
+        setLastAppColor(DEFAULT_APP_COLOR);
+        applyAppThemeColor(DEFAULT_APP_COLOR);
         setWelcomeTitle(DEFAULT_LOGIN_WELCOME_TITLE);
         setWelcomeSubtitle(DEFAULT_LOGIN_WELCOME_SUBTITLE);
       }
@@ -247,6 +255,10 @@ export function LoginPage() {
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
   }, [theme]);
+
+  useEffect(() => {
+    applyAppThemeColor(lastAppColor);
+  }, [theme, lastAppColor]);
 
   const redirectTo = useMemo(() => {
     const from = (location.state as any)?.from;
