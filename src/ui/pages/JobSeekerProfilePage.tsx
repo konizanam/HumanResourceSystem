@@ -186,8 +186,9 @@ function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
   if (/^data:application\/pdf/i.test(url)) return "pdf";
   const fileName = extractFileName(url).toLowerCase();
   if (/\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(fileName)) return "image";
-  if (/\.pdf$/i.test(fileName)) return "pdf";
-  return "none";
+  if (/\.(docx?|xlsx?|pptx?|txt|csv|zip|rar)$/i.test(fileName)) return "none";
+  // Default to PDF for all other non-empty URLs (covers API paths without extensions)
+  return "pdf";
 }
 
 function UploadedDocumentCard({
@@ -195,6 +196,8 @@ function UploadedDocumentCard({
   url,
   fallbackText,
   hint,
+  originalName,
+  token,
   previewMode = "inline",
   externalPreviewOpen,
   onToggleExternalPreview,
@@ -203,15 +206,87 @@ function UploadedDocumentCard({
   url: string;
   fallbackText: string;
   hint?: string;
+  originalName?: string;
+  token?: string;
   previewMode?: "inline" | "external";
   externalPreviewOpen?: boolean;
-  onToggleExternalPreview?: (resolvedUrl: string, title: string) => void;
+  onToggleExternalPreview?: (blobUrl: string, title: string) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [blobLoading, setBlobLoading] = useState(false);
+
   const resolvedUrl = resolveFileUrl(url);
   const hasFile = Boolean(resolvedUrl);
-  const fileName = extractFileName(url);
-  const inlineKind = getInlinePreviewKind(resolvedUrl);
+  const rawFileName = extractFileName(url);
+  const isGenericSegment = !rawFileName ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawFileName) ||
+    /^[0-9a-f]{24,}$/i.test(rawFileName) ||
+    ["download", "file", "view", "get", "document", "upload", "serve"].includes(rawFileName.toLowerCase());
+  const fileName = originalName || (isGenericSegment ? title : rawFileName);
+
+  // For blob: and data: URLs (local staged files) use directly, otherwise fetch with auth
+  const isLocalUrl = resolvedUrl.startsWith("blob:") || resolvedUrl.startsWith("data:");
+  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token);
+
+  // Pre-fetch authenticated blob URL whenever the source URL changes
+  useEffect(() => {
+    if (!needsAuthFetch || !resolvedUrl || !token) {
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      return;
+    }
+    let cancelled = false;
+
+    setBlobLoading(true);
+    fetch(resolvedUrl, { headers: { authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (!res.ok || cancelled) return;
+        const contentType = res.headers.get("content-type") ?? "";
+        let mimeType = contentType.split(";")[0].trim();
+        // If server sends no type or generic octet-stream, check URL/filename for PDF
+        if (!mimeType || mimeType === "application/octet-stream") {
+          const urlPath = resolvedUrl.split("?")[0].toLowerCase();
+          if (
+            urlPath.endsWith(".pdf") ||
+            /\/(pdf|document|download|file)/i.test(urlPath)
+          ) {
+            mimeType = "application/pdf";
+          }
+        }
+        const blob = await res.blob();
+        // Wrap blob with correct MIME type so browsers can preview/open it
+        const typedBlob = mimeType
+          ? new Blob([blob], { type: mimeType })
+          : blob;
+        const objectUrl = URL.createObjectURL(typedBlob);
+        if (cancelled) {
+          // Fetch raced with unmount/url-change — discard immediately
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return objectUrl; });
+      })
+      .catch(() => { /* ignore, will show error state */ })
+      .finally(() => { if (!cancelled) setBlobLoading(false); });
+
+    // Only cancel the in-flight fetch; do NOT revoke any objectUrl here
+    // because setBlobUrl state may already hold it (revoking would blank the preview).
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedUrl, token]);
+
+  // Revoke blob URL on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  }, []);
+
+  // Effective URL: blob if available, local URL if staged, raw resolved otherwise
+  const effectiveUrl = blobUrl ?? (isLocalUrl ? resolvedUrl : (needsAuthFetch ? "" : resolvedUrl));
+  const isReady = !needsAuthFetch || Boolean(blobUrl);
+
+  const inlineKind = getInlinePreviewKind(effectiveUrl || resolvedUrl);
   const isImage = inlineKind === "image";
   const canInlinePreview = inlineKind !== "none";
   const isExternalPreview = previewMode === "external";
@@ -220,13 +295,25 @@ function UploadedDocumentCard({
   function onDownload(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
-    if (!resolvedUrl) return;
+    const dlUrl = effectiveUrl || resolvedUrl;
+    if (!dlUrl) return;
     const anchor = document.createElement("a");
-    anchor.href = resolvedUrl;
+    anchor.href = dlUrl;
     anchor.download = fileName || "document";
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
+  }
+
+  function onViewClick(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const viewUrl = effectiveUrl || resolvedUrl;
+    if (isExternalPreview) {
+      onToggleExternalPreview?.(viewUrl, title);
+      return;
+    }
+    setPreviewOpen((v) => !v);
   }
 
   return (
@@ -234,7 +321,7 @@ function UploadedDocumentCard({
       <div className="uploadedDocCardTitle">{title}</div>
       {hasFile ? (
         <span className="uploadedDocCardLink" title={fileName}>
-          {fileName || `View ${title.toLowerCase()}`}
+          {blobLoading ? "Loading…" : (fileName || `View ${title.toLowerCase()}`)}
         </span>
       ) : (
         <span className="readValue">{fallbackText}</span>
@@ -244,35 +331,29 @@ function UploadedDocumentCard({
           <button
             type="button"
             className="btn btnPrimary btnSm uploadedDocViewBtn"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (isExternalPreview) {
-                onToggleExternalPreview?.(resolvedUrl, title);
-                return;
-              }
-              setPreviewOpen((v) => !v);
-            }}
+            onClick={onViewClick}
+            disabled={blobLoading || (!isReady && needsAuthFetch)}
           >
-            {effectivePreviewOpen ? "Hide" : "View"}
+            {blobLoading ? "…" : effectivePreviewOpen ? "Hide" : "View"}
           </button>
           <button
             type="button"
             className="btn btnGhost btnSm uploadedDocDownloadBtn"
             onClick={onDownload}
+            disabled={blobLoading || (!isReady && needsAuthFetch)}
           >
             Download
           </button>
         </div>
       ) : null}
 
-      {hasFile && !isExternalPreview && previewOpen ? (
+      {hasFile && !isExternalPreview && previewOpen && isReady ? (
         <div className="uploadedDocPreview">
           {canInlinePreview ? (
             isImage ? (
-              <img className="uploadedDocPreviewImage" src={resolvedUrl} alt={fileName || title} />
+              <img className="uploadedDocPreviewImage" src={effectiveUrl} alt={fileName || title} />
             ) : (
-              <iframe className="uploadedDocPreviewFrame" src={resolvedUrl} title={`${title} preview`} />
+              <embed className="uploadedDocPreviewFrame" src={effectiveUrl} type="application/pdf" />
             )
           ) : (
             <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>
@@ -420,6 +501,7 @@ type ProfileDocumentEntry = {
   title: string;
   url: string;
   hint?: string;
+  fileName?: string;
 };
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -486,27 +568,45 @@ function collectProfileDocuments(params: {
     cards.push({ title: "Education Certificate", url: cert, hint: inst || undefined });
   }
 
+  // Deduplicate uploaded docs by document_type — keep only the latest per type
   const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
+  const latestByType = new Map<string, UserDocument>();
   for (const d of uploadedDocs) {
+    const type = String(d.document_type ?? "Document").trim() || "Document";
+    const existing = latestByType.get(type);
+    if (!existing) {
+      latestByType.set(type, d);
+    } else {
+      const existingDate = new Date(String(existing.created_at ?? "")).getTime();
+      const newDate = new Date(String(d.created_at ?? "")).getTime();
+      if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
+        latestByType.set(type, d);
+      }
+    }
+  }
+  for (const d of latestByType.values()) {
     const url = String(d.download_url ?? d.file_url ?? "").trim();
     if (!url) continue;
     cards.push({
       title: String(d.document_type ?? "Document").trim() || "Document",
       url,
-      hint: String(d.description ?? d.original_name ?? "").trim() || undefined,
+      fileName: String(d.original_name ?? "").trim() || undefined,
+      hint: String(d.description ?? "").trim() || undefined,
     });
   }
 
   const resumes = Array.isArray(params.resumes) ? params.resumes : [];
-  for (const resume of resumes) {
-    const url = String(resume.download_url ?? resume.file_path ?? "").trim();
-    if (!url) continue;
-    const fileName = String(resume.file_name ?? "").trim();
-    cards.push({
-      title: resume.is_primary ? "Primary Resume" : "Resume",
-      url,
-      hint: fileName || undefined,
-    });
+  // Keep only primary resume, or the latest one
+  const primaryResume = resumes.find((r) => r.is_primary) ?? resumes[0];
+  if (primaryResume) {
+    const url = String(primaryResume.download_url ?? primaryResume.file_path ?? "").trim();
+    if (url) {
+      cards.push({
+        title: "CV / Resume",
+        url,
+        fileName: String(primaryResume.file_name ?? "").trim() || undefined,
+      });
+    }
   }
 
   const seen = new Set<string>();
@@ -536,51 +636,132 @@ async function createProfilePdfReport(params: {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
 
-  const drawSectionHeading = (title: string, y: number) => {
+  // ── Design tokens ──────────────────────────────────────────────────────
+  const NAVY: [number, number, number] = [22, 36, 90];
+  const NAVY_MID: [number, number, number] = [44, 62, 140];
+  const ACCENT: [number, number, number] = [59, 130, 246];
+  const LIGHT_BLUE: [number, number, number] = [219, 234, 254];
+  const DARK_TEXT: [number, number, number] = [30, 30, 45];
+  const MUTED: [number, number, number] = [100, 110, 130];
+  const WHITE: [number, number, number] = [255, 255, 255];
+  const LIGHT_BG: [number, number, number] = [247, 249, 252];
+  const DIVIDER: [number, number, number] = [220, 226, 240];
+
+  // ── Helper: draw a styled section heading with accent bar ──────────────
+  const drawSectionHeading = (title: string, y: number): number => {
+    // Accent bar
+    doc.setFillColor(...ACCENT);
+    doc.rect(margin, y, 3.5, 6, "F");
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(31, 41, 92);
-    doc.setFontSize(12);
-    doc.text(title, 14, y);
-    return y + 3;
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text(title.toUpperCase(), margin + 6, y + 4.5);
+    // Light separator line
+    doc.setDrawColor(...DIVIDER);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y + 8, pageWidth - margin, y + 8);
+    return y + 11;
   };
 
-  doc.setFillColor(31, 41, 92);
-  doc.rect(0, 0, pageWidth, 30, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.text("Job Seeker Full Profile", 14, 14);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, 14, 21);
+  // ── Helper: ensure enough vertical space, add page if needed ───────────
+  const ensureSpace = (currentY: number, needed: number): number => {
+    if (currentY + needed > pageHeight - 18) {
+      doc.addPage();
+      drawPageHeader();
+      return 28;
+    }
+    return currentY;
+  };
 
-  const name = String(params.fullName || "Job Seeker").trim();
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(name, 14, 38);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const contactLine = [String(params.email ?? "").trim(), String(params.phone ?? "").trim()].filter(Boolean).join(" | ");
-  if (contactLine) doc.text(contactLine, 14, 44);
+  // ── Helper: draw running page header (for continuation pages) ──────────
+  const drawPageHeader = () => {
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, pageWidth, 10, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...WHITE);
+    doc.text("CANDIDATE PROFILE", margin, 6.5);
+    const name = String(params.fullName || "").trim();
+    if (name) {
+      doc.setFont("helvetica", "normal");
+      const nameW = doc.getTextWidth(name);
+      doc.text(name, pageWidth - margin - nameW, 6.5);
+    }
+  };
 
-  // Embed profile picture in top-right of header banner if available
+  // ── Cover header ────────────────────────────────────────────────────────
+  const HEADER_H = 44;
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, HEADER_H, "F");
+
+  // Subtle diagonal accent stripe
+  doc.setFillColor(...NAVY_MID);
+  doc.triangle(pageWidth - 60, 0, pageWidth, 0, pageWidth, HEADER_H, "F");
+
+  // Profile picture (circle-ish, right side of header)
+  let picEmbedded = false;
   if (params.profilePictureDataUrl) {
     try {
       const picMime = params.profilePictureDataUrl.split(";")[0]?.split(":")[1] ?? "";
       const picFormat = resolveImageFormat(picMime);
       if (picFormat) {
-        const picW = 26;
-        const picH = 26;
-        const picX = pageWidth - picW - 4;
-        const picY = 2;
+        const picW = 30;
+        const picH = 30;
+        const picX = pageWidth - picW - margin;
+        const picY = (HEADER_H - picH) / 2;
+        // White border behind picture
+        doc.setFillColor(...WHITE);
+        doc.roundedRect(picX - 1.5, picY - 1.5, picW + 3, picH + 3, 3, 3, "F");
         doc.addImage(params.profilePictureDataUrl, picFormat, picX, picY, picW, picH);
+        picEmbedded = true;
       }
     } catch {
-      // Skip silently if the picture cannot be embedded
+      // Skip silently
     }
   }
 
+  const textMaxX = picEmbedded ? pageWidth - 50 : pageWidth - margin;
+  void textMaxX;
+
+  // Title label
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(180, 200, 240);
+  doc.text("CURRICULUM VITAE", margin, 10);
+
+  // Candidate name
+  const name = String(params.fullName || "Job Seeker").trim();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(...WHITE);
+  doc.text(name, margin, 22);
+
+  // Contact info
+  const contactParts = [
+    String(params.email ?? "").trim(),
+    String(params.phone ?? "").trim(),
+  ].filter(Boolean);
+  if (contactParts.length > 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(200, 218, 255);
+    doc.text(contactParts.join("   |   "), margin, 30);
+  }
+
+  // Date generated
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(160, 180, 220);
+  doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, margin, 38);
+
+  // Light bottom accent bar below header
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, HEADER_H, pageWidth, 1.5, "F");
+
+  // ── Personal Details table ──────────────────────────────────────────────
   const personalRows: [string, string][] = [
     ["First Name", String(readProfileValue(params.personal, "first_name", "firstName") ?? "-")],
     ["Last Name", String(readProfileValue(params.personal, "last_name", "lastName") ?? "-")],
@@ -591,42 +772,72 @@ async function createProfilePdfReport(params: {
     ["ID Type", String(readProfileValue(params.personal, "id_type", "idType") ?? "-")],
     ["ID Number", String(readProfileValue(params.personal, "id_number", "idNumber") ?? "-")],
     ["Marital Status", String(readProfileValue(params.personal, "marital_status", "maritalStatus") ?? "-")],
-    ["Disability", Boolean(readProfileValue(params.personal, "disability_status", "disabilityStatus")) ? "Yes" : "No"],
+    ["Disability Status", Boolean(readProfileValue(params.personal, "disability_status", "disabilityStatus")) ? "Yes" : "No"],
   ];
 
+  let sectionY = HEADER_H + 10;
+  sectionY = drawSectionHeading("Personal Details", sectionY);
+
   autoTable(doc, {
-    startY: 50,
-    head: [["Personal Details", "Value"]],
+    startY: sectionY,
+    margin: { left: margin, right: margin },
+    head: [],
     body: personalRows,
-    styles: { fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: [31, 41, 92] },
-    columnStyles: { 0: { cellWidth: 55, fontStyle: "bold" }, 1: { cellWidth: "auto" } },
+    styles: { fontSize: 9, cellPadding: { top: 3, bottom: 3, left: 5, right: 5 }, textColor: DARK_TEXT },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    columnStyles: {
+      0: { cellWidth: 52, fontStyle: "bold", textColor: NAVY_MID },
+      1: { cellWidth: contentWidth - 52 },
+    },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
-  let currentY = (doc as any).lastAutoTable?.finalY ?? 60;
+  // ── Professional Summary ────────────────────────────────────────────────
+  const summary = String(readProfileValue(params.profile, "professional_summary", "professionalSummary") ?? "").trim();
 
-  const summary = String(readProfileValue(params.profile, "professional_summary", "professionalSummary") ?? "").trim() || "-";
-  const summaryTitleY = currentY + 10;
-  drawSectionHeading("Professional Summary", summaryTitleY);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(40, 40, 40);
-  doc.setFontSize(10);
-  const wrappedSummary = doc.splitTextToSize(summary, pageWidth - 28);
-  doc.text(wrappedSummary, 14, summaryTitleY + 6);
-  currentY = summaryTitleY + 6 + wrappedSummary.length * 4;
+  let currentY = ((doc as any).lastAutoTable?.finalY ?? sectionY) + 10;
+  currentY = ensureSpace(currentY, 30);
+  currentY = drawSectionHeading("Professional Summary", currentY);
+
+  if (summary) {
+    doc.setFillColor(...LIGHT_BG);
+    const summaryLines = doc.splitTextToSize(summary, contentWidth - 10);
+    const summaryBoxH = summaryLines.length * 4.5 + 8;
+    doc.roundedRect(margin, currentY, contentWidth, summaryBoxH, 3, 3, "F");
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...DARK_TEXT);
+    doc.text(summaryLines, margin + 5, currentY + 5.5);
+    currentY += summaryBoxH + 6;
+  } else {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(...MUTED);
+    doc.text("No professional summary provided.", margin, currentY + 4);
+    currentY += 10;
+  }
+
+  // Professional overview table
+  const profRows = [[
+    String(readProfileValue(params.profile, "field_of_expertise", "fieldOfExpertise") ?? "-"),
+    String(readProfileValue(params.profile, "qualification_level", "qualificationLevel") ?? "-"),
+    String(readProfileValue(params.profile, "years_experience", "yearsExperience") ?? "-"),
+  ]];
 
   autoTable(doc, {
-    startY: currentY + 4,
-    head: [["Professional Field", "Qualification", "Years Experience"]],
-    body: [[
-      String(readProfileValue(params.profile, "field_of_expertise", "fieldOfExpertise") ?? "-"),
-      String(readProfileValue(params.profile, "qualification_level", "qualificationLevel") ?? "-"),
-      String(readProfileValue(params.profile, "years_experience", "yearsExperience") ?? "-"),
-    ]],
-    styles: { fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: [66, 82, 160] },
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Field of Expertise", "Qualification Level", "Years of Experience"]],
+    body: profRows,
+    styles: { fontSize: 9, cellPadding: { top: 3.5, bottom: 3.5, left: 5, right: 5 }, textColor: DARK_TEXT },
+    headStyles: { fillColor: NAVY_MID, textColor: WHITE, fontStyle: "bold", fontSize: 8.5 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── Address ─────────────────────────────────────────────────────────────
   const addressRows = (Array.isArray(params.addresses) ? params.addresses : []).map((address) => [
     String(readProfileValue(address, "address_line1", "addressLine1") ?? "-"),
     String(readProfileValue(address, "address_line2", "addressLine2") ?? "-"),
@@ -635,16 +846,23 @@ async function createProfilePdfReport(params: {
     String(readProfileValue(address, "country") ?? "-"),
   ]);
 
-  let nextStartY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 8;
-  nextStartY = drawSectionHeading("Address", nextStartY);
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 10;
+  currentY = ensureSpace(currentY, 28);
+  currentY = drawSectionHeading("Address", currentY);
+
   autoTable(doc, {
-    startY: nextStartY + 2,
-    head: [["Address Line 1", "Address Line 2", "City", "State", "Country"]],
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Address Line 1", "Address Line 2", "City", "State/Region", "Country"]],
     body: addressRows.length > 0 ? addressRows : [["-", "-", "-", "-", "-"]],
-    styles: { fontSize: 8.5, cellPadding: 2.3 },
-    headStyles: { fillColor: [31, 41, 92] },
+    styles: { fontSize: 8.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT },
+    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── Education ───────────────────────────────────────────────────────────
   const educationRows = (Array.isArray(params.education) ? params.education : []).map((edu) => [
     String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "-"),
     String(readProfileValue(edu, "qualification") ?? "-"),
@@ -653,112 +871,163 @@ async function createProfilePdfReport(params: {
     formatDateValue(readProfileValue(edu, "end_date", "endDate", "end_year", "endYear")),
   ]);
 
-  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
-  nextStartY = drawSectionHeading("Education", nextStartY);
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 10;
+  currentY = ensureSpace(currentY, 28);
+  currentY = drawSectionHeading("Education", currentY);
+
   autoTable(doc, {
-    startY: nextStartY + 2,
-    head: [["Institution", "Qualification", "Field", "Start", "End"]],
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Institution", "Qualification", "Field of Study", "Start", "End"]],
     body: educationRows.length > 0 ? educationRows : [["-", "-", "-", "-", "-"]],
-    styles: { fontSize: 8.5, cellPadding: 2.3 },
-    headStyles: { fillColor: [66, 82, 160] },
+    styles: { fontSize: 8.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT },
+    headStyles: { fillColor: NAVY_MID, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    columnStyles: { 0: { cellWidth: 50 }, 3: { cellWidth: 18 }, 4: { cellWidth: 18 } },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── Experience ──────────────────────────────────────────────────────────
   const experienceRows = (Array.isArray(params.experience) ? params.experience : []).map((exp) => [
-    String(readProfileValue(exp, "company") ?? "-"),
-    String(readProfileValue(exp, "position") ?? "-"),
+    String(readProfileValue(exp, "job_title", "jobTitle", "position") ?? "-"),
+    String(readProfileValue(exp, "company_name", "companyName", "company") ?? "-"),
+    String(readProfileValue(exp, "employment_type", "employmentType") ?? "-"),
     formatDateValue(readProfileValue(exp, "start_date", "startDate")),
     formatDateValue(readProfileValue(exp, "end_date", "endDate")),
-    String(readProfileValue(exp, "description") ?? "-").slice(0, 120) || "-",
+    String(readProfileValue(exp, "responsibilities", "description") ?? "-").slice(0, 200) || "-",
   ]);
 
-  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
-  nextStartY = drawSectionHeading("Experience", nextStartY);
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 10;
+  currentY = ensureSpace(currentY, 28);
+  currentY = drawSectionHeading("Work Experience", currentY);
+
   autoTable(doc, {
-    startY: nextStartY + 2,
-    head: [["Company", "Position", "Start", "End", "Description"]],
-    body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-"]],
-    styles: { fontSize: 8.2, cellPadding: 2.3 },
-    headStyles: { fillColor: [31, 41, 92] },
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Job Title", "Company", "Employment Type", "Start", "End", "Responsibilities"]],
+    body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-", "-"]],
+    styles: { fontSize: 8.2, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT, overflow: "linebreak" },
+    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    columnStyles: {
+      0: { cellWidth: 33 },
+      1: { cellWidth: 33 },
+      2: { cellWidth: 25 },
+      3: { cellWidth: 17 },
+      4: { cellWidth: 17 },
+      5: { cellWidth: contentWidth - 125 },
+    },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── References ──────────────────────────────────────────────────────────
   const referencesRows = (Array.isArray(params.references) ? params.references : []).map((ref) => [
-    String(readProfileValue(ref, "name") ?? "-"),
+    String(readProfileValue(ref, "full_name", "fullName", "name") ?? "-"),
     String(readProfileValue(ref, "relationship") ?? "-"),
+    String(readProfileValue(ref, "company") ?? "-"),
     String(readProfileValue(ref, "email") ?? "-"),
     String(readProfileValue(ref, "phone") ?? "-"),
   ]);
 
-  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
-  nextStartY = drawSectionHeading("References", nextStartY);
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 10;
+  currentY = ensureSpace(currentY, 28);
+  currentY = drawSectionHeading("References", currentY);
+
   autoTable(doc, {
-    startY: nextStartY + 2,
-    head: [["Reference Name", "Relationship", "Email", "Phone"]],
-    body: referencesRows.length > 0 ? referencesRows : [["-", "-", "-", "-"]],
-    styles: { fontSize: 8.5, cellPadding: 2.3 },
-    headStyles: { fillColor: [66, 82, 160] },
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Full Name", "Relationship", "Company", "Email", "Phone"]],
+    body: referencesRows.length > 0 ? referencesRows : [["-", "-", "-", "-", "-"]],
+    styles: { fontSize: 8.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT },
+    headStyles: { fillColor: NAVY_MID, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── Uploaded Documents list ─────────────────────────────────────────────
   const documentRows = (Array.isArray(params.documents) ? params.documents : []).map((d) => [
     d.title || "Document",
     d.hint || "-",
-    extractFileName(d.url) || d.url,
+    d.fileName || extractFileName(d.url) || "—",
   ]);
 
-  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
-  nextStartY = drawSectionHeading("Uploaded Documents", nextStartY);
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 10;
+  currentY = ensureSpace(currentY, 28);
+  currentY = drawSectionHeading("Supporting Documents", currentY);
+
   autoTable(doc, {
-    startY: nextStartY + 2,
-    head: [["Document", "Notes", "File"]],
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["Document Type", "Notes", "File Name"]],
     body: documentRows.length > 0 ? documentRows : [["-", "-", "-"]],
-    styles: { fontSize: 8, cellPadding: 2.1, overflow: "linebreak" },
-    headStyles: { fillColor: [31, 41, 92] },
+    styles: { fontSize: 8.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT, overflow: "linebreak" },
+    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
+    alternateRowStyles: { fillColor: LIGHT_BG },
     columnStyles: {
-      0: { cellWidth: 45 },
-      1: { cellWidth: 65 },
-      2: { cellWidth: 75 },
+      0: { cellWidth: 42 },
+      1: { cellWidth: 60 },
+      2: { cellWidth: contentWidth - 102 },
     },
+    tableLineColor: DIVIDER,
+    tableLineWidth: 0.2,
   });
 
+  // ── Documents appendix (images embedded, PDFs noted) ───────────────────
   if (params.documents.length > 0) {
     doc.addPage();
+    // Appendix header
+    doc.setFillColor(...LIGHT_BLUE);
+    doc.rect(0, 0, pageWidth, 18, "F");
+    doc.setFillColor(...ACCENT);
+    doc.rect(0, 0, 4, 18, "F");
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(31, 41, 92);
-    doc.setFontSize(14);
-    doc.text("Uploaded Documents Appendix", 14, 16);
+    doc.setFontSize(13);
+    doc.setTextColor(...NAVY);
+    doc.text("Supporting Documents — Appendix", margin + 6, 11.5);
+
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(70, 70, 70);
-    doc.setFontSize(9);
-    doc.text("Uploaded documents are rendered below where preview is supported.", 14, 22);
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUTED);
+    doc.text("Image documents are embedded below. Other file types are listed by name.", margin + 6, 17);
 
     for (let i = 0; i < params.documents.length; i += 1) {
       const entry = params.documents[i];
       const resolvedUrl = resolveFileUrl(entry.url);
       doc.addPage();
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(31, 41, 92);
-      doc.setFontSize(12);
-      doc.text(`Document ${i + 1}: ${entry.title || "Document"}`, 14, 16);
+      drawPageHeader();
 
+      let docY = 18;
+      // Document title banner
+      doc.setFillColor(...LIGHT_BLUE);
+      doc.rect(0, docY, pageWidth, 16, "F");
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, docY, 4, 16, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(...NAVY);
+      doc.text(`${i + 1}. ${entry.title || "Document"}`, margin + 6, docY + 10);
+
+      docY += 22;
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(40, 40, 40);
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
+      doc.setTextColor(...MUTED);
       if (entry.hint) {
-        const hintLines = doc.splitTextToSize(`Notes: ${entry.hint}`, pageWidth - 28);
-        doc.text(hintLines, 14, 23);
+        const hintLines = doc.splitTextToSize(`Notes: ${entry.hint}`, contentWidth);
+        doc.text(hintLines, margin, docY);
+        docY += hintLines.length * 4.5 + 2;
       }
-      const fileLabel = extractFileName(resolvedUrl) || "Document file";
-      const fileLines = doc.splitTextToSize(`File: ${fileLabel}`, pageWidth - 28);
-      doc.text(fileLines, 14, 30);
+      const fileLabel = entry.fileName || extractFileName(resolvedUrl) || "—";
+      doc.text(`File: ${fileLabel}`, margin, docY);
+      docY += 8;
 
       try {
         const headers: Record<string, string> = {};
-        if (params.accessToken) {
-          headers.authorization = `Bearer ${params.accessToken}`;
-        }
+        if (params.accessToken) headers.authorization = `Bearer ${params.accessToken}`;
         const response = await fetch(resolvedUrl, { headers });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch document (${response.status}).`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const blob = await response.blob();
         const mimeType = String(blob.type ?? "").toLowerCase();
@@ -767,33 +1036,57 @@ async function createProfilePdfReport(params: {
         if (mimeType.startsWith("image/") && imageFormat) {
           const dataUrl = await blobToDataUrl(blob);
           const dims = await getImageDimensions(dataUrl);
-          const maxWidth = pageWidth - 28;
-          const maxHeight = pageHeight - 46;
-          const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
-          const renderWidth = Math.max(1, dims.width * scale);
-          const renderHeight = Math.max(1, dims.height * scale);
-          const x = (pageWidth - renderWidth) / 2;
-          const y = 38;
-          doc.addImage(dataUrl, imageFormat, x, y, renderWidth, renderHeight);
+          const maxW = contentWidth;
+          const maxH = pageHeight - docY - 20;
+          const scale = Math.min(maxW / dims.width, maxH / dims.height);
+          const rW = Math.max(1, dims.width * scale);
+          const rH = Math.max(1, dims.height * scale);
+          // Centered with light background box
+          const imgX = (pageWidth - rW) / 2;
+          doc.setFillColor(...LIGHT_BG);
+          doc.roundedRect(imgX - 3, docY - 2, rW + 6, rH + 6, 3, 3, "F");
+          doc.setDrawColor(...DIVIDER);
+          doc.setLineWidth(0.3);
+          doc.roundedRect(imgX - 3, docY - 2, rW + 6, rH + 6, 3, 3, "S");
+          doc.addImage(dataUrl, imageFormat, imgX, docY, rW, rH);
         } else {
+          // Non-image: display a styled notice box
+          doc.setFillColor(...LIGHT_BG);
+          doc.roundedRect(margin, docY, contentWidth, 18, 3, 3, "F");
+          doc.setDrawColor(...ACCENT);
+          doc.setLineWidth(0.4);
+          doc.roundedRect(margin, docY, contentWidth, 18, 3, 3, "S");
           doc.setFont("helvetica", "italic");
-          doc.setTextColor(90, 90, 90);
-          doc.text("Preview unavailable for this file type in the current PDF renderer.", 14, 42);
+          doc.setFontSize(9);
+          doc.setTextColor(...MUTED);
+          doc.text("This document type cannot be embedded in the PDF. Please use the download link.", margin + 5, docY + 8);
+          doc.setFontSize(8);
+          doc.text(`File: ${fileLabel}`, margin + 5, docY + 14);
         }
       } catch {
+        doc.setFillColor(...LIGHT_BG);
+        doc.roundedRect(margin, docY, contentWidth, 14, 3, 3, "F");
         doc.setFont("helvetica", "italic");
-        doc.setTextColor(90, 90, 90);
-        doc.text("Could not render this uploaded file in the appendix.", 14, 42);
+        doc.setFontSize(9);
+        doc.setTextColor(...MUTED);
+        doc.text("Could not retrieve this file for the appendix.", margin + 5, docY + 9);
       }
     }
   }
 
+  // ── Page numbers + footer ───────────────────────────────────────────────
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i += 1) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - 30, doc.internal.pageSize.getHeight() - 6);
+    const footerY = pageHeight - 8;
+    doc.setDrawColor(...DIVIDER);
+    doc.setLineWidth(0.3);
+    doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - doc.getTextWidth(`Page ${i} of ${totalPages}`), footerY);
+    doc.text("CONFIDENTIAL — For authorised use only", margin, footerY);
   }
 
   doc.save(params.fileName);
@@ -859,7 +1152,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [applyingPending, setApplyingPending] = useState(false);
   const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
   const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
-  const [headerPictureUrl, setHeaderPictureUrl] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -994,48 +1286,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     }
   }, [location]);
 
-  // Fetch and maintain the profile picture for the page header
-  useEffect(() => {
-    if (!accessToken || !data?.has_profile_picture) {
-      setHeaderPictureUrl(null);
-      return;
-    }
-    let cancelled = false;
-    let revokeUrl: string | null = null;
-
-    void fetchProfilePictureObjectUrl(accessToken).then((url) => {
-      if (cancelled) {
-        if (url) URL.revokeObjectURL(url);
-        return;
-      }
-      revokeUrl = url;
-      setHeaderPictureUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-    });
-
-    const onUpdate = () => {
-      void fetchProfilePictureObjectUrl(accessToken).then((url) => {
-        if (cancelled) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
-        revokeUrl = url;
-        setHeaderPictureUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
-      });
-    };
-    window.addEventListener("hrs:profile-picture-updated", onUpdate);
-
-    return () => {
-      cancelled = true;
-      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
-      window.removeEventListener("hrs:profile-picture-updated", onUpdate);
-    };
-  }, [accessToken, data?.has_profile_picture, data?.profile_picture_updated_at]);
 
   const onCompletePendingApplication = useCallback(async () => {
     if (!accessToken || !pendingJob) return;
@@ -1387,15 +1637,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const addresses = Array.isArray((profile as any)?.addresses) ? ((profile as any).addresses as any[]) : [];
     const education = Array.isArray((profile as any)?.education) ? ((profile as any).education as any[]) : [];
     const experience = Array.isArray((profile as any)?.experience) ? ((profile as any).experience as any[]) : [];
+    const references = Array.isArray((profile as any)?.references) ? ((profile as any).references as any[]) : [];
 
     const firstName = String(readValue(personal, "first_name", "firstName") ?? seeker.first_name ?? "").trim();
     const lastName = String(readValue(personal, "last_name", "lastName") ?? seeker.last_name ?? "").trim();
-    const computedFullName = `${firstName} ${lastName}`.trim();
+    const middleName = String(readValue(personal, "middle_name", "middleName") ?? "").trim();
+    const computedFullName = [firstName, middleName, lastName].filter(Boolean).join(" ");
     const resolvedFullName = computedFullName || String(seeker.email ?? "—").trim() || "—";
 
     return (
       <div className="dropPanel">
-        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
+        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
           <p className="pageText">Loading profile...</p>
         ) : profile === null ? (
@@ -1410,11 +1662,18 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   userId={userId}
                   fullName={resolvedFullName}
                 />
-                <ReadField label="Full Name" value={resolvedFullName} />
+                <ReadField label="First Name" value={readValue(personal, "first_name", "firstName") ?? seeker.first_name} />
+                <ReadField label="Last Name" value={readValue(personal, "last_name", "lastName") ?? seeker.last_name} />
+                {middleName ? <ReadField label="Middle Name" value={middleName} /> : null}
                 <ReadField label="Email" value={seeker.email} />
                 <ReadField label="Phone" value={seeker.phone} />
                 <ReadField label="Gender" value={readValue(personal, "gender")} />
+                <ReadField label="Date of Birth" value={String(readValue(personal, "date_of_birth", "dateOfBirth") ?? "—").split("T")[0] || "—"} />
                 <ReadField label="Nationality" value={readValue(personal, "nationality")} />
+                <ReadField label="Marital Status" value={readValue(personal, "marital_status", "maritalStatus")} />
+                <ReadField label="ID Type" value={readValue(personal, "id_type", "idType")} />
+                <ReadField label="ID Number" value={readValue(personal, "id_number", "idNumber")} />
+                <ReadField label="Disability Status" value={readValue(personal, "disability_status", "disabilityStatus") ? "Yes" : "No"} />
               </div>
             </div>
 
@@ -1499,16 +1758,39 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   <p className="pageText">No experience records.</p>
                 ) : (
                   experience.map((exp, idx) => (
-                    <div key={`${userId}-exp-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                      {[
-                        readValue(exp, "company"),
-                        readValue(exp, "position"),
-                        readValue(exp, "start_date", "startDate"),
-                        readValue(exp, "end_date", "endDate"),
-                      ]
-                        .filter(Boolean)
-                        .map(String)
-                        .join(" • ") || "—"}
+                    <div key={`${userId}-exp-${idx}`} className="readValue" style={{ marginBottom: 8 }}>
+                      <strong>{String(readValue(exp, "position") ?? "Role")}</strong>
+                      {" at "}
+                      <strong>{String(readValue(exp, "company") ?? "Company")}</strong>
+                      {(readValue(exp, "start_date", "startDate") || readValue(exp, "end_date", "endDate")) && (
+                        <span style={{ color: "var(--muted)", fontSize: 13, marginLeft: 6 }}>
+                          {[readValue(exp, "start_date", "startDate"), readValue(exp, "end_date", "endDate")]
+                            .filter(Boolean).map(String).join(" – ")}
+                        </span>
+                      )}
+                      {readValue(exp, "description") && (
+                        <div style={{ marginTop: 2, fontSize: 13, color: "var(--muted)" }}>
+                          {String(readValue(exp, "description")).slice(0, 180)}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="readLabel">References</div>
+              <div style={{ marginTop: 6 }}>
+                {references.length === 0 ? (
+                  <p className="pageText">No references listed.</p>
+                ) : (
+                  references.map((ref, idx) => (
+                    <div key={`${userId}-ref-${idx}`} className="profileReadGrid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                      <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
+                      <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                      <ReadField label="Email" value={readValue(ref, "email")} />
+                      <ReadField label="Phone" value={readValue(ref, "phone")} />
                     </div>
                   ))
                 )}
@@ -1519,7 +1801,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               <div className="readLabel">Documents</div>
               <div style={{ marginTop: 8 }}>
                 {(() => {
-                  const cards: { title: string; url: string; hint?: string }[] = [];
+                  const cards: { title: string; url: string; hint?: string; fileName?: string }[] = [];
 
                   const idDoc = String(readValue(personal, "id_document_url", "idDocumentUrl") ?? "").trim();
                   if (idDoc) cards.push({ title: "ID Document", url: idDoc });
@@ -1535,12 +1817,27 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   }
 
                   const uploadedDocs: UserDocument[] = Array.isArray(docs) ? docs : [];
+                  // Deduplicate by document_type — keep latest per type
+                  const latestByType = new Map<string, UserDocument>();
                   for (const d of uploadedDocs) {
+                    const type = String(d.document_type ?? "Document").trim() || "Document";
+                    const existing = latestByType.get(type);
+                    if (!existing) {
+                      latestByType.set(type, d);
+                    } else {
+                      const existingDate = new Date(String(existing.created_at ?? "")).getTime();
+                      const newDate = new Date(String(d.created_at ?? "")).getTime();
+                      if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
+                        latestByType.set(type, d);
+                      }
+                    }
+                  }
+                  for (const d of latestByType.values()) {
                     const url = String(d.download_url ?? d.file_url ?? "").trim();
                     if (!url) continue;
                     const title = String(d.document_type ?? "Document").trim() || "Document";
-                    const hint = String(d.description ?? d.original_name ?? "").trim() || undefined;
-                    cards.push({ title, url, hint });
+                    const hint = String(d.description ?? "").trim() || undefined;
+                    cards.push({ title, url, hint, fileName: String(d.original_name ?? "").trim() || undefined });
                   }
 
                   const seen = new Set<string>();
@@ -1573,17 +1870,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                             key={`${userId}-doc-${idx}`}
                             title={c.title}
                             url={c.url}
+                            token={accessToken ?? ""}
                             fallbackText="—"
                             hint={c.hint}
                             previewMode="external"
-                            externalPreviewOpen={Boolean(selectedPreview?.url && selectedPreview.url === resolveFileUrl(c.url))}
-                            onToggleExternalPreview={(resolvedUrl, title) => {
+                            externalPreviewOpen={selectedPreview?.title === c.title}
+                            onToggleExternalPreview={(blobUrl, title) => {
                               setDirectoryDocPreviewByUserId((prev) => {
                                 const current = prev[userId];
-                                const isSame = Boolean(current?.url && current.url === resolvedUrl);
                                 return {
                                   ...prev,
-                                  [userId]: isSame ? null : { url: resolvedUrl, title },
+                                  [userId]: current?.title === title ? null : { url: blobUrl, title },
                                 };
                               });
                             }}
@@ -1602,10 +1899,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                                 alt={selectedPreview.title}
                               />
                             ) : previewKind === "pdf" ? (
-                              <iframe
+                              <embed
                                 className="uploadedDocPreviewFrame"
                                 src={selectedPreview.url}
-                                title={`${selectedPreview.title} preview`}
+                                type="application/pdf"
                               />
                             ) : (
                               <span className="uploadedDocCardHint">
@@ -1950,13 +2247,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   return (
     <div className="page">
       <div className="profileHeader">
-        {headerPictureUrl && (
-          <img
-            src={headerPictureUrl}
-            alt="Profile"
-            className="profileHeaderAvatar"
-          />
-        )}
         <h1 className="pageTitle">{pageTitle}</h1>
         <button
           type="button"
@@ -2219,8 +2509,25 @@ function PersonalDetailsSection({
   const [licenseDocumentUrl, setLicenseDocumentUrl] = useState("");
   const [conductCertificateUrl, setConductCertificateUrl] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
-  const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
+  const [docsRefreshKey, setDocsRefreshKey] = useState(0);
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false);
+
+  // Original filenames from API (for display in cards)
+  const [idDocOriginalName, setIdDocOriginalName] = useState("");
+  const [licenseOriginalName, setLicenseOriginalName] = useState("");
+  const [conductOriginalName, setConductOriginalName] = useState("");
+
+  // Pending (staged) files — uploaded only when Save is clicked
+  const [pendingIdDocFile, setPendingIdDocFile] = useState<File | null>(null);
+  const [pendingIdDocLocalUrl, setPendingIdDocLocalUrl] = useState("");
+  const [pendingLicenseFile, setPendingLicenseFile] = useState<File | null>(null);
+  const [pendingLicenseLocalUrl, setPendingLicenseLocalUrl] = useState("");
+  const [pendingConductFile, setPendingConductFile] = useState<File | null>(null);
+  const [pendingConductLocalUrl, setPendingConductLocalUrl] = useState("");
+  const [cvLoading, setCvLoading] = useState(false);
+  const [primaryResume, setPrimaryResume] = useState<{ id: string; file_name?: string; download_url?: string; file_path?: string } | null>(null);
+  const [pendingCvFile, setPendingCvFile] = useState<File | null>(null);
+  const [pendingCvLocalUrl, setPendingCvLocalUrl] = useState("");
   const [selectedProfilePictureName, setSelectedProfilePictureName] = useState("");
   const [pendingProfilePictureFile, setPendingProfilePictureFile] = useState<File | null>(null);
   const pendingProfilePictureFileRef = useRef<File | null>(null);
@@ -2297,14 +2604,16 @@ function PersonalDetailsSection({
         setDocumentsLoading(true);
         const docs = await listMyDocuments(token);
         if (cancelled) return;
-        const findByType = (type: string) => {
-          const match = (docs ?? []).find(
-            (doc) => String(doc.document_type ?? "").trim().toLowerCase() === type,
-          );
-          return String(match?.download_url ?? match?.file_url ?? "").trim();
-        };
-        setLicenseDocumentUrl(findByType("license_document"));
-        setConductCertificateUrl(findByType("conduct_certificate"));
+        const findDoc = (type: string) =>
+          (docs ?? []).find((doc) => String(doc.document_type ?? "").trim().toLowerCase() === type);
+        const licenseDoc = findDoc("license_document");
+        const conductDoc = findDoc("conduct_certificate");
+        const idDoc = findDoc("id_document");
+        setLicenseDocumentUrl(String(licenseDoc?.download_url ?? licenseDoc?.file_url ?? "").trim());
+        setConductCertificateUrl(String(conductDoc?.download_url ?? conductDoc?.file_url ?? "").trim());
+        setLicenseOriginalName(String(licenseDoc?.original_name ?? "").trim());
+        setConductOriginalName(String(conductDoc?.original_name ?? "").trim());
+        setIdDocOriginalName(String(idDoc?.original_name ?? "").trim());
       } catch {
         if (cancelled) return;
         setLicenseDocumentUrl("");
@@ -2317,43 +2626,51 @@ function PersonalDetailsSection({
     return () => {
       cancelled = true;
     };
+  }, [token, docsRefreshKey]);
+
+  const loadResumes = useCallback(async () => {
+    try {
+      setCvLoading(true);
+      const result = await listJobSeekerResumes(token);
+      setPrimaryResume(result.primary_resume ?? null);
+    } catch {
+      setPrimaryResume(null);
+    } finally {
+      setCvLoading(false);
+    }
   }, [token]);
 
-  async function onUploadDocument(file: File | null, type: "id" | "license" | "conduct") {
+  useEffect(() => {
+    void loadResumes();
+  }, [loadResumes]);
+
+  function stageDocument(file: File | null, type: "id" | "license" | "conduct") {
     if (!file) return;
     const fileError = validatePdfUpload(file);
-    if (fileError) {
-      setError(fileError);
-      return;
+    if (fileError) { setError(fileError); return; }
+    setError(null);
+    const localUrl = URL.createObjectURL(file);
+    if (type === "id") {
+      setPendingIdDocFile(file);
+      setPendingIdDocLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
+      setFieldErrors((prev) => { const next = { ...prev }; delete next.idDocumentUrl; return next; });
+    } else if (type === "license") {
+      setPendingLicenseFile(file);
+      setPendingLicenseLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
+    } else {
+      setPendingConductFile(file);
+      setPendingConductLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
     }
-    try {
-      setUploadingDocType(type);
-      setError(null);
-      const mapping =
-        type === "id"
-          ? { key: "id_document", label: "Identification document" }
-          : type === "license"
-            ? { key: "license_document", label: "License" }
-            : { key: "conduct_certificate", label: "Conduct certificate" };
+  }
 
-      const uploaded = await uploadJobSeekerDocument(token, file, mapping.key, mapping.label, true);
-      const uploadedUrl = String(uploaded.url ?? "").trim();
-      if (type === "id") {
-        setForm((prev) => ({ ...prev, idDocumentUrl: uploadedUrl }));
-        setFieldErrors((prev) => {
-          const next = { ...prev };
-          delete next.idDocumentUrl;
-          return next;
-        });
-      }
-      if (type === "license") setLicenseDocumentUrl(uploadedUrl);
-      if (type === "conduct") setConductCertificateUrl(uploadedUrl);
-      setSuccess(`${mapping.label} uploaded`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Document upload failed");
-    } finally {
-      setUploadingDocType(null);
-    }
+  function stageCv(file: File | null) {
+    if (!file) return;
+    const fileError = validatePdfUpload(file);
+    if (fileError) { setError(fileError); return; }
+    setError(null);
+    const localUrl = URL.createObjectURL(file);
+    setPendingCvFile(file);
+    setPendingCvLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
   }
 
   function onSelectProfilePicture(file: File | null) {
@@ -2388,7 +2705,7 @@ function PersonalDetailsSection({
     if (!form.nationality.trim()) errs.nationality = "Nationality is required";
     if (!form.idType) errs.idType = "ID Type is required";
     if (!form.idNumber.trim()) errs.idNumber = "ID Number is required";
-    if (!form.idDocumentUrl.trim()) errs.idDocumentUrl = "Identification document is required";
+    if (!form.idDocumentUrl.trim() && !pendingIdDocFile) errs.idDocumentUrl = "Identification document is required";
     if (!form.maritalStatus) errs.maritalStatus = "Marital status is required";
 
     setFieldErrors(errs);
@@ -2413,8 +2730,39 @@ function PersonalDetailsSection({
         window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
       }
 
-      await updatePersonalDetails(token, form);
-      setSuccess(fileToUpload ? "Personal details and profile picture saved" : "Personal details saved");
+      // Upload staged documents
+      let finalIdDocUrl = form.idDocumentUrl;
+      if (pendingIdDocFile) {
+        const up = await uploadJobSeekerDocument(token, pendingIdDocFile, "id_document", "Identification document", true);
+        finalIdDocUrl = String(up.url ?? "").trim();
+        setIdDocOriginalName(String(up.document?.original_name ?? pendingIdDocFile.name ?? "").trim());
+        setPendingIdDocFile(null);
+        setPendingIdDocLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+      }
+      if (pendingLicenseFile) {
+        const up = await uploadJobSeekerDocument(token, pendingLicenseFile, "license_document", "License", true);
+        setLicenseDocumentUrl(String(up.url ?? "").trim());
+        setLicenseOriginalName(String(up.document?.original_name ?? pendingLicenseFile.name ?? "").trim());
+        setPendingLicenseFile(null);
+        setPendingLicenseLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+      }
+      if (pendingConductFile) {
+        const up = await uploadJobSeekerDocument(token, pendingConductFile, "conduct_certificate", "Conduct certificate", true);
+        setConductCertificateUrl(String(up.url ?? "").trim());
+        setConductOriginalName(String(up.document?.original_name ?? pendingConductFile.name ?? "").trim());
+        setPendingConductFile(null);
+        setPendingConductLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+      }
+      if (pendingCvFile) {
+        const uploaded = await uploadJobSeekerResume(token, pendingCvFile, true);
+        setPrimaryResume(uploaded);
+        setPendingCvFile(null);
+        setPendingCvLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+      }
+
+      await updatePersonalDetails(token, { ...form, idDocumentUrl: finalIdDocUrl });
+      setSuccess("Personal details saved");
+      setDocsRefreshKey((v) => v + 1);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -2428,7 +2776,7 @@ function PersonalDetailsSection({
 
   useEffect(() => {
     setExternalDocPreview(null);
-  }, [editing, currentIdDocumentUrl, licenseDocumentUrl, conductCertificateUrl, form.idDocumentUrl]);
+  }, [editing, currentIdDocumentUrl, licenseDocumentUrl, conductCertificateUrl, form.idDocumentUrl, primaryResume]);
 
   if (!editing) {
     return (
@@ -2466,31 +2814,49 @@ function PersonalDetailsSection({
               <UploadedDocumentCard
                 title="Identification Document"
                 url={currentIdDocumentUrl}
+                originalName={idDocOriginalName}
+                token={token}
                 fallbackText="No file uploaded yet."
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(currentIdDocumentUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "Identification Document"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
               <UploadedDocumentCard
                 title="License (Optional)"
                 url={licenseDocumentUrl}
+                originalName={licenseOriginalName}
+                token={token}
                 fallbackText="No file uploaded."
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(licenseDocumentUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "License (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
               <UploadedDocumentCard
                 title="Conduct Certificate (Optional)"
                 url={conductCertificateUrl}
+                originalName={conductOriginalName}
+                token={token}
                 fallbackText="No file uploaded."
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(conductCertificateUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "Conduct Certificate (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                }
+              />
+              <UploadedDocumentCard
+                title="My CV"
+                url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
+                originalName={String(primaryResume?.file_name ?? "")}
+                token={token}
+                fallbackText="No CV uploaded yet."
+                previewMode="external"
+                externalPreviewOpen={externalDocPreview?.title === "My CV"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
             </div>
@@ -2513,10 +2879,10 @@ function PersonalDetailsSection({
                   }
                   if (kind === "pdf") {
                     return (
-                      <iframe
+                      <embed
                         className="uploadedDocPreviewFrame"
                         src={externalDocPreview.url}
-                        title={`${externalDocPreview.title} preview`}
+                        type="application/pdf"
                       />
                     );
                   }
@@ -2688,22 +3054,28 @@ function PersonalDetailsSection({
                 type="file"
                 accept=".pdf,application/pdf"
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void onUploadDocument(file, "id");
+                  stageDocument(e.target.files?.[0] ?? null, "id");
                   e.currentTarget.value = "";
                 }}
-                disabled={uploadingDocType === "id" || saving}
-                required={!form.idDocumentUrl.trim()}
+                disabled={saving}
+                required={!form.idDocumentUrl.trim() && !pendingIdDocFile}
               />
+              {pendingIdDocFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingIdDocFile.name} — will be uploaded on Save
+                </span>
+              )}
               <UploadedDocumentCard
                 title="Identification Document"
-                url={form.idDocumentUrl}
+                url={pendingIdDocLocalUrl || form.idDocumentUrl}
+                originalName={pendingIdDocFile ? pendingIdDocFile.name : idDocOriginalName}
+                token={token}
                 fallbackText="No file uploaded yet."
-                hint={form.idDocumentUrl ? "Upload another file to replace the current one." : undefined}
+                hint={(pendingIdDocLocalUrl || form.idDocumentUrl) ? "Upload another file to replace the current one." : undefined}
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(form.idDocumentUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "Identification Document"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
               {fieldErrors.idDocumentUrl && <span className="fieldError">{fieldErrors.idDocumentUrl}</span>}
@@ -2715,21 +3087,27 @@ function PersonalDetailsSection({
                 type="file"
                 accept=".pdf,application/pdf"
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void onUploadDocument(file, "license");
+                  stageDocument(e.target.files?.[0] ?? null, "license");
                   e.currentTarget.value = "";
                 }}
-                disabled={uploadingDocType === "license" || saving || documentsLoading}
+                disabled={saving || documentsLoading}
               />
+              {pendingLicenseFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingLicenseFile.name} — will be uploaded on Save
+                </span>
+              )}
               <UploadedDocumentCard
                 title="License (Optional)"
-                url={licenseDocumentUrl}
+                url={pendingLicenseLocalUrl || licenseDocumentUrl}
+                originalName={pendingLicenseFile ? pendingLicenseFile.name : licenseOriginalName}
+                token={token}
                 fallbackText="No file uploaded."
-                hint={licenseDocumentUrl ? "Upload another file to replace the current one." : undefined}
+                hint={(pendingLicenseLocalUrl || licenseDocumentUrl) ? "Upload another file to replace the current one." : undefined}
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(licenseDocumentUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "License (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
             </label>
@@ -2740,21 +3118,58 @@ function PersonalDetailsSection({
                 type="file"
                 accept=".pdf,application/pdf"
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void onUploadDocument(file, "conduct");
+                  stageDocument(e.target.files?.[0] ?? null, "conduct");
                   e.currentTarget.value = "";
                 }}
-                disabled={uploadingDocType === "conduct" || saving || documentsLoading}
+                disabled={saving || documentsLoading}
               />
+              {pendingConductFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingConductFile.name} — will be uploaded on Save
+                </span>
+              )}
               <UploadedDocumentCard
                 title="Conduct Certificate (Optional)"
-                url={conductCertificateUrl}
+                url={pendingConductLocalUrl || conductCertificateUrl}
+                originalName={pendingConductFile ? pendingConductFile.name : conductOriginalName}
+                token={token}
                 fallbackText="No file uploaded."
-                hint={conductCertificateUrl ? "Upload another file to replace the current one." : undefined}
+                hint={(pendingConductLocalUrl || conductCertificateUrl) ? "Upload another file to replace the current one." : undefined}
                 previewMode="external"
-                externalPreviewOpen={Boolean(externalDocPreview?.url && externalDocPreview.url === resolveFileUrl(conductCertificateUrl))}
-                onToggleExternalPreview={(resolvedUrl, title) =>
-                  setExternalDocPreview((prev) => (prev?.url === resolvedUrl ? null : { url: resolvedUrl, title }))
+                externalPreviewOpen={externalDocPreview?.title === "Conduct Certificate (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                }
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">My CV</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(e) => {
+                  stageCv(e.target.files?.[0] ?? null);
+                  e.currentTarget.value = "";
+                }}
+                disabled={saving || cvLoading}
+              />
+              {pendingCvFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingCvFile.name} — will be uploaded on Save
+                </span>
+              )}
+              <UploadedDocumentCard
+                title="My CV"
+                url={pendingCvLocalUrl || String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
+                originalName={pendingCvFile ? pendingCvFile.name : (primaryResume?.file_name ?? "")}
+                token={token}
+                fallbackText="No CV uploaded yet."
+                hint={(pendingCvLocalUrl || primaryResume?.id) ? "Upload another file to replace the current CV." : undefined}
+                previewMode="external"
+                externalPreviewOpen={externalDocPreview?.title === "My CV"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
               />
             </label>
@@ -2778,10 +3193,10 @@ function PersonalDetailsSection({
                 }
                 if (kind === "pdf") {
                   return (
-                    <iframe
+                    <embed
                       className="uploadedDocPreviewFrame"
                       src={externalDocPreview.url}
-                      title={`${externalDocPreview.title} preview`}
+                      type="application/pdf"
                     />
                   );
                 }
@@ -3243,7 +3658,9 @@ function EducationSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [qualificationOpen, setQualificationOpen] = useState(false);
   const [studyOpen, setStudyOpen] = useState(false);
-  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [certDocPreview, setCertDocPreview] = useState<{ url: string; title: string } | null>(null);
+  const [pendingCertFile, setPendingCertFile] = useState<File | null>(null);
+  const [pendingCertLocalUrl, setPendingCertLocalUrl] = useState("");
 
   const qualificationSuggestions = useMemo(() => {
     const q = form.qualification.trim().toLowerCase();
@@ -3262,6 +3679,7 @@ function EducationSection({
   function startEdit(item: Record<string, unknown>) {
     setEditId(item.id as string);
     setFieldErrors({});
+    resetCertStaging();
     setForm({
       institutionName: (item.institution_name as string) ?? "",
       qualification: (item.qualification as string) ?? "",
@@ -3274,35 +3692,20 @@ function EducationSection({
     });
   }
 
-  async function onUploadQualificationEvidence(file: File | null) {
+  function stageCertificate(file: File | null) {
     if (!file) return;
     const fileError = validatePdfUpload(file);
-    if (fileError) {
-      setError(fileError);
-      return;
-    }
-    try {
-      setUploadingCertificate(true);
-      setError(null);
-      const uploaded = await uploadJobSeekerDocument(
-        token,
-        file,
-        "qualification_evidence",
-        "Qualification evidence",
-      );
-      const uploadedUrl = String(uploaded.url ?? "").trim();
-      setForm((prev) => ({ ...prev, certificateUrl: uploadedUrl }));
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next.certificateUrl;
-        return next;
-      });
-      setSuccess("Qualification evidence uploaded");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploadingCertificate(false);
-    }
+    if (fileError) { setError(fileError); return; }
+    setError(null);
+    const localUrl = URL.createObjectURL(file);
+    setPendingCertFile(file);
+    setPendingCertLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
+    setFieldErrors((prev) => { const next = { ...prev }; delete next.certificateUrl; return next; });
+  }
+
+  function resetCertStaging() {
+    setPendingCertFile(null);
+    setPendingCertLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
   }
 
   async function onSave() {
@@ -3313,7 +3716,7 @@ function EducationSection({
     if (!form.startDate) errs.startDate = "Start date is required";
     if (!form.isCurrent && !form.endDate) errs.endDate = "End date is required";
     if (!form.grade.trim()) errs.grade = "Grade is required";
-    if (!form.certificateUrl.trim()) errs.certificateUrl = "Qualification evidence is required";
+    if (!form.certificateUrl.trim() && !pendingCertFile) errs.certificateUrl = "Qualification evidence is required";
 
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -3321,14 +3724,21 @@ function EducationSection({
     setSaving(true);
     setError(null);
     try {
+      let certUrl = form.certificateUrl;
+      if (pendingCertFile) {
+        const up = await uploadJobSeekerDocument(token, pendingCertFile, "qualification_evidence", "Qualification evidence");
+        certUrl = String(up.url ?? "").trim();
+        resetCertStaging();
+      }
       await saveEducation(token, {
         ...form,
-        certificateUrl: form.certificateUrl,
+        certificateUrl: certUrl,
       }, editId ?? undefined);
       setSuccess(editId ? "Education updated" : "Education added");
       setForm(empty);
       setEditId(null);
       setFieldErrors({});
+      resetCertStaging();
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -3354,6 +3764,7 @@ function EducationSection({
     if (!items || items.length === 0) return <EmptyState label="No education records added yet." />;
 
     return (
+      <>
       <div className="recordList">
         {items.map((e, idx) => {
           const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
@@ -3376,14 +3787,20 @@ function EducationSection({
                   <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
                   <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
                   <EditField label="Grade" value={grade} onChange={() => {}} disabled />
-                  <label className="field fieldFull">
+                  <div className="field fieldFull">
                     <span className="fieldLabel">Qualification Evidence</span>
                     <UploadedDocumentCard
                       title="Qualification Evidence"
                       url={certificateUrl}
+                      token={token}
                       fallbackText="No file uploaded yet."
+                      previewMode="external"
+                      externalPreviewOpen={certDocPreview?.title === "Qualification Evidence"}
+                      onToggleExternalPreview={(blobUrl, title) =>
+                        setCertDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                      }
                     />
-                  </label>
+                  </div>
                   <label className="field fieldCheckbox fieldCheckboxIcon">
                     <input type="checkbox" checked={isCurrent} disabled />
                     <span className="fieldLabel">Currently studying here</span>
@@ -3394,6 +3811,20 @@ function EducationSection({
           );
         })}
       </div>
+      {certDocPreview?.url ? (
+        <div className="field fieldFull" style={{ marginTop: 10 }}>
+          <div className="readLabel">{certDocPreview.title} Preview</div>
+          <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+            {(() => {
+              const kind = getInlinePreviewKind(certDocPreview.url);
+              if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
+              if (kind === "pdf") return <embed className="uploadedDocPreviewFrame" src={certDocPreview.url} type="application/pdf" />;
+              return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
+            })()}
+          </div>
+        </div>
+      ) : null}
+      </>
     );
   }
 
@@ -3576,25 +4007,48 @@ function EducationSection({
                 type="file"
                 accept=".pdf,application/pdf"
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void onUploadQualificationEvidence(file);
+                  stageCertificate(e.target.files?.[0] ?? null);
                   e.currentTarget.value = "";
                 }}
-                disabled={saving || uploadingCertificate}
-                required={!form.certificateUrl.trim()}
+                disabled={saving}
+                required={!form.certificateUrl.trim() && !pendingCertFile}
               />
+              {pendingCertFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingCertFile.name} — will be uploaded on Save
+                </span>
+              )}
               <UploadedDocumentCard
                 title="Qualification Evidence"
-                url={form.certificateUrl}
+                url={pendingCertLocalUrl || form.certificateUrl}
+                token={token}
                 fallbackText="No file uploaded yet."
-                hint={form.certificateUrl ? "Upload another file to replace the current one." : undefined}
+                hint={(pendingCertLocalUrl || form.certificateUrl) ? "Upload another file to replace the current one." : undefined}
+                previewMode="external"
+                externalPreviewOpen={certDocPreview?.title === "Qualification Evidence"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setCertDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                }
               />
+              {certDocPreview?.url ? (
+                <div className="field fieldFull" style={{ marginTop: 6 }}>
+                  <div className="readLabel">{certDocPreview.title} Preview</div>
+                  <div className="uploadedDocPreview" style={{ marginTop: 4 }}>
+                    {(() => {
+                      const kind = getInlinePreviewKind(certDocPreview.url);
+                      if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
+                      if (kind === "pdf") return <embed className="uploadedDocPreviewFrame" src={certDocPreview.url} type="application/pdf" />;
+                      return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
+                    })()}
+                  </div>
+                </div>
+              ) : null}
               {fieldErrors.certificateUrl && <span className="fieldError">{fieldErrors.certificateUrl}</span>}
             </label>
           </div>
           <div className="stepperActions">
             {editId && (
-              <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
+              <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); resetCertStaging(); }}>Cancel</button>
             )}
             <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Education" : "Add Education"}
@@ -3634,53 +4088,6 @@ function ExperienceSection({
   const [editId, setEditId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [cvUploading, setCvUploading] = useState(false);
-  const [cvLoading, setCvLoading] = useState(false);
-  const [primaryResume, setPrimaryResume] = useState<{ id: string; file_name?: string; download_url?: string; file_path?: string } | null>(null);
-
-  const hasCv = Boolean(primaryResume?.id);
-
-  const loadResumes = useCallback(async () => {
-    try {
-      setCvLoading(true);
-      const result = await listJobSeekerResumes(token);
-      setPrimaryResume(result.primary_resume ?? null);
-    } catch {
-      setPrimaryResume(null);
-    } finally {
-      setCvLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    void loadResumes();
-  }, [loadResumes]);
-
-  async function onUploadCv(file: File | null) {
-    if (!file) return;
-    const fileError = validatePdfUpload(file);
-    if (fileError) {
-      setError(fileError);
-      return;
-    }
-    try {
-      setCvUploading(true);
-      setError(null);
-      await uploadJobSeekerResume(token, file, true);
-      await loadResumes();
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next.cv;
-        return next;
-      });
-      setSuccess("CV uploaded");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload CV");
-    } finally {
-      setCvUploading(false);
-    }
-  }
-
   function startEdit(item: Record<string, unknown>) {
     setEditId(item.id as string);
     setFieldErrors({});
@@ -3697,7 +4104,6 @@ function ExperienceSection({
 
   async function onSave() {
     const errs: Record<string, string> = {};
-    if (!hasCv) errs.cv = "CV is required";
     if (!form.companyName.trim()) errs.companyName = "Company name is required";
     if (!form.jobTitle.trim()) errs.jobTitle = "Job title is required";
     if (!form.employmentType.trim()) errs.employmentType = "Employment type is required";
@@ -3737,76 +4143,43 @@ function ExperienceSection({
   }
 
   if (!editing) {
-    if (!items || items.length === 0) {
-      return (
-        <div className="recordList">
-          <div className="dashCard jobCardToneA">
-            <div className="editForm" style={{ marginTop: 0 }}>
-              <div className="editGrid">
-                <label className="field fieldFull">
-                  <span className="fieldLabel">CV</span>
-                  <UploadedDocumentCard
-                    title="CV"
-                    url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
-                    fallbackText="No CV uploaded yet."
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-          <EmptyState label="No experience records added yet." />
-        </div>
-      );
-    }
-
     return (
       <div className="recordList">
-        <div className="dashCard jobCardToneA">
-          <div className="editForm" style={{ marginTop: 0 }}>
-            <div className="editGrid">
-              <label className="field fieldFull">
-                <span className="fieldLabel">CV</span>
-                <UploadedDocumentCard
-                  title="CV"
-                  url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
-                  fallbackText="No CV uploaded yet."
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-        {items.map((e, idx) => {
-          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-          const companyName = String(e.company_name ?? "");
-          const jobTitle = String(e.job_title ?? "");
-          const employmentType = String(e.employment_type ?? "");
-          const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
-          const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
-          const isCurrent = Boolean(e.is_current);
-          const responsibilities = String(e.responsibilities ?? "");
-
-          return (
-            <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
-              <div className="editForm" style={{ marginTop: 0 }}>
-                <div className="editGrid">
-                  <EditField label="Company Name" value={companyName} onChange={() => {}} disabled />
-                  <EditField label="Job Title" value={jobTitle} onChange={() => {}} disabled />
-                  <EditField label="Employment Type" value={employmentType} onChange={() => {}} disabled />
-                  <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
-                  <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
-                  <label className="field fieldCheckbox fieldCheckboxIcon">
-                    <input type="checkbox" checked={isCurrent} disabled />
-                    <span className="fieldLabel">Currently working here</span>
-                  </label>
-                  <label className="field fieldFull">
-                    <span className="fieldLabel">Responsibilities</span>
-                    <textarea className="input textarea" value={responsibilities} readOnly disabled rows={3} />
-                  </label>
+        {(!items || items.length === 0) ? (
+          <EmptyState label="No experience records added yet." />
+        ) : (
+          items.map((e, idx) => {
+            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
+            const companyName = String(e.company_name ?? "");
+            const jobTitle = String(e.job_title ?? "");
+            const employmentType = String(e.employment_type ?? "");
+            const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
+            const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
+            const isCurrent = Boolean(e.is_current);
+            const responsibilities = String(e.responsibilities ?? "");
+            return (
+              <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
+                <div className="editForm" style={{ marginTop: 0 }}>
+                  <div className="editGrid">
+                    <EditField label="Company Name" value={companyName} onChange={() => {}} disabled />
+                    <EditField label="Job Title" value={jobTitle} onChange={() => {}} disabled />
+                    <EditField label="Employment Type" value={employmentType} onChange={() => {}} disabled />
+                    <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
+                    <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
+                    <label className="field fieldCheckbox fieldCheckboxIcon">
+                      <input type="checkbox" checked={isCurrent} disabled />
+                      <span className="fieldLabel">Currently working here</span>
+                    </label>
+                    <label className="field fieldFull">
+                      <span className="fieldLabel">Responsibilities</span>
+                      <textarea className="input textarea" value={responsibilities} readOnly disabled rows={3} />
+                    </label>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     );
   }
@@ -3827,12 +4200,10 @@ function ExperienceSection({
                   {e.is_current ? " (Current)" : ""}
                 </span>
               </div>
-              {editing && (
-                <div className="recordActions">
-                  <button className="btn btnGhost btnSm" onClick={() => startEdit(e)} type="button">Edit</button>
-                  <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
-                </div>
-              )}
+              <div className="recordActions">
+                <button className="btn btnGhost btnSm" onClick={() => startEdit(e)} type="button">Edit</button>
+                <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
+              </div>
             </div>
           ))}
         </div>
@@ -3852,137 +4223,110 @@ function ExperienceSection({
           await onDelete(id);
         }}
       />
-      {editing && (
-        <div className="editForm">
-          <h4 className="editFormTitle">{editId ? "Edit Experience" : "Add Experience"}</h4>
-          <div className="editGrid" style={{ marginBottom: 10 }}>
-            <label className="field fieldFull">
-              <span className="fieldLabel">CV</span>
-              <input
-                className="input"
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void onUploadCv(file);
-                  e.currentTarget.value = "";
-                }}
-                disabled={saving || cvUploading || cvLoading}
-                required={!hasCv}
-              />
-              <UploadedDocumentCard
-                title="CV"
-                url={String(primaryResume?.download_url ?? primaryResume?.file_path ?? "")}
-                fallbackText="Upload your CV. It is mandatory."
-                hint={hasCv ? "Upload another file to replace the current one." : undefined}
-              />
-              {fieldErrors.cv && <span className="fieldError">{fieldErrors.cv}</span>}
-            </label>
-          </div>
-          <div className="editGrid">
-            <EditField
-              label="Company Name"
-              value={form.companyName}
-              onChange={(v) => setForm({ ...form, companyName: v })}
-              required
-              error={fieldErrors.companyName}
-            />
-            <EditField
-              label="Job Title"
-              value={form.jobTitle}
-              onChange={(v) => setForm({ ...form, jobTitle: v })}
-              required
-              error={fieldErrors.jobTitle}
-            />
-            <label className="field">
-              <span className="fieldLabel">Employment Type</span>
-              <select
-                className="input"
-                value={form.employmentType}
-                onChange={(e) => setForm({ ...form, employmentType: e.target.value })}
-                required
-              >
-                <option value="">Select</option>
-                <option value="Full-time">Full-time</option>
-                <option value="Part-time">Part-time</option>
-                <option value="Contract">Contract</option>
-                <option value="Freelance">Freelance</option>
-                <option value="Internship">Internship</option>
-              </select>
-              {fieldErrors.employmentType && (
-                <span className="fieldError">{fieldErrors.employmentType}</span>
-              )}
-            </label>
-            <EditField
-              label="Start Date"
-              value={form.startDate}
-              onChange={(v) => setForm({ ...form, startDate: v })}
-              type="date"
-              required
-              error={fieldErrors.startDate}
-            />
 
-            <label className="field">
-              <span className="fieldLabel">End Date</span>
-              <input
-                className="input"
-                type="date"
-                value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                disabled={form.isCurrent}
-                required={!form.isCurrent}
-              />
-              {fieldErrors.endDate && (
-                <span className="fieldError">{fieldErrors.endDate}</span>
-              )}
-            </label>
-
-            <label className="field fieldFull">
-              <span className="fieldLabel">Responsibilities</span>
-              <textarea
-                className="input textarea"
-                value={form.responsibilities}
-                onChange={(e) => setForm({ ...form, responsibilities: e.target.value })}
-                rows={3}
-                required
-              />
-              {fieldErrors.responsibilities && (
-                <span className="fieldError">{fieldErrors.responsibilities}</span>
-              )}
-            </label>
-            <label className="field fieldCheckbox fieldCheckboxIcon">
-              <input
-                type="checkbox"
-                checked={form.isCurrent}
-                onChange={(e) => {
-                  const isCurrent = e.target.checked;
-                  setForm((prev) => ({
-                    ...prev,
-                    isCurrent,
-                    endDate: isCurrent ? "" : prev.endDate,
-                  }));
-                  if (isCurrent) {
-                    setFieldErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.endDate;
-                      return next;
-                    });
-                  }
-                }}
-              />
-              <span className="fieldLabel">Currently working here</span>
-            </label>
-          </div>
-          <div className="stepperActions">
-            {editId && (
-              <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
+      <div className="editForm">
+        <h4 className="editFormTitle">{editId ? "Edit Experience" : "Add Experience"}</h4>
+        <div className="editGrid">
+          <EditField
+            label="Company Name"
+            value={form.companyName}
+            onChange={(v) => setForm({ ...form, companyName: v })}
+            required
+            error={fieldErrors.companyName}
+          />
+          <EditField
+            label="Job Title"
+            value={form.jobTitle}
+            onChange={(v) => setForm({ ...form, jobTitle: v })}
+            required
+            error={fieldErrors.jobTitle}
+          />
+          <label className="field">
+            <span className="fieldLabel">Employment Type</span>
+            <select
+              className="input"
+              value={form.employmentType}
+              onChange={(e) => setForm({ ...form, employmentType: e.target.value })}
+              required
+            >
+              <option value="">Select</option>
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Freelance">Freelance</option>
+              <option value="Internship">Internship</option>
+            </select>
+            {fieldErrors.employmentType && (
+              <span className="fieldError">{fieldErrors.employmentType}</span>
             )}
-            <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
-              {saving ? "Saving…" : editId ? "Update Experience" : "Add Experience"}
-            </button>
-          </div>
+          </label>
+          <EditField
+            label="Start Date"
+            value={form.startDate}
+            onChange={(v) => setForm({ ...form, startDate: v })}
+            type="date"
+            required
+            error={fieldErrors.startDate}
+          />
+          <label className="field">
+            <span className="fieldLabel">End Date</span>
+            <input
+              className="input"
+              type="date"
+              value={form.endDate}
+              onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              disabled={form.isCurrent}
+              required={!form.isCurrent}
+            />
+            {fieldErrors.endDate && (
+              <span className="fieldError">{fieldErrors.endDate}</span>
+            )}
+          </label>
+          <label className="field fieldFull">
+            <span className="fieldLabel">Responsibilities</span>
+            <textarea
+              className="input textarea"
+              value={form.responsibilities}
+              onChange={(e) => setForm({ ...form, responsibilities: e.target.value })}
+              rows={3}
+              required
+            />
+            {fieldErrors.responsibilities && (
+              <span className="fieldError">{fieldErrors.responsibilities}</span>
+            )}
+          </label>
+          <label className="field fieldCheckbox fieldCheckboxIcon">
+            <input
+              type="checkbox"
+              checked={form.isCurrent}
+              onChange={(e) => {
+                const isCurrent = e.target.checked;
+                setForm((prev) => ({
+                  ...prev,
+                  isCurrent,
+                  endDate: isCurrent ? "" : prev.endDate,
+                }));
+                if (isCurrent) {
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.endDate;
+                    return next;
+                  });
+                }
+              }}
+            />
+            <span className="fieldLabel">Currently working here</span>
+          </label>
         </div>
-      )}
+        <div className="stepperActions">
+          {editId && (
+            <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
+          )}
+          <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
+            {saving ? "Saving…" : editId ? "Update Experience" : "Add Experience"}
+          </button>
+        </div>
+      </div>
     </>
   );
 }

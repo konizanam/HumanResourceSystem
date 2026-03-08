@@ -3781,3 +3781,41 @@ input[type="radio"][required] {
   max-height: 220px;
   overflow-y: auto;
 }
+
+/* ── Autocomplete / suggestion dropdowns ────────── */
+
+.autocompleteList {
+  margin-top: 4px;
+  border: 1px solid var(--stroke);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+}
+
+.autocompleteItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.4;
+}
+
+.autocompleteItem:hover,
+.autocompleteItem:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: none;
+}

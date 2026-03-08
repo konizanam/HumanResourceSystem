@@ -1328,10 +1328,18 @@ export async function uploadJobSeekerDocument(
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to upload document");
 
-  const data = (body as any)?.data ?? {};
+  // API may return the document at body.data (flat) or body.data.document (nested)
+  const raw = (body as any)?.data ?? body ?? {};
+  const doc: UserDocument | null =
+    raw.document ?? (raw.id ? raw : null);
+  const resolvedUrl = String(
+    raw.url ?? raw.download_url ?? raw.file_url ??
+    (raw.document as any)?.download_url ??
+    (raw.document as any)?.file_url ?? "",
+  );
   return {
-    url: String(data.url ?? ""),
-    document: (data.document ?? null) as UserDocument | null,
+    url: resolvedUrl,
+    document: doc,
   };
 }
 
