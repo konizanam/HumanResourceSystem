@@ -134,6 +134,12 @@ body.loginBodyNoScroll {
   overflow: hidden;
 }
 
+@media (max-width: 900px) {
+  body.loginBodyNoScroll {
+    overflow-y: auto;
+  }
+}
+
 /* =====================================================
    PAGE BASE
    ===================================================== */
