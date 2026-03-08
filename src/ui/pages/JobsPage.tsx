@@ -4,6 +4,7 @@ import {
   applyToJob,
   type Company,
   createJob,
+  createJobSubcategory,
   deleteJob,
   getCompany,
   getPublicCompany,
@@ -274,6 +275,9 @@ export function JobsPage() {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState("");
+  const [addSubcategoryModalOpen, setAddSubcategoryModalOpen] = useState(false);
+  const [addSubcategoryName, setAddSubcategoryName] = useState("");
+  const [addSubcategoryError, setAddSubcategoryError] = useState<string | null>(null);
   const [showSeekerFilters, setShowSeekerFilters] = useState(searchParams.get("browse") !== "0");
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
@@ -894,6 +898,79 @@ export function JobsPage() {
     }
   }
 
+  function openAddSubcategoryModal() {
+    if (!selectedCategory) return;
+    setAddSubcategoryError(null);
+    setAddSubcategoryName("");
+    setAddSubcategoryModalOpen(true);
+  }
+
+  async function onCreateSubcategoryFromJobForm() {
+    if (!accessToken || !selectedCategory) return;
+
+    const name = addSubcategoryName.trim();
+    if (!name) {
+      setAddSubcategoryError("Subcategory name is required.");
+      return;
+    }
+
+    const existing = (selectedCategory.subcategories ?? []).find(
+      (sub) => String(sub.name ?? "").trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (existing) {
+      setSelectedSubcategory(existing.name);
+      setFormErrors((prev) => {
+        const next = { ...prev };
+        delete next.subcategory;
+        return next;
+      });
+      setAddSubcategoryModalOpen(false);
+      setAddSubcategoryName("");
+      setAddSubcategoryError(null);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setAddSubcategoryError(null);
+      const created = await createJobSubcategory(accessToken, {
+        category_id: selectedCategory.id,
+        name,
+      });
+
+      const sortByName = (a: { name: string }, b: { name: string }) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { sensitivity: "base" });
+
+      setJobCategories((prev) =>
+        prev.map((category) =>
+          category.id === selectedCategory.id
+            ? { ...category, subcategories: [...(category.subcategories ?? []), created].sort(sortByName) }
+            : category,
+        ),
+      );
+
+      setSelectedCategory((prev) =>
+        prev && prev.id === selectedCategory.id
+          ? { ...prev, subcategories: [...(prev.subcategories ?? []), created].sort(sortByName) }
+          : prev,
+      );
+
+      setSelectedSubcategory(created.name);
+      setFormErrors((prev) => {
+        const next = { ...prev };
+        delete next.subcategory;
+        return next;
+      });
+      setAddSubcategoryModalOpen(false);
+      setAddSubcategoryName("");
+      setAddSubcategoryError(null);
+    } catch (e) {
+      setAddSubcategoryError((e as Error)?.message ?? "Failed to create subcategory");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onConfirmDelete() {
     if (!accessToken || !confirmDeleteId) return;
     try {
@@ -953,6 +1030,17 @@ export function JobsPage() {
                   <option key={sub.id} value={sub.name}>{sub.name}</option>
                 ))}
               </select>
+              {selectedCategory && (selectedCategory.subcategories ?? []).length === 0 ? (
+                <button
+                  type="button"
+                  className="linkBtn"
+                  onClick={openAddSubcategoryModal}
+                  disabled={saving}
+                  style={{ width: "fit-content" }}
+                >
+                  Add Subcategory
+                </button>
+              ) : null}
               {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
             </div>
             <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
@@ -1261,6 +1349,17 @@ export function JobsPage() {
                     <option key={sub.id} value={sub.name}>{sub.name}</option>
                   ))}
                 </select>
+                {selectedCategory && (selectedCategory.subcategories ?? []).length === 0 ? (
+                  <button
+                    type="button"
+                    className="linkBtn"
+                    onClick={openAddSubcategoryModal}
+                    disabled={saving}
+                    style={{ width: "fit-content" }}
+                  >
+                    Add Subcategory
+                  </button>
+                ) : null}
                 {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
               </div>
               <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
@@ -1810,6 +1909,44 @@ export function JobsPage() {
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={onConfirmDelete}
       />
+
+      {addSubcategoryModalOpen ? (
+        <div
+          className="modalOverlay"
+          role="presentation"
+          onMouseDown={() => !saving && setAddSubcategoryModalOpen(false)}
+        >
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Add Subcategory</div>
+            <div className="modalMessage" style={{ marginTop: 10 }}>
+              <label className="field">
+                <span className="fieldLabel">Category</span>
+                <input className="input" value={selectedCategory?.name ?? ""} disabled />
+              </label>
+              <label className="field" style={{ marginTop: 10 }}>
+                <span className="fieldLabel">Subcategory Name</span>
+                <input
+                  className="input"
+                  value={addSubcategoryName}
+                  onChange={(e) => setAddSubcategoryName(e.target.value)}
+                  placeholder="Type subcategory name"
+                  required
+                  autoFocus
+                />
+              </label>
+              {addSubcategoryError ? <div className="fieldError" style={{ marginTop: 8 }}>{addSubcategoryError}</div> : null}
+            </div>
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={() => setAddSubcategoryModalOpen(false)} disabled={saving}>
+                Cancel
+              </button>
+              <button className="btn btnPrimary" type="button" onClick={() => void onCreateSubcategoryFromJobForm()} disabled={saving}>
+                {saving ? "Adding..." : "Add Subcategory"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {profileIncompleteModalOpen ? (
         <div
