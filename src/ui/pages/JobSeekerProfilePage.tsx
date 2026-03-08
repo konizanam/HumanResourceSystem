@@ -573,6 +573,15 @@ function collectProfileDocuments(params: {
 }): ProfileDocumentEntry[] {
   const cards: ProfileDocumentEntry[] = [];
 
+  // Treat education records as active unless they are explicitly marked inactive/deleted.
+  const activeEducation = (Array.isArray(params.education) ? params.education : []).filter((edu) => {
+    const status = String((edu as any)?.status ?? "").trim().toLowerCase();
+    if (status && ["inactive", "deleted", "archived"].includes(status)) return false;
+    if (Boolean((edu as any)?.is_deleted)) return false;
+    if ((edu as any)?.deleted_at) return false;
+    return true;
+  });
+
   // Deduplicate uploaded docs by document_type — keep only the latest per type.
   const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
   const latestByType = new Map<string, UserDocument>();
@@ -589,12 +598,6 @@ function collectProfileDocuments(params: {
       }
     }
   }
-
-  const latestQualificationEvidence = latestByType.get("qualification_evidence");
-  const latestQualificationEvidenceUrl = String(
-    latestQualificationEvidence?.download_url ?? latestQualificationEvidence?.file_url ?? "",
-  ).trim();
-  const latestQualificationEvidenceName = String(latestQualificationEvidence?.original_name ?? "").trim();
 
   const latestIdDocument = latestByType.get("id_document");
   const latestIdDocumentUrl = String(
@@ -613,16 +616,20 @@ function collectProfileDocuments(params: {
   if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
 
   const educationCertificateUrls = new Set<string>();
-  for (const edu of params.education) {
-    const cert = latestQualificationEvidenceUrl || String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
+  for (let eduIndex = 0; eduIndex < activeEducation.length; eduIndex += 1) {
+    const edu = activeEducation[eduIndex];
+    const cert = String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
     if (!cert) continue;
     const inst = String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
+    const title = inst
+      ? `Education Certificate ${eduIndex + 1} - ${inst}`
+      : `Education Certificate ${eduIndex + 1}`;
     educationCertificateUrls.add(cert);
     cards.push({
-      title: "Education Certificate",
+      title,
       url: cert,
       hint: inst || undefined,
-      fileName: latestQualificationEvidenceUrl ? (latestQualificationEvidenceName || undefined) : undefined,
+      fileName: undefined,
     });
   }
 
@@ -1152,7 +1159,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   >({});
 
   const [directoryDocPreviewByUserId, setDirectoryDocPreviewByUserId] = useState<
-    Record<string, { url: string; title: string } | null | undefined>
+    Record<string, { url: string; title: string; key?: string } | null | undefined>
   >({});
 
   const [directoryResumesByUserId, setDirectoryResumesByUserId] = useState<
@@ -1902,14 +1909,15 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                             fallbackText="—"
                             hint={c.hint}
                             originalName={c.fileName}
+                            previewKey={`${String(c.url ?? "").trim()}::${idx}`}
                             previewMode="external"
-                            externalPreviewOpen={selectedPreview?.title === c.title}
-                            onToggleExternalPreview={(blobUrl, title) => {
+                            externalPreviewOpen={selectedPreview?.key === `${String(c.url ?? "").trim()}::${idx}`}
+                            onToggleExternalPreview={(blobUrl, key) => {
                               setDirectoryDocPreviewByUserId((prev) => {
                                 const current = prev[userId];
                                 return {
                                   ...prev,
-                                  [userId]: current?.title === title ? null : { url: blobUrl, title },
+                                  [userId]: current?.key === key ? null : { url: blobUrl, title: c.title, key },
                                 };
                               });
                             }}
