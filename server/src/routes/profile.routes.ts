@@ -1,5 +1,5 @@
 // src/routes/profile.routes.ts
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ProfileController } from '../controllers/profile.controller';
 import { authenticate, authorizePermission } from '../middleware/auth';
 import {
@@ -19,7 +19,7 @@ const profileController = new ProfileController();
 const profilePictureUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 2 * 1024 * 1024,
+    fileSize: 10 * 1024 * 1024,
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
@@ -30,6 +30,31 @@ const profilePictureUpload = multer({
     cb(new Error('Invalid profile picture file type. Please upload an image.') as any);
   },
 });
+
+const profilePictureSingleUpload = profilePictureUpload.single('profile_picture');
+
+function handleProfilePictureUpload(req: Request, res: Response, next: NextFunction) {
+  profilePictureSingleUpload(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        status: 'error',
+        error: { message: 'Profile picture is too large. Maximum size is 10MB.' },
+      });
+      return;
+    }
+
+    const message = err instanceof Error ? err.message : 'Invalid profile picture upload.';
+    res.status(400).json({
+      status: 'error',
+      error: { message },
+    });
+  });
+}
 
 // All profile routes require authentication and job seeker permissions
 router.use(authenticate, authorizePermission('APPLY_JOB'));
@@ -46,7 +71,7 @@ router.patch(
 // Personal details
 router.get('/personal-details', profileController.getPersonalDetails);
 router.get('/picture', profileController.getProfilePicture);
-router.put('/picture', profilePictureUpload.single('profile_picture'), profileController.uploadProfilePicture);
+router.put('/picture', handleProfilePictureUpload, profileController.uploadProfilePicture);
 router.put(
   '/personal-details',
   personalDetailsValidation,

@@ -393,6 +393,31 @@ type ProfileDocumentEntry = {
   hint?: string;
 };
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file blob."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.width || 1, height: image.height || 1 });
+    image.onerror = () => reject(new Error("Failed to read image dimensions."));
+    image.src = dataUrl;
+  });
+}
+
+function resolveImageFormat(mimeType: string): "PNG" | "JPEG" | null {
+  const mime = String(mimeType ?? "").toLowerCase();
+  if (mime.includes("png")) return "PNG";
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "JPEG";
+  return null;
+}
+
 function readProfileValue(obj: Record<string, unknown> | null | undefined, ...keys: string[]) {
   if (!obj) return null;
   for (const k of keys) {
@@ -464,11 +489,12 @@ function collectProfileDocuments(params: {
   });
 }
 
-function createProfilePdfReport(params: {
+async function createProfilePdfReport(params: {
   fileName: string;
   fullName: string;
   email?: string;
   phone?: string;
+  accessToken?: string;
   personal: Record<string, unknown> | null;
   profile: Record<string, unknown> | null;
   addresses: Record<string, unknown>[];
@@ -479,6 +505,15 @@ function createProfilePdfReport(params: {
 }) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const drawSectionHeading = (title: string, y: number) => {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(31, 41, 92);
+    doc.setFontSize(12);
+    doc.text(title, 14, y);
+    return y + 3;
+  };
 
   doc.setFillColor(31, 41, 92);
   doc.rect(0, 0, pageWidth, 30, "F");
@@ -524,16 +559,14 @@ function createProfilePdfReport(params: {
   let currentY = (doc as any).lastAutoTable?.finalY ?? 60;
 
   const summary = String(readProfileValue(params.profile, "professional_summary", "professionalSummary") ?? "").trim() || "-";
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(31, 41, 92);
-  doc.setFontSize(12);
-  doc.text("Professional Summary", 14, currentY + 9);
+  const summaryTitleY = currentY + 10;
+  drawSectionHeading("Professional Summary", summaryTitleY);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(40, 40, 40);
   doc.setFontSize(10);
   const wrappedSummary = doc.splitTextToSize(summary, pageWidth - 28);
-  doc.text(wrappedSummary, 14, currentY + 15);
-  currentY += 15 + wrappedSummary.length * 4;
+  doc.text(wrappedSummary, 14, summaryTitleY + 6);
+  currentY = summaryTitleY + 6 + wrappedSummary.length * 4;
 
   autoTable(doc, {
     startY: currentY + 4,
@@ -555,8 +588,10 @@ function createProfilePdfReport(params: {
     String(readProfileValue(address, "country") ?? "-"),
   ]);
 
+  let nextStartY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 8;
+  nextStartY = drawSectionHeading("Address", nextStartY);
   autoTable(doc, {
-    startY: ((doc as any).lastAutoTable?.finalY ?? currentY) + 6,
+    startY: nextStartY + 2,
     head: [["Address Line 1", "Address Line 2", "City", "State", "Country"]],
     body: addressRows.length > 0 ? addressRows : [["-", "-", "-", "-", "-"]],
     styles: { fontSize: 8.5, cellPadding: 2.3 },
@@ -571,8 +606,10 @@ function createProfilePdfReport(params: {
     formatDateValue(readProfileValue(edu, "end_date", "endDate", "end_year", "endYear")),
   ]);
 
+  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
+  nextStartY = drawSectionHeading("Education", nextStartY);
   autoTable(doc, {
-    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    startY: nextStartY + 2,
     head: [["Institution", "Qualification", "Field", "Start", "End"]],
     body: educationRows.length > 0 ? educationRows : [["-", "-", "-", "-", "-"]],
     styles: { fontSize: 8.5, cellPadding: 2.3 },
@@ -587,8 +624,10 @@ function createProfilePdfReport(params: {
     String(readProfileValue(exp, "description") ?? "-").slice(0, 120) || "-",
   ]);
 
+  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
+  nextStartY = drawSectionHeading("Experience", nextStartY);
   autoTable(doc, {
-    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    startY: nextStartY + 2,
     head: [["Company", "Position", "Start", "End", "Description"]],
     body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-"]],
     styles: { fontSize: 8.2, cellPadding: 2.3 },
@@ -602,8 +641,10 @@ function createProfilePdfReport(params: {
     String(readProfileValue(ref, "phone") ?? "-"),
   ]);
 
+  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
+  nextStartY = drawSectionHeading("References", nextStartY);
   autoTable(doc, {
-    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    startY: nextStartY + 2,
     head: [["Reference Name", "Relationship", "Email", "Phone"]],
     body: referencesRows.length > 0 ? referencesRows : [["-", "-", "-", "-"]],
     styles: { fontSize: 8.5, cellPadding: 2.3 },
@@ -617,8 +658,10 @@ function createProfilePdfReport(params: {
     d.url,
   ]);
 
+  nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
+  nextStartY = drawSectionHeading("Uploaded Documents", nextStartY);
   autoTable(doc, {
-    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    startY: nextStartY + 2,
     head: [["Document", "Notes", "File", "URL"]],
     body: documentRows.length > 0 ? documentRows : [["-", "-", "-", "-"]],
     styles: { fontSize: 8, cellPadding: 2.1, overflow: "linebreak" },
@@ -630,6 +673,74 @@ function createProfilePdfReport(params: {
       3: { cellWidth: 75 },
     },
   });
+
+  if (params.documents.length > 0) {
+    doc.addPage();
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(31, 41, 92);
+    doc.setFontSize(14);
+    doc.text("Uploaded Documents Appendix", 14, 16);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(70, 70, 70);
+    doc.setFontSize(9);
+    doc.text("Image documents are embedded below. Non-image files include direct links.", 14, 22);
+
+    for (let i = 0; i < params.documents.length; i += 1) {
+      const entry = params.documents[i];
+      const resolvedUrl = resolveFileUrl(entry.url);
+      doc.addPage();
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(31, 41, 92);
+      doc.setFontSize(12);
+      doc.text(`Document ${i + 1}: ${entry.title || "Document"}`, 14, 16);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(40, 40, 40);
+      doc.setFontSize(9);
+      if (entry.hint) {
+        const hintLines = doc.splitTextToSize(`Notes: ${entry.hint}`, pageWidth - 28);
+        doc.text(hintLines, 14, 23);
+      }
+      const urlLines = doc.splitTextToSize(`Source: ${resolvedUrl || "-"}`, pageWidth - 28);
+      doc.text(urlLines, 14, 30);
+
+      try {
+        const headers: Record<string, string> = {};
+        if (params.accessToken) {
+          headers.authorization = `Bearer ${params.accessToken}`;
+        }
+        const response = await fetch(resolvedUrl, { headers });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch document (${response.status}).`);
+        }
+
+        const blob = await response.blob();
+        const mimeType = String(blob.type ?? "").toLowerCase();
+        const imageFormat = resolveImageFormat(mimeType);
+
+        if (mimeType.startsWith("image/") && imageFormat) {
+          const dataUrl = await blobToDataUrl(blob);
+          const dims = await getImageDimensions(dataUrl);
+          const maxWidth = pageWidth - 28;
+          const maxHeight = pageHeight - 46;
+          const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
+          const renderWidth = Math.max(1, dims.width * scale);
+          const renderHeight = Math.max(1, dims.height * scale);
+          const x = (pageWidth - renderWidth) / 2;
+          const y = 38;
+          doc.addImage(dataUrl, imageFormat, x, y, renderWidth, renderHeight);
+        } else {
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(90, 90, 90);
+          doc.text("Preview unavailable in PDF export for this file type. Use the source link above.", 14, 42);
+        }
+      } catch {
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(90, 90, 90);
+        doc.text("Could not embed this file. Use the source link above.", 14, 42);
+      }
+    }
+  }
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i += 1) {
@@ -912,11 +1023,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         ...(Array.isArray(resumes.resumes) ? resumes.resumes : []),
       ];
 
-      createProfilePdfReport({
+      await createProfilePdfReport({
         fileName: `${toFileSafeName(fullName, "job_seeker")}_full_profile.pdf`,
         fullName,
         email,
         phone,
+        accessToken,
         personal,
         profile,
         addresses,
@@ -979,11 +1091,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       const email = String(readProfileValue(personal, "email") ?? seeker.email ?? "").trim();
       const phone = String(readProfileValue(personal, "phone", "contact_phone", "contactPhone") ?? seeker.phone ?? "").trim();
 
-      createProfilePdfReport({
+      await createProfilePdfReport({
         fileName: `${toFileSafeName(fullName, "job_seeker")}_full_profile.pdf`,
         fullName,
         email,
         phone,
+        accessToken,
         personal,
         profile: mainProfile,
         addresses,
