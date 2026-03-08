@@ -243,22 +243,29 @@ function UploadedDocumentCard({
         if (!res.ok || cancelled) return;
         const contentType = res.headers.get("content-type") ?? "";
         let mimeType = contentType.split(";")[0].trim();
-        // If server sends no type or generic octet-stream, check URL/filename for PDF
+        // Read the body as ArrayBuffer so we can inspect magic bytes for MIME detection
+        const arrayBuffer = await res.arrayBuffer();
+        // If server sends no type or generic octet-stream, sniff the magic bytes first
         if (!mimeType || mimeType === "application/octet-stream") {
-          const urlPath = resolvedUrl.split("?")[0].toLowerCase();
-          if (
-            urlPath.endsWith(".pdf") ||
-            /\/(pdf|document|download|file)/i.test(urlPath)
-          ) {
+          const header = new Uint8Array(arrayBuffer.slice(0, 5));
+          const magic = String.fromCharCode(...header);
+          if (magic.startsWith("%PDF")) {
             mimeType = "application/pdf";
+          } else if (header[0] === 0x89 && header[1] === 0x50) {
+            mimeType = "image/png";
+          } else if (header[0] === 0xFF && header[1] === 0xD8) {
+            mimeType = "image/jpeg";
+          } else {
+            // Fallback: check URL/filename pattern
+            const urlPath = resolvedUrl.split("?")[0].toLowerCase();
+            if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+              mimeType = "application/pdf";
+            }
           }
         }
-        const blob = await res.blob();
+        const blob = new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" });
         // Wrap blob with correct MIME type so browsers can preview/open it
-        const typedBlob = mimeType
-          ? new Blob([blob], { type: mimeType })
-          : blob;
-        const objectUrl = URL.createObjectURL(typedBlob);
+        const objectUrl = URL.createObjectURL(blob);
         if (cancelled) {
           // Fetch raced with unmount/url-change — discard immediately
           URL.revokeObjectURL(objectUrl);
@@ -353,7 +360,7 @@ function UploadedDocumentCard({
             isImage ? (
               <img className="uploadedDocPreviewImage" src={effectiveUrl} alt={fileName || title} />
             ) : (
-              <embed className="uploadedDocPreviewFrame" src={effectiveUrl} type="application/pdf" />
+              <iframe className="uploadedDocPreviewFrame" src={effectiveUrl} title={fileName || title} />
             )
           ) : (
             <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>
@@ -1860,8 +1867,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     return <p className="pageText">No documents uploaded.</p>;
                   }
 
-                  const previewKind = selectedPreview?.url ? getInlinePreviewKind(selectedPreview.url) : "none";
-
                   return (
                     <>
                       <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
@@ -1873,6 +1878,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                             token={accessToken ?? ""}
                             fallbackText="—"
                             hint={c.hint}
+                            originalName={c.fileName}
                             previewMode="external"
                             externalPreviewOpen={selectedPreview?.title === c.title}
                             onToggleExternalPreview={(blobUrl, title) => {
@@ -1892,23 +1898,33 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                         <div style={{ marginTop: 10 }}>
                           <div className="readLabel">{selectedPreview.title} Preview</div>
                           <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
-                            {previewKind === "image" ? (
-                              <img
-                                className="uploadedDocPreviewImage"
-                                src={selectedPreview.url}
-                                alt={selectedPreview.title}
-                              />
-                            ) : previewKind === "pdf" ? (
-                              <embed
-                                className="uploadedDocPreviewFrame"
-                                src={selectedPreview.url}
-                                type="application/pdf"
-                              />
-                            ) : (
-                              <span className="uploadedDocCardHint">
-                                Preview is not available for this file type. Use Download.
-                              </span>
-                            )}
+                            {(() => {
+                              const kind = getInlinePreviewKind(selectedPreview.url);
+                              if (kind === "image") {
+                                return (
+                                  <img
+                                    className="uploadedDocPreviewImage"
+                                    src={selectedPreview.url}
+                                    alt={selectedPreview.title}
+                                  />
+                                );
+                              }
+                              if (kind === "pdf") {
+                                return (
+                                  <iframe
+                                    className="uploadedDocPreviewFrame"
+                                    src={selectedPreview.url}
+                                    title={selectedPreview.title}
+                                    style={{ minHeight: 600 }}
+                                  />
+                                );
+                              }
+                              return (
+                                <span className="uploadedDocCardHint">
+                                  Preview is not available for this file type. Use Download.
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       ) : null}
@@ -2879,10 +2895,10 @@ function PersonalDetailsSection({
                   }
                   if (kind === "pdf") {
                     return (
-                      <embed
+                      <iframe
                         className="uploadedDocPreviewFrame"
                         src={externalDocPreview.url}
-                        type="application/pdf"
+                        title={externalDocPreview.title}
                       />
                     );
                   }
@@ -3193,10 +3209,10 @@ function PersonalDetailsSection({
                 }
                 if (kind === "pdf") {
                   return (
-                    <embed
+                    <iframe
                       className="uploadedDocPreviewFrame"
                       src={externalDocPreview.url}
-                      type="application/pdf"
+                      title={externalDocPreview.title}
                     />
                   );
                 }
@@ -3818,7 +3834,7 @@ function EducationSection({
             {(() => {
               const kind = getInlinePreviewKind(certDocPreview.url);
               if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
-              if (kind === "pdf") return <embed className="uploadedDocPreviewFrame" src={certDocPreview.url} type="application/pdf" />;
+              if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
               return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
             })()}
           </div>
@@ -4037,7 +4053,7 @@ function EducationSection({
                     {(() => {
                       const kind = getInlinePreviewKind(certDocPreview.url);
                       if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
-                      if (kind === "pdf") return <embed className="uploadedDocPreviewFrame" src={certDocPreview.url} type="application/pdf" />;
+                      if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
                       return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
                     })()}
                   </div>

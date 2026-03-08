@@ -99,6 +99,15 @@ function readValue(source: Record<string, unknown> | null | undefined, ...keys: 
   return null;
 }
 
+function resolveFileUrl(raw: unknown): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
+  const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  if (!base) return value;
+  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
 export function JobApplicationsPage() {
   const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
@@ -121,6 +130,8 @@ export function JobApplicationsPage() {
   const [openProfileId, setOpenProfileId] = useState<string | null>(null);
   const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null>>({});
   const [documentUrlByAppId, setDocumentUrlByAppId] = useState<Record<string, string | null>>({});
+  const [docBlobByAppId, setDocBlobByAppId] = useState<Record<string, string | null>>({});
+  const [docLoadingByAppId, setDocLoadingByAppId] = useState<Record<string, boolean>>({});
   const [interviewApp, setInterviewApp] = useState<JobApplication | null>(null);
   const [interviewDate, setInterviewDate] = useState("");
   const [interviewTime, setInterviewTime] = useState("");
@@ -517,11 +528,45 @@ export function JobApplicationsPage() {
                         key={`${app.id}-${doc.label}-${doc.url}`}
                         type="button"
                         className="btn btnGhost btnSm"
-                        onClick={() =>
-                          setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }))
-                        }
+                        disabled={docLoadingByAppId[app.id]}
+                        onClick={() => {
+                          const resolvedUrl = resolveFileUrl(doc.url);
+                          if (!resolvedUrl || !accessToken) return;
+                          setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }));
+                          setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: true }));
+                          fetch(resolvedUrl, { headers: { authorization: `Bearer ${accessToken}` } })
+                            .then(async (res) => {
+                              if (!res.ok) return;
+                              const contentType = res.headers.get("content-type") ?? "";
+                              let mimeType = contentType.split(";")[0].trim();
+                              const arrayBuffer = await res.arrayBuffer();
+                              if (!mimeType || mimeType === "application/octet-stream") {
+                                const header = new Uint8Array(arrayBuffer.slice(0, 5));
+                                const magic = String.fromCharCode(...header);
+                                if (magic.startsWith("%PDF")) {
+                                  mimeType = "application/pdf";
+                                } else if (header[0] === 0x89 && header[1] === 0x50) {
+                                  mimeType = "image/png";
+                                } else if (header[0] === 0xFF && header[1] === 0xD8) {
+                                  mimeType = "image/jpeg";
+                                } else {
+                                  const urlPath = resolvedUrl.split("?")[0].toLowerCase();
+                                  if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+                                    mimeType = "application/pdf";
+                                  }
+                                }
+                              }
+                              const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" }));
+                              setDocBlobByAppId((prev) => {
+                                if (prev[app.id]) URL.revokeObjectURL(prev[app.id]!);
+                                return { ...prev, [app.id]: objectUrl };
+                              });
+                            })
+                            .catch(() => { /* silently ignore */ })
+                            .finally(() => setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: false })));
+                        }}
                       >
-                        View Document ({doc.label})
+                        {docLoadingByAppId[app.id] ? "Loading…" : `View Document (${doc.label})`}
                       </button>
                     ))}
                   </div>
@@ -529,17 +574,23 @@ export function JobApplicationsPage() {
                   {selectedDoc && (
                     <div>
                       <div className="readLabel">Document Preview</div>
-                      <iframe
-                        src={selectedDoc}
-                        title="Document preview"
-                        style={{
-                          width: "100%",
-                          height: 560,
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 8,
-                          background: "#fff",
-                        }}
-                      />
+                      {docLoadingByAppId[app.id] ? (
+                        <p className="pageText">Loading preview…</p>
+                      ) : docBlobByAppId[app.id] ? (
+                        <iframe
+                          src={docBlobByAppId[app.id]!}
+                          title="Document preview"
+                          style={{
+                            width: "100%",
+                            height: 560,
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: "#fff",
+                          }}
+                        />
+                      ) : (
+                        <p className="pageText">Could not load document preview.</p>
+                      )}
                     </div>
                   )}
                 </div>
