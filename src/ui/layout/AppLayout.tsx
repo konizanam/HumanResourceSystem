@@ -428,7 +428,7 @@ export function AppLayout({
     };
   }, []);
 
-  const [lastAppColor, setLastAppColor] = useState<unknown>("#6366f1");
+  const [lastAppColor, setLastAppColor] = useState<unknown>("#6b7280");
 
   useEffect(() => {
     let cancelled = false;
@@ -462,8 +462,8 @@ export function AppLayout({
         if (cancelled) return;
         setSystemName("");
         setBrandingLogoUrl("");
-        setLastAppColor("#6366f1");
-        applyAppThemeColor("#6366f1");
+        setLastAppColor("#6b7280");
+        applyAppThemeColor("#6b7280");
       }
     };
 

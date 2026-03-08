@@ -509,7 +509,7 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
-    app_color: String(data.app_color ?? "#6366f1"),
+    app_color: String(data.app_color ?? "#6b7280"),
     main_company_id:
       data.main_company_id === null || data.main_company_id === undefined
         ? null
@@ -534,7 +534,7 @@ export async function getPublicSystemSettings(): Promise<SystemSettings> {
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
-    app_color: String(data.app_color ?? "#6366f1"),
+    app_color: String(data.app_color ?? "#6b7280"),
     main_company_id:
       data.main_company_id === null || data.main_company_id === undefined
         ? null
@@ -607,7 +607,7 @@ export async function updateSystemSettings(
       data.company_approval_mode === "pending" ? "pending" : "auto_approved",
     system_name: String(data.system_name ?? ""),
     branding_logo_url: String(data.branding_logo_url ?? ""),
-    app_color: String(data.app_color ?? "#6366f1"),
+    app_color: String(data.app_color ?? "#6b7280"),
     main_company_id:
       data.main_company_id === null || data.main_company_id === undefined
         ? null

@@ -1294,7 +1294,7 @@ export function SignupPage() {
   }
 
   return (
-    <div className="loginPage">
+    <div className="loginPage signupPage">
       <div className="loginCard signupCard">
         <div className="loginHeader">
           <div className="loginLogo">
@@ -1355,7 +1355,7 @@ export function SignupPage() {
                 ? "Creating account…"
                 : step === STEPS.length - 1
                   ? "Create Account"
-                  : "Continue"}
+                  : "Next"}
             </button>
           </div>
         </form>

@@ -30,10 +30,11 @@ const APPLICATION_STATUS_NOTIFICATION_OPTIONS = [
 
 const DEFAULT_APPLICATION_STATUS_NOTIFICATIONS: Record<string, boolean> =
   Object.fromEntries(APPLICATION_STATUS_NOTIFICATION_OPTIONS.map((o) => [o.key, true]));
+const DEFAULT_APP_COLOR = "#6b7280";
 
 function normalizeHexColor(value: string): string {
   const raw = String(value ?? "").trim();
-  if (!raw) return "#6b7280";
+  if (!raw) return DEFAULT_APP_COLOR;
   const withHash = raw.startsWith("#") ? raw : `#${raw}`;
   if (/^#([0-9a-fA-F]{3})$/.test(withHash)) {
     const shortHex = withHash.slice(1);
@@ -42,7 +43,7 @@ function normalizeHexColor(value: string): string {
   if (/^#([0-9a-fA-F]{6})$/.test(withHash)) {
     return withHash.toLowerCase();
   }
-  return "#6b7280";
+  return DEFAULT_APP_COLOR;
 }
 
 function resolveCompanyLogoUrl(company: Company): string {
@@ -85,7 +86,7 @@ export function GlobalSettingsPage() {
     country: "",
   });
   const [mode, setMode] = useState<CompanyApprovalMode>("auto_approved");
-  const [appColor, setAppColor] = useState("#6b7280");
+  const [appColor, setAppColor] = useState(DEFAULT_APP_COLOR);
   const [loginWelcomeTitle, setLoginWelcomeTitle] = useState("");
   const [loginWelcomeSubtitle, setLoginWelcomeSubtitle] = useState("");
   const [applicationStatusNotifications, setApplicationStatusNotifications] = useState<Record<string, boolean>>(
@@ -105,6 +106,11 @@ export function GlobalSettingsPage() {
     applyAppThemeColor(nextColor);
   };
 
+  const resetAppColor = () => {
+    setAppColor(DEFAULT_APP_COLOR);
+    applyAppThemeColor(DEFAULT_APP_COLOR);
+  };
+
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -118,7 +124,7 @@ export function GlobalSettingsPage() {
             company_approval_mode: fallbackMode,
             system_name: "",
             branding_logo_url: "",
-            app_color: "#6b7280",
+            app_color: DEFAULT_APP_COLOR,
             main_company_id: null,
             application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
             login_welcome_title: "",
@@ -147,8 +153,8 @@ export function GlobalSettingsPage() {
 
       setCompanies(companiesForSelection);
       setMode(settings.company_approval_mode);
-      setAppColor(settings.app_color || "#6b7280");
-      applyAppThemeColor(settings.app_color || "#6b7280");
+      setAppColor(settings.app_color || DEFAULT_APP_COLOR);
+      applyAppThemeColor(settings.app_color || DEFAULT_APP_COLOR);
 
       const nextNotifications = {
         ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
@@ -221,8 +227,8 @@ export function GlobalSettingsPage() {
       const results = await Promise.all(updates);
       const updatedMode = canEdit ? (results[0] as CompanyApprovalMode) : mode;
       const updatedSettings = results[results.length - 1] as Awaited<ReturnType<typeof updateSystemSettings>>;
-      setAppColor(updatedSettings.app_color || "#6b7280");
-      applyAppThemeColor(updatedSettings.app_color || "#6b7280");
+      setAppColor(updatedSettings.app_color || DEFAULT_APP_COLOR);
+      applyAppThemeColor(updatedSettings.app_color || DEFAULT_APP_COLOR);
       setApplicationStatusNotifications({
         ...DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
         ...(updatedSettings.application_status_notifications ?? {}),
@@ -457,11 +463,19 @@ export function GlobalSettingsPage() {
                       }
                     }}
                     disabled={!canChangeAppColor || saving || loading}
-                    placeholder="#6366f1"
+                    placeholder={DEFAULT_APP_COLOR}
                     aria-label="App color hex code"
                   />
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm appColorResetBtn"
+                    onClick={resetAppColor}
+                    disabled={!canChangeAppColor || saving || loading}
+                  >
+                    Reset color
+                  </button>
                 </div>
-                <p className="pageText">Use the picker or a valid hex value (for example, #6366f1).</p>
+                <p className="pageText">Use the picker or a valid hex value (for example, {DEFAULT_APP_COLOR}).</p>
               </div>
             </div>
           </section>

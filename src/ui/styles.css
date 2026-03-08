@@ -440,14 +440,6 @@ a {
   letter-spacing: 0.01em;
 }
 
-.field:has(.input[required]) .fieldLabel::after,
-.field:has(select.input[required]) .fieldLabel::after,
-.field:has(textarea.input[required]) .fieldLabel::after {
-  content: " *";
-  color: var(--danger);
-  font-weight: 800;
-}
-
 .input[required]:focus,
 select.input[required]:focus,
 textarea.input[required]:focus,
@@ -1383,6 +1375,13 @@ input[type="radio"][required] {
     linear-gradient(180deg, var(--bg0), var(--bg1));
 }
 
+.signupPage {
+  min-height: 100dvh;
+  height: auto;
+  overflow-y: auto;
+  align-items: start;
+}
+
 .loginPage::before,
 .loginPage::after {
   content: "";
@@ -1536,6 +1535,22 @@ input[type="radio"][required] {
 
 .signupStepGrid .field {
   align-content: start;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 38px;
+}
+
+.checkboxRow > label {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 720px) {
@@ -1814,6 +1829,14 @@ input[type="radio"][required] {
   padding-bottom: 2px;
 }
 
+.signupCard .stepper {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  gap: 10px;
+}
+
 .stepperItem {
   display: flex;
   align-items: center;
@@ -1821,6 +1844,11 @@ input[type="radio"][required] {
   font-size: 13px;
   color: var(--muted);
   flex-shrink: 0;
+}
+
+.signupCard .stepperItem {
+  min-width: 0;
+  width: 100%;
 }
 
 .stepperCircle {
@@ -1885,6 +1913,19 @@ input[type="radio"][required] {
   background: var(--stroke);
   margin: 0 6px;
   transition: background-color 0.2s ease;
+}
+
+.signupCard .stepperLine {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .signupCard .stepper {
+    display: flex;
+    overflow-x: auto;
+    gap: 0;
+  }
 }
 
 .stepperDone .stepperLine {
@@ -3441,9 +3482,13 @@ input[type="radio"][required] {
 
 .appColorControls {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
+  grid-template-columns: 80px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.appColorResetBtn {
+  white-space: nowrap;
 }
 
 .appColorPickerInput {
@@ -3455,6 +3500,10 @@ input[type="radio"][required] {
   .appColorControls {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .appColorResetBtn {
+    width: 100%;
   }
 
   .appColorPickerInput {

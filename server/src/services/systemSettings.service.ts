@@ -94,7 +94,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   company_approval_mode: "auto_approved",
   system_name: "",
   branding_logo_url: "",
-  app_color: "#6366f1",
+  app_color: "#6b7280",
   main_company_id: null,
   application_status_notifications: DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
   login_welcome_title: "",
@@ -116,7 +116,11 @@ function normalizeHexColor(input: unknown): string | null {
     ? match[1].split("").map((c) => c + c).join("")
     : match[1];
 
-  return `#${hex.toLowerCase()}`;
+  const normalized = `#${hex.toLowerCase()}`;
+  if (normalized === "#6366f1" || normalized === "#7610ad") {
+    return "#6b7280";
+  }
+  return normalized;
 }
 
 const RESOLVED_SETTINGS_FILE_PATH = resolveSettingsFilePath();
