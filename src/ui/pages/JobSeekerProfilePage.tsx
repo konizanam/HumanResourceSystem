@@ -647,7 +647,12 @@ function collectProfileDocuments(params: {
 
   const seen = new Set<string>();
   return cards.filter((c) => {
-    const key = `${c.title}::${c.url}`;
+    const resolved = resolveFileUrl(c.url);
+    const key = (resolved || c.url || c.title || "")
+      .split("#")[0]
+      .split("?")[0]
+      .trim()
+      .toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1012,10 +1017,13 @@ async function createProfilePdfReport(params: {
 
   // ── Collect PDF attachments to append after profile pages ──────────────
   const pdfAttachments: Array<{ name: string; bytes: ArrayBuffer }> = [];
+  const seenAttachmentSources = new Set<string>();
   if (params.documents.length > 0) {
     for (const entry of params.documents) {
       const resolvedUrl = resolveFileUrl(entry.url);
       if (!resolvedUrl) continue;
+      const sourceKey = resolvedUrl.split("#")[0].split("?")[0].trim().toLowerCase();
+      if (seenAttachmentSources.has(sourceKey)) continue;
       try {
         const headers: Record<string, string> = {};
         if (params.accessToken) headers.authorization = `Bearer ${params.accessToken}`;
@@ -1031,6 +1039,8 @@ async function createProfilePdfReport(params: {
           isPdf = magic === "%PDF";
         }
         if (!isPdf) continue;
+
+        seenAttachmentSources.add(sourceKey);
 
         pdfAttachments.push({
           name: entry.fileName || extractFileName(resolvedUrl) || "document.pdf",
