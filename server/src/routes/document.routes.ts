@@ -33,6 +33,12 @@ router.get(
 
 // Generic document actions: require some relevant permission (job seeker, employer/company, or admin via bypass).
 router.get(
+  '/:documentId/download',
+  authorizePermission('APPLY_JOB', 'CREATE_JOB', 'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS', 'VIEW_APPLICATIONS', 'MANAGE_USERS'),
+  documentController.downloadDocument
+);
+
+router.get(
   '/:documentId',
   authorizePermission('APPLY_JOB', 'CREATE_JOB', 'MANAGE_COMPANY', 'MANAGE_COMPANY_USERS', 'VIEW_APPLICATIONS', 'MANAGE_USERS'),
   documentController.getDocument

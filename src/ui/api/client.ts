@@ -1299,6 +1299,7 @@ export async function deleteExperience(token: string, id: string) {
 export type UserDocument = {
   id: string;
   file_url?: string | null;
+  download_url?: string | null;
   document_type?: string | null;
   original_name?: string | null;
   description?: string | null;

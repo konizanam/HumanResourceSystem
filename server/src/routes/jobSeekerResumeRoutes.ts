@@ -219,7 +219,7 @@ router.post('/',
         const resume = result.rows[0];
         
         // Add download URL
-        resume.download_url = `/api/job-seeker/resume/${resume.id}/download`;
+        resume.download_url = `/api/v1/job-seeker/resume/${resume.id}/download`;
 
         res.status(201).json({
           message: 'Resume uploaded successfully',
@@ -310,10 +310,10 @@ router.get('/',
       // Add download URLs if requested
       if (includeDownloadUrls) {
         resumes.forEach(resume => {
-          resume.download_url = `/api/job-seeker/resume/${resume.id}/download`;
+          resume.download_url = `/api/v1/job-seeker/resume/${resume.id}/download`;
         });
         if (primaryResume) {
-          primaryResume.download_url = `/api/job-seeker/resume/${primaryResume.id}/download`;
+          primaryResume.download_url = `/api/v1/job-seeker/resume/${primaryResume.id}/download`;
         }
       }
 
@@ -394,7 +394,7 @@ router.get('/:id',
       }
 
       // Add download URL
-      resume.download_url = `/api/job-seeker/resume/${resume.id}/download`;
+      resume.download_url = `/api/v1/job-seeker/resume/${resume.id}/download`;
 
       res.json(resume);
     } catch (error) {

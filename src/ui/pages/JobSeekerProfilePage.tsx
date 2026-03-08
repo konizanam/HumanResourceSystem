@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -101,6 +101,7 @@ const EDUCATION_FIELD_OF_STUDY_OPTIONS = [
 ] as const;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_PROFILE_PICTURE_BYTES = 10 * 1024 * 1024;
 
 function validatePdfUpload(file: File | null): string | null {
   if (!file) return "No file selected.";
@@ -109,6 +110,14 @@ function validatePdfUpload(file: File | null): string | null {
   const isPdf = mime === "application/pdf" || mime === "application/x-pdf" || ext.endsWith(".pdf");
   if (!isPdf) return "Only PDF files are allowed.";
   if (file.size > MAX_UPLOAD_BYTES) return "File too large. Maximum size is 10MB.";
+  return null;
+}
+
+function validateProfilePictureUpload(file: File | null): string | null {
+  if (!file) return "No image selected.";
+  const mime = String(file.type ?? "").toLowerCase();
+  if (!mime.startsWith("image/")) return "Only image files are allowed for profile picture.";
+  if (file.size > MAX_PROFILE_PICTURE_BYTES) return "Profile picture is too large. Maximum size is 10MB.";
   return null;
 }
 
@@ -125,8 +134,7 @@ async function fetchProfilePictureObjectUrl(
   token: string,
   opts?: { userId?: string | null },
 ): Promise<string | null> {
-  const apiBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-  if (!apiBase) return null;
+  const apiBase = String(import.meta.env.VITE_API_URL ?? "http://localhost:4000").trim().replace(/\/$/, "");
 
   const userId = String(opts?.userId ?? "").trim();
   const url = userId
@@ -459,7 +467,7 @@ function collectProfileDocuments(params: {
 
   const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
   for (const d of uploadedDocs) {
-    const url = String(d.file_url ?? "").trim();
+    const url = String(d.download_url ?? d.file_url ?? "").trim();
     if (!url) continue;
     cards.push({
       title: String(d.document_type ?? "Document").trim() || "Document",
@@ -655,22 +663,20 @@ async function createProfilePdfReport(params: {
     d.title || "Document",
     d.hint || "-",
     extractFileName(d.url) || d.url,
-    d.url,
   ]);
 
   nextStartY = ((doc as any).lastAutoTable?.finalY ?? 60) + 8;
   nextStartY = drawSectionHeading("Uploaded Documents", nextStartY);
   autoTable(doc, {
     startY: nextStartY + 2,
-    head: [["Document", "Notes", "File", "URL"]],
-    body: documentRows.length > 0 ? documentRows : [["-", "-", "-", "-"]],
+    head: [["Document", "Notes", "File"]],
+    body: documentRows.length > 0 ? documentRows : [["-", "-", "-"]],
     styles: { fontSize: 8, cellPadding: 2.1, overflow: "linebreak" },
     headStyles: { fillColor: [31, 41, 92] },
     columnStyles: {
-      0: { cellWidth: 30 },
-      1: { cellWidth: 35 },
-      2: { cellWidth: 45 },
-      3: { cellWidth: 75 },
+      0: { cellWidth: 45 },
+      1: { cellWidth: 65 },
+      2: { cellWidth: 75 },
     },
   });
 
@@ -683,7 +689,7 @@ async function createProfilePdfReport(params: {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(70, 70, 70);
     doc.setFontSize(9);
-    doc.text("Image documents are embedded below. Non-image files include direct links.", 14, 22);
+    doc.text("Uploaded documents are rendered below where preview is supported.", 14, 22);
 
     for (let i = 0; i < params.documents.length; i += 1) {
       const entry = params.documents[i];
@@ -701,8 +707,9 @@ async function createProfilePdfReport(params: {
         const hintLines = doc.splitTextToSize(`Notes: ${entry.hint}`, pageWidth - 28);
         doc.text(hintLines, 14, 23);
       }
-      const urlLines = doc.splitTextToSize(`Source: ${resolvedUrl || "-"}`, pageWidth - 28);
-      doc.text(urlLines, 14, 30);
+      const fileLabel = extractFileName(resolvedUrl) || "Document file";
+      const fileLines = doc.splitTextToSize(`File: ${fileLabel}`, pageWidth - 28);
+      doc.text(fileLines, 14, 30);
 
       try {
         const headers: Record<string, string> = {};
@@ -732,12 +739,12 @@ async function createProfilePdfReport(params: {
         } else {
           doc.setFont("helvetica", "italic");
           doc.setTextColor(90, 90, 90);
-          doc.text("Preview unavailable in PDF export for this file type. Use the source link above.", 14, 42);
+          doc.text("Preview unavailable for this file type in the current PDF renderer.", 14, 42);
         }
       } catch {
         doc.setFont("helvetica", "italic");
         doc.setTextColor(90, 90, 90);
-        doc.text("Could not embed this file. Use the source link above.", 14, 42);
+        doc.text("Could not render this uploaded file in the appendix.", 14, 42);
       }
     }
   }
@@ -1441,7 +1448,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
 
                   const uploadedDocs: UserDocument[] = Array.isArray(docs) ? docs : [];
                   for (const d of uploadedDocs) {
-                    const url = String(d.file_url ?? "").trim();
+                    const url = String(d.download_url ?? d.file_url ?? "").trim();
                     if (!url) continue;
                     const title = String(d.document_type ?? "Document").trim() || "Document";
                     const hint = String(d.description ?? d.original_name ?? "").trim() || undefined;
@@ -2119,6 +2126,9 @@ function PersonalDetailsSection({
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [uploadingDocType, setUploadingDocType] = useState<"id" | "license" | "conduct" | null>(null);
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false);
+  const [selectedProfilePictureName, setSelectedProfilePictureName] = useState("");
+  const [pendingProfilePictureFile, setPendingProfilePictureFile] = useState<File | null>(null);
+  const pendingProfilePictureFileRef = useRef<File | null>(null);
   const [profilePictureUrlState, setProfilePictureUrlState] = useState("");
   const [profilePictureRefreshKey, setProfilePictureRefreshKey] = useState(0);
   const [externalDocPreview, setExternalDocPreview] = useState<{ url: string; title: string } | null>(null);
@@ -2196,7 +2206,7 @@ function PersonalDetailsSection({
           const match = (docs ?? []).find(
             (doc) => String(doc.document_type ?? "").trim().toLowerCase() === type,
           );
-          return String(match?.file_url ?? "").trim();
+          return String(match?.download_url ?? match?.file_url ?? "").trim();
         };
         setLicenseDocumentUrl(findByType("license_document"));
         setConductCertificateUrl(findByType("conduct_certificate"));
@@ -2251,22 +2261,26 @@ function PersonalDetailsSection({
     }
   }
 
-  async function onUploadProfilePicture(file: File | null) {
+  function onSelectProfilePicture(file: File | null) {
     if (!file) return;
-    try {
-      setUploadingProfilePicture(true);
-      setError(null);
-      setSuccess(null);
-      const uploaded = await uploadProfilePicture(token, file);
-      void uploaded;
-      setProfilePictureRefreshKey((v) => v + 1);
-      window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Profile picture upload failed");
-    } finally {
-      setUploadingProfilePicture(false);
+    const imageError = validateProfilePictureUpload(file);
+    if (imageError) {
+      setError(imageError);
+      return;
     }
+
+    setError(null);
+    setSuccess(null);
+    setPendingProfilePictureFile(file);
+    pendingProfilePictureFileRef.current = file;
+    setSelectedProfilePictureName(file.name || "");
+
+    // Preview locally; actual upload happens on Save Personal Details.
+    const localPreview = URL.createObjectURL(file);
+    setProfilePictureUrlState((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return localPreview;
+    });
   }
 
   function validate(): boolean {
@@ -2292,12 +2306,25 @@ function PersonalDetailsSection({
     setSaving(true);
     setError(null);
     try {
+      const fileToUpload = pendingProfilePictureFileRef.current ?? pendingProfilePictureFile;
+      if (fileToUpload) {
+        setUploadingProfilePicture(true);
+        const uploaded = await uploadProfilePicture(token, fileToUpload);
+        void uploaded;
+        setPendingProfilePictureFile(null);
+        pendingProfilePictureFileRef.current = null;
+        setSelectedProfilePictureName("");
+        setProfilePictureRefreshKey((v) => v + 1);
+        window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
+      }
+
       await updatePersonalDetails(token, form);
-      setSuccess("Personal details saved");
+      setSuccess(fileToUpload ? "Personal details and profile picture saved" : "Personal details saved");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
+      setUploadingProfilePicture(false);
       setSaving(false);
     }
   }
@@ -2427,12 +2454,20 @@ function PersonalDetailsSection({
             type="file"
             accept="image/*"
             onChange={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               const file = e.target.files?.[0] ?? null;
-              void onUploadProfilePicture(file);
-              e.currentTarget.value = "";
+              onSelectProfilePicture(file);
             }}
             disabled={uploadingProfilePicture || saving}
           />
+          {selectedProfilePictureName ? (
+            <span className="uploadedDocCardHint" style={{ marginTop: 4, display: "inline-block" }}>
+              {uploadingProfilePicture
+                ? `Uploading: ${selectedProfilePictureName}`
+                : `Selected: ${selectedProfilePictureName} (will upload when you click Save Personal Details)`}
+            </span>
+          ) : null}
           {resolvedProfilePictureUrl ? (
             <div className="uploadedDocPreview" style={{ marginTop: 6, maxWidth: 280 }}>
               <img

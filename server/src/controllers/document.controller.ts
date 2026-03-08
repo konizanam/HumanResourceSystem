@@ -4,8 +4,18 @@ import { getFileUrl } from '../config/upload';
 import { ForbiddenError } from '../utils/errors';
 import { query } from '../config/database';
 import { getStringParam, getQueryString } from '../utils/params';
+import fs from 'fs';
+import path from 'path';
 
 const documentService = new DocumentService();
+
+function withDownloadUrl(document: any) {
+  if (!document || !document.id) return document;
+  return {
+    ...document,
+    download_url: `/api/v1/documents/${document.id}/download`,
+  };
+}
 
 export class DocumentController {
   
@@ -50,8 +60,8 @@ export class DocumentController {
       res.status(201).json({
         status: 'success',
         data: {
-          document,
-          url: fileUrl
+          document: withDownloadUrl(document),
+          url: `/api/v1/documents/${document.id}/download`
         }
       });
     } catch (error) {
@@ -110,8 +120,8 @@ export class DocumentController {
       res.status(201).json({
         status: 'success',
         data: {
-          document,
-          url: fileUrl
+          document: withDownloadUrl(document),
+          url: `/api/v1/documents/${document.id}/download`
         }
       });
     } catch (error) {
@@ -163,7 +173,7 @@ export class DocumentController {
       res.status(201).json({
         status: 'success',
         data: {
-          documents: uploadedDocs,
+          documents: uploadedDocs.map((doc) => withDownloadUrl(doc)),
           count: uploadedDocs.length
         }
       });
@@ -182,7 +192,7 @@ export class DocumentController {
 
       res.json({
         status: 'success',
-        data: documents
+        data: documents.map((doc) => withDownloadUrl(doc))
       });
     } catch (error) {
       next(error);
@@ -199,7 +209,7 @@ export class DocumentController {
 
       res.json({
         status: 'success',
-        data: documents,
+        data: documents.map((doc) => withDownloadUrl(doc)),
       });
     } catch (error) {
       next(error);
@@ -227,7 +237,7 @@ export class DocumentController {
 
       res.json({
         status: 'success',
-        data: documents
+        data: documents.map((doc) => withDownloadUrl(doc))
       });
     } catch (error) {
       next(error);
@@ -244,8 +254,41 @@ export class DocumentController {
 
       res.json({
         status: 'success',
-        data: document
+        data: withDownloadUrl(document)
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Download a document file by id using DB metadata and access checks
+  async downloadDocument(req: Request, res: Response, next: NextFunction) {
+    try {
+      const documentId = getStringParam(req, 'documentId');
+      const userId = req.user!.userId;
+
+      const document = await documentService.getDocumentById(documentId, userId);
+      const filePath = String(document?.file_path ?? '').trim();
+      if (!filePath) {
+        return res.status(404).json({ error: { message: 'Document file not found' } });
+      }
+
+      const resolvedPath = path.resolve(filePath);
+      if (!fs.existsSync(resolvedPath)) {
+        return res.status(404).json({ error: { message: 'Document file not found' } });
+      }
+
+      const mimeType = String(document?.mime_type ?? '').trim();
+      const originalName = String(document?.original_name ?? '').trim();
+      const fallbackName = String(document?.file_name ?? 'document').trim() || 'document';
+      const fileName = originalName || fallbackName;
+
+      if (mimeType) {
+        res.setHeader('Content-Type', mimeType);
+      }
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+
+      return res.sendFile(resolvedPath);
     } catch (error) {
       next(error);
     }
