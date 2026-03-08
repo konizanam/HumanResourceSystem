@@ -231,6 +231,17 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
+function LogoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 export function AppLayout({
   menuItems,
 }: {
@@ -655,7 +666,7 @@ export function AppLayout({
             type="button"
             aria-label="Logout"
           >
-            <Icon name="logout" />
+            <LogoutIcon />
             <span>Logout</span>
           </button>
         </div>

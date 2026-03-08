@@ -2877,7 +2877,8 @@ input[type="radio"][required] {
 }
 
 /* Keep top-level Add-style header actions visually aligned with input controls. */
-.companiesHeader .btn.btnPrimary.btnSm {
+.companiesHeader .btn.btnPrimary.btnSm,
+.appTopUserBar .btn.btnPrimary.btnSm {
   min-height: 42px;
   padding: 0 16px;
   font-size: 14px;
