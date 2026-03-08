@@ -436,12 +436,7 @@ export function UsersPage() {
         {canAddUser ? (
           <button
             type="button"
-            className="btn btnPrimary btnSm"
-            style={{
-              background: "var(--menu-icon-active)",
-              borderColor: "var(--menu-icon-active)",
-              fontWeight: 700,
-            }}
+            className="btn btnGhost btnSm addToggleBtn"
             onClick={() => {
               clearMessages();
               setAddOpen((prev) => !prev);
@@ -497,6 +492,7 @@ export function UsersPage() {
                   value={addForm.first_name}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, first_name: e.target.value }))}
                   placeholder="First name"
+                  required
                 />
               </label>
               <label className="field">
@@ -506,6 +502,7 @@ export function UsersPage() {
                   value={addForm.last_name}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, last_name: e.target.value }))}
                   placeholder="Last name"
+                  required
                 />
               </label>
               <label className="field">
@@ -516,6 +513,7 @@ export function UsersPage() {
                   value={addForm.email}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="user@example.com"
+                  required
                 />
               </label>
               <label className="field">
@@ -526,6 +524,7 @@ export function UsersPage() {
                   value={addForm.password}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, password: e.target.value }))}
                   placeholder="Minimum 8 characters"
+                  required
                 />
               </label>
               <label className="field">
@@ -534,6 +533,7 @@ export function UsersPage() {
                   className="input"
                   value={addForm.role_id}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, role_id: e.target.value }))}
+                  required
                 >
                   {assignableRoles.length === 0 ? <option value="">No roles available</option> : null}
                   {assignableRoles.map((role) => (

@@ -98,7 +98,7 @@ export function PermissionsPage() {
       <div className="companiesHeader">
         <h1 className="pageTitle">Permissions ({permissions.length})</h1>
         {canManageUsers && (
-          <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={() => { clearMessages(); setAddOpen((v) => !v); }} disabled={saving}>{addOpen ? "Cancel" : "Add Permission"}</button>
+          <button type="button" className="btn btnGhost btnSm stepperSaveBtn addToggleBtn" onClick={() => { clearMessages(); setAddOpen((v) => !v); }} disabled={saving}>{addOpen ? "Cancel" : "Add Permission"}</button>
         )}
       </div>
 

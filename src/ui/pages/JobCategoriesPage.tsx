@@ -346,8 +346,7 @@ export function JobCategoriesPage() {
         {canManageCompany && (
           <button
             type="button"
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            className="btn btnGhost btnSm addToggleBtn"
             onClick={() => { clearMessages(); setExpandedCatId(null); setAddOpen((v) => !v); }}
             disabled={saving}
           >
@@ -457,7 +456,7 @@ export function JobCategoriesPage() {
                                 {canManageCompany && (
                                   <button
                                     type="button"
-                                    className="btn btnGhost btnSm stepperSaveBtn"
+                                    className="btn btnGhost btnSm stepperSaveBtn addToggleBtn"
                                     onClick={() => { setAddSubOpen(addSubOpen === cat.id ? null : cat.id); setAddSubName(""); }}
                                     disabled={saving}
                                   >

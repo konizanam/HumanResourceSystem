@@ -243,11 +243,13 @@ export function RichTextEditor({
   onChange,
   disabled,
   placeholder,
+  required,
 }: {
   value: string;
   onChange: (nextHtml: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  required?: boolean;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastPropValueRef = useRef<string>("");
@@ -362,6 +364,7 @@ export function RichTextEditor({
         contentEditable={!disabled}
         role="textbox"
         aria-multiline="true"
+        aria-required={required ? "true" : undefined}
         aria-disabled={disabled ? "true" : "false"}
         onInput={() => {
           const html = editorRef.current?.innerHTML ?? "";

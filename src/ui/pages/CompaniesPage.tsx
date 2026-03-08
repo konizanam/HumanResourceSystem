@@ -1170,13 +1170,8 @@ export function CompaniesPage() {
 
         <button
           type="button"
-          className="btn btnPrimary btnSm"
-          style={{
-            background: "var(--menu-icon-active)",
-            borderColor: "var(--menu-icon-active)",
-            fontWeight: 700,
-            alignSelf: "flex-end",
-          }}
+          className="btn btnGhost btnSm addToggleBtn"
+          style={{ alignSelf: "flex-end" }}
           onClick={() => {
             clearMessages();
             setOpenCompanyId(null);

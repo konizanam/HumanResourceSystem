@@ -217,7 +217,7 @@ export function EmailTemplatesPage() {
         <h1 className="pageTitle">Email Templates</h1>
         <button
           type="button"
-          className="btn btnGhost btnSm stepperSaveBtn"
+          className="btn btnGhost btnSm stepperSaveBtn addToggleBtn"
           onClick={() => {
             setError(null);
             setSavedMessage(null);

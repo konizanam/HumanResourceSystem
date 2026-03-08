@@ -416,8 +416,7 @@ export function RolesPage() {
         {canManageUsers && (
           <button
             type="button"
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            className="btn btnGhost btnSm addToggleBtn"
             onClick={() => { clearMessages(); setOpenRoleId(null); setAddOpen((v) => !v); }}
             disabled={saving}
           >

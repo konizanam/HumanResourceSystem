@@ -1000,6 +1000,7 @@ export function JobsPage() {
                 onChange={(html) => setForm((p) => ({ ...p, description: html }))}
                 disabled={saving}
                 placeholder="Type job description…"
+                required
               />
               {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
             </div>
@@ -1223,10 +1224,10 @@ export function JobsPage() {
           <div className="editForm">
             <h2 className="editFormTitle">Add Job</h2>
             <div className="editGrid">
-              <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
+              <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} required />
               <div className="field">
                 <label className="fieldLabel">Company</label>
-                <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
+                <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." required />
                 {formErrors.company && <span className="fieldError">{formErrors.company}</span>}
                 {companyResults.length > 0 && (
                   <div className="typeaheadList">
@@ -1240,7 +1241,7 @@ export function JobsPage() {
               </div>
               <div className="field">
                 <label className="fieldLabel">Category</label>
-                <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." />
+                <input className={`input${formErrors.category ? " inputError" : ""}`} value={categoryQuery} onChange={(e) => { setCategoryQuery(e.target.value); setSelectedCategory(null); setSelectedSubcategory(""); }} placeholder="Type category name to search..." required />
                 {formErrors.category && <span className="fieldError">{formErrors.category}</span>}
                 {categoryResults.length > 0 && (
                   <div className="typeaheadList">
@@ -1254,7 +1255,7 @@ export function JobsPage() {
               </div>
               <div className="field">
                 <label className="fieldLabel">Subcategory</label>
-                <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory}>
+                <select className={`input${formErrors.subcategory ? " inputError" : ""}`} value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory} required>
                   <option value="">Select subcategory</option>
                   {(selectedCategory?.subcategories ?? []).map((sub) => (
                     <option key={sub.id} value={sub.name}>{sub.name}</option>
@@ -1262,25 +1263,25 @@ export function JobsPage() {
                 </select>
                 {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
               </div>
-              <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
-              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
-              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
-              <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} />
+              <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
+              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} required />
+              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} required />
+              <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
               <div className="field">
                 <label className="fieldLabel">Employment Type</label>
-                <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))}>
+                <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))} required>
                   <option value="Full-time">Full-time</option><option value="Part-time">Part-time</option><option value="Contract">Contract</option><option value="Internship">Internship</option>
                 </select>
               </div>
               <div className="field">
                 <label className="fieldLabel">Experience Level</label>
-                <select className="input" value={form.experience_level} onChange={(e) => setForm((p) => ({ ...p, experience_level: e.target.value as JobUpsertPayload["experience_level"] }))}>
+                <select className="input" value={form.experience_level} onChange={(e) => setForm((p) => ({ ...p, experience_level: e.target.value as JobUpsertPayload["experience_level"] }))} required>
                   <option value="Entry">Entry</option><option value="Intermediate">Intermediate</option><option value="Senior">Senior</option><option value="Lead">Lead</option>
                 </select>
               </div>
               <div className="field">
                 <label className="fieldLabel">Work Mode</label>
-                <select className="input" value={form.work_mode} onChange={(e) => setForm((p) => ({ ...p, work_mode: e.target.value as "onsite" | "remote" | "hybrid" }))}>
+                <select className="input" value={form.work_mode} onChange={(e) => setForm((p) => ({ ...p, work_mode: e.target.value as "onsite" | "remote" | "hybrid" }))} required>
                   <option value="onsite">On-site</option>
                   <option value="remote">Remote</option>
                   <option value="hybrid">Hybrid</option>
@@ -1293,6 +1294,7 @@ export function JobsPage() {
                   onChange={(html) => setForm((p) => ({ ...p, description: html }))}
                   disabled={saving}
                   placeholder="Type job description…"
+                  required
                 />
                 {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
               </div>
@@ -1353,12 +1355,7 @@ export function JobsPage() {
           {!isJobSeekerView && canCreate ? (
             <button
               type="button"
-              className="btn btnPrimary btnSm"
-              style={{
-                background: "var(--menu-icon-active)",
-                borderColor: "var(--menu-icon-active)",
-                fontWeight: 700,
-              }}
+              className="btn btnGhost btnSm addToggleBtn"
               onClick={openCreateModal}
             >
               {addInlineOpen ? "Cancel" : "Add Job"}
@@ -1955,18 +1952,20 @@ function Field({
   value,
   onChange,
   error,
+  required = false,
   type = "text",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   error?: string;
+  required?: boolean;
   type?: string;
 }) {
   return (
     <div className="field">
       <label className="fieldLabel">{label}</label>
-      <input className={`input${error ? " inputError" : ""}`} type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input className={`input${error ? " inputError" : ""}`} type={type} value={value} onChange={(e) => onChange(e.target.value)} required={required} />
       {error && <span className="fieldError">{error}</span>}
     </div>
   );

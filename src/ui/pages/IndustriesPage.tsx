@@ -292,8 +292,7 @@ export function IndustriesPage() {
         {canManageIndustries ? (
           <button
             type="button"
-            className="btn btnPrimary btnSm"
-            style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+            className="btn btnGhost btnSm addToggleBtn"
             onClick={() => {
               clearMessages();
               setEditIndustry(null);
@@ -322,6 +321,7 @@ export function IndustriesPage() {
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   placeholder="e.g. Information Technology"
+                  required
                 />
               </label>
             </div>
@@ -350,6 +350,7 @@ export function IndustriesPage() {
                   className="input"
                   value={editIndustry.name}
                   onChange={(e) => setEditIndustry((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                  required
                 />
               </label>
             </div>
