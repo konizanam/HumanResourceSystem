@@ -1819,6 +1819,14 @@ input[type="radio"][required] {
     max-height: none;
     overflow: visible;
   }
+
+  .authPageFooter {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    margin-top: 12px;
+  }
 }
 
 @media (max-height: 860px) {
