@@ -32,7 +32,7 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
     }
 
     const result = await query(
-      `SELECT id, first_name, last_name, email, is_active, created_at,
+      `SELECT id, first_name, last_name, email, phone, is_active, created_at,
               (profile_picture_data IS NOT NULL) as has_profile_picture,
               profile_picture_updated_at
        FROM users WHERE id = $1`,
@@ -73,6 +73,7 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
         first_name: user.first_name,
         last_name: user.last_name,
         email: user.email,
+        phone: user.phone,
         is_active: user.is_active,
         created_at: user.created_at,
         has_profile_picture: Boolean(user.has_profile_picture),

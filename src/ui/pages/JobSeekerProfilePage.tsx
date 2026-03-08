@@ -570,20 +570,7 @@ function collectProfileDocuments(params: {
 }): ProfileDocumentEntry[] {
   const cards: ProfileDocumentEntry[] = [];
 
-  const idDoc = String(readProfileValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
-  if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
-
-  const profileCert = String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
-  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
-
-  for (const edu of params.education) {
-    const cert = String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
-    if (!cert) continue;
-    const inst = String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
-    cards.push({ title: "Education Certificate", url: cert, hint: inst || undefined });
-  }
-
-  // Deduplicate uploaded docs by document_type — keep only the latest per type
+  // Deduplicate uploaded docs by document_type — keep only the latest per type.
   const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
   const latestByType = new Map<string, UserDocument>();
   for (const d of uploadedDocs) {
@@ -599,11 +586,42 @@ function collectProfileDocuments(params: {
       }
     }
   }
+
+  const latestQualificationEvidence = latestByType.get("qualification_evidence");
+  const latestQualificationEvidenceUrl = String(
+    latestQualificationEvidence?.download_url ?? latestQualificationEvidence?.file_url ?? "",
+  ).trim();
+  const latestQualificationEvidenceName = String(latestQualificationEvidence?.original_name ?? "").trim();
+
+  const idDoc = String(readProfileValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
+  if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
+
+  const profileCert = String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
+  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
+
+  const educationCertificateUrls = new Set<string>();
+  for (const edu of params.education) {
+    const cert = latestQualificationEvidenceUrl || String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
+    if (!cert) continue;
+    const inst = String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
+    educationCertificateUrls.add(cert);
+    cards.push({
+      title: "Education Certificate",
+      url: cert,
+      hint: inst || undefined,
+      fileName: latestQualificationEvidenceUrl ? (latestQualificationEvidenceName || undefined) : undefined,
+    });
+  }
+
   for (const d of latestByType.values()) {
     const url = String(d.download_url ?? d.file_url ?? "").trim();
     if (!url) continue;
+    const docType = String(d.document_type ?? "Document").trim() || "Document";
+    if (docType.toLowerCase() === "qualification_evidence" && educationCertificateUrls.has(url)) {
+      continue;
+    }
     cards.push({
-      title: String(d.document_type ?? "Document").trim() || "Document",
+      title: docType,
       url,
       fileName: String(d.original_name ?? "").trim() || undefined,
       hint: String(d.description ?? "").trim() || undefined,
@@ -1065,18 +1083,26 @@ async function createProfilePdfReport(params: {
           doc.roundedRect(imgX - 3, docY - 2, rW + 6, rH + 6, 3, 3, "S");
           doc.addImage(dataUrl, imageFormat, imgX, docY, rW, rH);
         } else {
-          // Non-image: display a styled notice box
+          // Non-image: display a styled notice box with the source URL.
+          const isPdf = mimeType.includes("pdf") || /\.pdf(\?|$)/i.test(resolvedUrl);
+          const nonEmbeddableMessage = isPdf
+            ? "PDF files cannot be embedded inside this generated profile PDF."
+            : "This document type cannot be embedded in the PDF. Please use the download link.";
+          const urlLines = doc.splitTextToSize(`Source: ${resolvedUrl}`, contentWidth - 10);
+          const noticeHeight = 10 + Math.max(1, urlLines.length) * 4.2;
           doc.setFillColor(...LIGHT_BG);
-          doc.roundedRect(margin, docY, contentWidth, 18, 3, 3, "F");
+          doc.roundedRect(margin, docY, contentWidth, noticeHeight, 3, 3, "F");
           doc.setDrawColor(...ACCENT);
           doc.setLineWidth(0.4);
-          doc.roundedRect(margin, docY, contentWidth, 18, 3, 3, "S");
+          doc.roundedRect(margin, docY, contentWidth, noticeHeight, 3, 3, "S");
           doc.setFont("helvetica", "italic");
           doc.setFontSize(9);
           doc.setTextColor(...MUTED);
-          doc.text("This document type cannot be embedded in the PDF. Please use the download link.", margin + 5, docY + 8);
+          doc.text(nonEmbeddableMessage, margin + 5, docY + 6.5);
+          doc.setFont("helvetica", "normal");
           doc.setFontSize(8);
-          doc.text(`File: ${fileLabel}`, margin + 5, docY + 14);
+          doc.setTextColor(...NAVY_MID);
+          doc.text(urlLines, margin + 5, docY + 11);
         }
       } catch {
         doc.setFillColor(...LIGHT_BG);
@@ -1435,6 +1461,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         setDirectoryDocumentsByUserId((prev) => ({ ...prev, [userId]: Array.isArray(docs) ? docs : [] }));
       }
 
+      type DirectoryResumeBundle = {
+        primary_resume: { id: string; file_name?: string; download_url?: string; file_path?: string } | null;
+        resumes?: Array<{ id: string; file_name?: string; download_url?: string; file_path?: string; is_primary?: boolean }>;
+      };
+      let resumeResult: DirectoryResumeBundle | undefined = directoryResumesByUserId[userId] as DirectoryResumeBundle | undefined;
+      if (!resumeResult) {
+        const fetchedResumes = await listUserResumes(accessToken, userId).catch(() => ({ primary_resume: null, resumes: [] }));
+        resumeResult = fetchedResumes as DirectoryResumeBundle;
+        setDirectoryResumesByUserId((prev) => ({ ...prev, [userId]: fetchedResumes as any }));
+      }
+
       const profilePicDataUrl = await fetchProfilePictureDataUrl(accessToken, { userId }).catch(() => null);
 
       const personal = ((profile as any).personalDetails ?? null) as Record<string, unknown> | null;
@@ -1471,6 +1508,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           profile: mainProfile,
           education,
           docs: Array.isArray(docs) ? docs : [],
+          resumes: [
+            ...(resumeResult?.primary_resume ? [resumeResult.primary_resume] : []),
+            ...(Array.isArray(resumeResult?.resumes) ? resumeResult.resumes : []),
+          ],
         }),
         profilePictureDataUrl: profilePicDataUrl ?? undefined,
       });
@@ -2602,6 +2643,7 @@ function PersonalDetailsSection({
   const [profilePictureUrlState, setProfilePictureUrlState] = useState("");
   const [profilePictureRefreshKey, setProfilePictureRefreshKey] = useState(0);
   const [externalDocPreview, setExternalDocPreview] = useState<{ url: string; title: string } | null>(null);
+  const [accountContact, setAccountContact] = useState<{ email: string; phone: string }>({ email: "", phone: "" });
 
   const resolvedProfilePictureUrl = profilePictureUrlState;
 
@@ -2622,6 +2664,28 @@ function PersonalDetailsSection({
     const matches = COUNTRY_NAMES.filter((c) => c.toLowerCase().startsWith(q));
     return matches.slice(0, 8);
   }, [form.nationality]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await me(token);
+        if (cancelled) return;
+        const user = (response as any)?.user ?? {};
+        setAccountContact({
+          email: String(user?.email ?? "").trim(),
+          phone: String(user?.phone ?? "").trim(),
+        });
+      } catch {
+        if (cancelled) return;
+        setAccountContact({ email: "", phone: "" });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     const nd = data ?? {};
@@ -2867,6 +2931,8 @@ function PersonalDetailsSection({
           <EditField label="First Name" value={String(d.first_name ?? "")} onChange={() => {}} disabled />
           <EditField label="Last Name" value={String(d.last_name ?? "")} onChange={() => {}} disabled />
           <EditField label="Middle Name (optional)" value={String(d.middle_name ?? "")} onChange={() => {}} disabled />
+          <EditField label="Email" value={accountContact.email || "-"} onChange={() => {}} disabled />
+          <EditField label="Phone Number" value={accountContact.phone || "-"} onChange={() => {}} disabled />
           <EditField label="Gender" value={String(d.gender ?? "")} onChange={() => {}} disabled />
           <EditField
             label="Date of Birth"
@@ -3027,6 +3093,18 @@ function PersonalDetailsSection({
           label="Middle Name (optional)"
           value={form.middleName}
           onChange={(v) => set("middleName", v)}
+        />
+        <EditField
+          label="Email"
+          value={accountContact.email || "-"}
+          onChange={() => {}}
+          disabled
+        />
+        <EditField
+          label="Phone Number"
+          value={accountContact.phone || "-"}
+          onChange={() => {}}
+          disabled
         />
         <label className="field">
           <span className="fieldLabel">Gender</span>
