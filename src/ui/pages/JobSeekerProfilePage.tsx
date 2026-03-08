@@ -596,10 +596,20 @@ function collectProfileDocuments(params: {
   ).trim();
   const latestQualificationEvidenceName = String(latestQualificationEvidence?.original_name ?? "").trim();
 
-  const idDoc = String(readProfileValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
+  const latestIdDocument = latestByType.get("id_document");
+  const latestIdDocumentUrl = String(
+    latestIdDocument?.download_url ?? latestIdDocument?.file_url ?? "",
+  ).trim();
+
+  const latestProfileCertificate = latestByType.get("certificate");
+  const latestProfileCertificateUrl = String(
+    latestProfileCertificate?.download_url ?? latestProfileCertificate?.file_url ?? "",
+  ).trim();
+
+  const idDoc = latestIdDocumentUrl || String(readProfileValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
   if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
 
-  const profileCert = String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
+  const profileCert = latestProfileCertificateUrl || String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
   if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
 
   const educationCertificateUrls = new Set<string>();
@@ -620,6 +630,8 @@ function collectProfileDocuments(params: {
     const url = String(d.download_url ?? d.file_url ?? "").trim();
     if (!url) continue;
     const docType = String(d.document_type ?? "Document").trim() || "Document";
+    if (docType.toLowerCase() === "id_document" && url === idDoc) continue;
+    if (docType.toLowerCase() === "certificate" && url === profileCert) continue;
     if (docType.toLowerCase() === "qualification_evidence" && educationCertificateUrls.has(url)) {
       continue;
     }
@@ -1858,59 +1870,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               <div className="profileSectionHeading">Documents</div>
               <div style={{ marginTop: 8 }}>
                 {(() => {
-                  const cards: { title: string; url: string; hint?: string; fileName?: string }[] = [];
-
-                  const idDoc = String(readValue(personal, "id_document_url", "idDocumentUrl") ?? "").trim();
-                  if (idDoc) cards.push({ title: "ID Document", url: idDoc });
-
-                  const profileCert = String(readValue(mainProfile, "certificate_url", "certificateUrl") ?? "").trim();
-                  if (profileCert) cards.push({ title: "Certificate", url: profileCert, hint: "From profile" });
-
-                  for (const edu of education) {
-                    const cert = String(readValue(edu as any, "certificate_url", "certificateUrl") ?? "").trim();
-                    if (!cert) continue;
-                    const inst = String(readValue(edu as any, "institution", "institution_name", "institutionName") ?? "").trim();
-                    cards.push({ title: "Certificate", url: cert, hint: inst || undefined });
-                  }
-
-                  const uploadedDocs: UserDocument[] = Array.isArray(docs) ? docs : [];
-                  // Deduplicate by document_type — keep latest per type
-                  const latestByType = new Map<string, UserDocument>();
-                  for (const d of uploadedDocs) {
-                    const type = String(d.document_type ?? "Document").trim() || "Document";
-                    const existing = latestByType.get(type);
-                    if (!existing) {
-                      latestByType.set(type, d);
-                    } else {
-                      const existingDate = new Date(String(existing.created_at ?? "")).getTime();
-                      const newDate = new Date(String(d.created_at ?? "")).getTime();
-                      if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
-                        latestByType.set(type, d);
-                      }
-                    }
-                  }
-                  for (const d of latestByType.values()) {
-                    const url = String(d.download_url ?? d.file_url ?? "").trim();
-                    if (!url) continue;
-                    const title = String(d.document_type ?? "Document").trim() || "Document";
-                    const hint = String(d.description ?? "").trim() || undefined;
-                    cards.push({ title, url, hint, fileName: String(d.original_name ?? "").trim() || undefined });
-                  }
-
-                  // Add CV from resume endpoint if available
-                  if (primaryResume) {
-                    const cvUrl = String(primaryResume.download_url ?? primaryResume.file_path ?? "").trim();
-                    if (cvUrl) {
-                      cards.push({ title: "My CV", url: cvUrl, fileName: String(primaryResume.file_name ?? "").trim() || undefined });
-                    }
-                  }
-
-                  const seen = new Set<string>();
-                  const unique = cards.filter((c) => {
-                    const key = `${c.title}::${c.url}`;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
+                  const unique = collectProfileDocuments({
+                    personal,
+                    profile: mainProfile,
+                    education,
+                    docs: Array.isArray(docs) ? docs : [],
+                    resumes: primaryResume ? [primaryResume] : [],
                   });
 
                   if (docs === undefined) {
