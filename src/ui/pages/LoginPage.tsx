@@ -92,6 +92,59 @@ function maskEmail(rawEmail: string): string {
   return `${maskSegment(localPart)}@${maskSegment(domainName)}${tld}`;
 }
 
+type AuthErrorContext = "login" | "verify2fa" | "resend2fa" | "forgot";
+
+function resolveAuthErrorMessage(error: unknown, context: AuthErrorContext): string {
+  const status = Number((error as any)?.status ?? 0);
+  const raw = error instanceof Error ? error.message : "";
+  const message = String(raw ?? "").trim();
+  const lower = message.toLowerCase();
+
+  if (lower.includes("failed to fetch") || lower.includes("network") || status === 0) {
+    return "Unable to reach the server. Check your connection and try again.";
+  }
+
+  if (status === 429 || lower.includes("too many")) {
+    return "Too many attempts. Please wait a moment and try again.";
+  }
+
+  if (status >= 500) {
+    return "The server is temporarily unavailable. Please try again shortly.";
+  }
+
+  if (context === "login") {
+    if (
+      status === 401 ||
+      lower.includes("invalid credential") ||
+      lower.includes("invalid email") ||
+      lower.includes("invalid password") ||
+      lower.includes("unauthorized") ||
+      lower.includes("user not found")
+    ) {
+      return "Email or password is incorrect. Please try again.";
+    }
+  }
+
+  if (context === "verify2fa" || context === "resend2fa") {
+    if (lower.includes("expired")) {
+      return "Your authentication code has expired. Request a new code and try again.";
+    }
+    if (lower.includes("invalid") || lower.includes("otp") || lower.includes("code")) {
+      return "Invalid authentication code. Enter the latest 6-digit code and try again.";
+    }
+  }
+
+  if (context === "forgot") {
+    return "Could not process your reset request right now. Please try again in a moment.";
+  }
+
+  if (message) return message;
+
+  if (context === "verify2fa") return "Verification failed. Please try again.";
+  if (context === "resend2fa") return "Could not resend the code. Please try again.";
+  return "Sign-in failed. Please try again.";
+}
+
 /** Returns the current effective theme without touching data-theme. */
 function getStoredTheme(): "light" | "dark" {
   try {
@@ -386,17 +439,17 @@ export function LoginPage() {
 
       const normalized = code.replace(/\s+/g, "").trim();
       if (!normalized) {
-        setError("Enter your authentication code");
+        setError("Enter your 6-digit authentication code.");
         return;
       }
 
       if (!/^\d{6}$/.test(normalized)) {
-        setError("Enter a valid 6-digit authentication code");
+        setError("Authentication code must be exactly 6 digits.");
         return;
       }
 
       if (!pending) {
-        setError("Please sign in again");
+        setError("Your sign-in session has ended. Please sign in again.");
         setStep("credentials");
         return;
       }
@@ -410,7 +463,7 @@ export function LoginPage() {
       void permissions;
       navigate(redirectTo, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(resolveAuthErrorMessage(err, step === "credentials" ? "login" : "verify2fa"));
     } finally {
       setBusy(false);
     }
@@ -572,8 +625,8 @@ export function LoginPage() {
                         setForgotMessage(
                           `If an account exists for ${value}, a reset link has been sent.`
                         );
-                      } catch {
-                        setForgotMessage("Something went wrong. Please try again.");
+                      } catch (err) {
+                        setForgotMessage(resolveAuthErrorMessage(err, "forgot"));
                       } finally {
                         setBusy(false);
                       }
@@ -650,7 +703,7 @@ export function LoginPage() {
                       );
                       setCode("");
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : "Failed to resend code");
+                      setError(resolveAuthErrorMessage(err, "resend2fa"));
                     } finally {
                       setBusy(false);
                     }
@@ -687,10 +740,13 @@ export function LoginPage() {
             <Link to="/register" className="linkBtn">
               Sign up
             </Link>
-            <div className="loginCopyright">© 2026 {systemName}. All rights reserved.</div>
           </div>
         </div>
       </div>
+      <footer className="globalAppFooter authPageFooter">
+        <span>© 2026 All Rights Reserved. {systemName || "Human Resource System"}. Developbed By: </span>
+        <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
+      </footer>
     </div>
   );
 }
