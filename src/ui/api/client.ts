@@ -899,14 +899,17 @@ export async function login(
     });
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(`Cannot reach API server at ${API_URL}. Check that the backend is running.`);
+      throw Object.assign(
+        new Error(`Cannot reach API server at ${API_URL}. Check that the backend is running.`),
+        { status: 0 },
+      );
     }
     throw error;
   }
 
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Login failed");
+    throw apiError(res, body, "Login failed");
   }
 
   return (await res.json()) as LoginResult;
@@ -924,7 +927,7 @@ export async function verifyTwoFactor(
 
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Two-factor verification failed");
+    throw apiError(res, body, "Two-factor verification failed");
   }
 
   return (await res.json()) as LoginResponse;

@@ -95,12 +95,18 @@ function maskEmail(rawEmail: string): string {
 type AuthErrorContext = "login" | "verify2fa" | "resend2fa" | "forgot";
 
 function resolveAuthErrorMessage(error: unknown, context: AuthErrorContext): string {
-  const status = Number((error as any)?.status ?? 0);
+  const rawStatus = (error as any)?.status;
+  const status = typeof rawStatus === "number" && Number.isFinite(rawStatus) ? rawStatus : null;
   const raw = error instanceof Error ? error.message : "";
   const message = String(raw ?? "").trim();
   const lower = message.toLowerCase();
 
-  if (lower.includes("failed to fetch") || lower.includes("network") || status === 0) {
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("network") ||
+    lower.includes("cannot reach api server") ||
+    status === 0
+  ) {
     return "Unable to reach the server. Check your connection and try again.";
   }
 
@@ -108,7 +114,7 @@ function resolveAuthErrorMessage(error: unknown, context: AuthErrorContext): str
     return "Too many attempts. Please wait a moment and try again.";
   }
 
-  if (status >= 500) {
+  if (status !== null && status >= 500) {
     return "The server is temporarily unavailable. Please try again shortly.";
   }
 
