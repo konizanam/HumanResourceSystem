@@ -1403,6 +1403,21 @@ export async function listJobSeekerResumes(
   };
 }
 
+export async function listUserResumes(
+  token: string,
+  userId: string,
+): Promise<{ resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null }> {
+  const url = new URL(`${API_BASE}/job-seeker/resume`);
+  url.searchParams.set("user_id", userId);
+  const res = await fetch(url, { headers: authHeaders(token) });
+  const body = await safeJson(res);
+  if (!res.ok) return { resumes: [], primary_resume: null };
+  return {
+    resumes: Array.isArray((body as any)?.resumes) ? ((body as any).resumes as JobSeekerResume[]) : [],
+    primary_resume: ((body as any)?.primary_resume ?? null) as JobSeekerResume | null,
+  };
+}
+
 export async function uploadJobSeekerResume(
   token: string,
   file: File,

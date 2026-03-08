@@ -17,6 +17,7 @@ import {
   applyToJob,
   blockUser,
   listJobSeekerResumes,
+  listUserResumes,
   listMyDocuments,
   getFullProfile,
   getJobSeekerFullProfile,
@@ -124,10 +125,14 @@ function validateProfilePictureUpload(file: File | null): string | null {
 function resolveFileUrl(raw: unknown): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";
-  if (/^(https?:\/\/|data:)/i.test(value)) return value;
-  const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-  if (!base) return value;
-  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+  if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
+
+  // Keep document URL resolution aligned with API client defaults.
+  const configuredBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  const base = configuredBase || "http://localhost:4000";
+
+  if (value.startsWith("/")) return `${base}${value}`;
+  return `${base}/${value.replace(/^\.?\//, "")}`;
 }
 
 async function fetchProfilePictureObjectUrl(
@@ -198,6 +203,7 @@ function UploadedDocumentCard({
   hint,
   originalName,
   token,
+  previewKey,
   previewMode = "inline",
   externalPreviewOpen,
   onToggleExternalPreview,
@@ -208,6 +214,7 @@ function UploadedDocumentCard({
   hint?: string;
   originalName?: string;
   token?: string;
+  previewKey?: string;
   previewMode?: "inline" | "external";
   externalPreviewOpen?: boolean;
   onToggleExternalPreview?: (blobUrl: string, title: string) => void;
@@ -316,8 +323,9 @@ function UploadedDocumentCard({
     e.preventDefault();
     e.stopPropagation();
     const viewUrl = effectiveUrl || resolvedUrl;
+    const previewIdentity = previewKey || title;
     if (isExternalPreview) {
-      onToggleExternalPreview?.(viewUrl, title);
+      onToggleExternalPreview?.(viewUrl, previewIdentity);
       return;
     }
     setPreviewOpen((v) => !v);
@@ -1144,6 +1152,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     Record<string, { url: string; title: string } | null | undefined>
   >({});
 
+  const [directoryResumesByUserId, setDirectoryResumesByUserId] = useState<
+    Record<string, { primary_resume: { id: string; file_name?: string; download_url?: string; file_path?: string } | null } | undefined>
+  >({});
+
   const [blockModalUser, setBlockModalUser] = useState<JobSeekerListItem | null>(null);
   const [blockAction, setBlockAction] = useState<"block" | "unblock">("block");
   const [blockReason, setBlockReason] = useState("");
@@ -1564,21 +1576,25 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
 
     const hasProfile = Object.prototype.hasOwnProperty.call(directoryProfileByUserId, id);
     const hasDocs = Object.prototype.hasOwnProperty.call(directoryDocumentsByUserId, id);
-    if (hasProfile && hasDocs) return;
+    const hasResumes = Object.prototype.hasOwnProperty.call(directoryResumesByUserId, id);
+    if (hasProfile && hasDocs && hasResumes) return;
 
     if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: undefined }));
     if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: undefined }));
 
     try {
-      const [profile, docs] = await Promise.all([
+      const [profile, docs, resumeResult] = await Promise.all([
         hasProfile ? Promise.resolve(directoryProfileByUserId[id] as any) : getJobSeekerFullProfile(accessToken, id),
         hasDocs ? Promise.resolve(directoryDocumentsByUserId[id] as any) : listUserDocuments(accessToken, id),
+        hasResumes ? Promise.resolve(directoryResumesByUserId[id] as any) : listUserResumes(accessToken, id).catch(() => ({ primary_resume: null, resumes: [] })),
       ]);
       if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: profile }));
       if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: Array.isArray(docs) ? docs : [] }));
+      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: resumeResult }));
     } catch {
       if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
       if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
+      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: { primary_resume: null } }));
     }
   }
 
@@ -1629,6 +1645,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const profile = userId ? directoryProfileByUserId[userId] : null;
     const docs = userId ? directoryDocumentsByUserId[userId] : null;
     const selectedPreview = userId ? (directoryDocPreviewByUserId[userId] ?? null) : null;
+    const primaryResume = userId ? (directoryResumesByUserId[userId]?.primary_resume ?? null) : null;
 
     if (!userId) {
       return (
@@ -1662,7 +1679,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         ) : (
           <>
             <div style={{ marginTop: 10 }}>
-              <div className="readLabel">Personal Details</div>
+              <div className="profileSectionHeading">Personal Details</div>
               <div className="profileReadGrid" style={{ marginTop: 6 }}>
                 <DirectoryProfilePicture
                   token={accessToken!}
@@ -1685,7 +1702,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">Professional Summary</div>
+              <div className="profileSectionHeading">Professional Summary</div>
               <div style={{ marginTop: 6 }}>
                 <div className="readValue" style={{ whiteSpace: "pre-wrap" }}>
                   {String(
@@ -1711,83 +1728,110 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">Address</div>
+              <div className="profileSectionHeading">Address</div>
               <div style={{ marginTop: 6 }}>
                 {addresses.length === 0 ? (
                   <p className="pageText">No address records.</p>
                 ) : (
-                  addresses.map((address, idx) => (
-                    <div key={`${userId}-addr-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                      {[
-                        readValue(address, "address_line1", "addressLine1"),
-                        readValue(address, "address_line2", "addressLine2"),
-                        readValue(address, "city"),
-                        readValue(address, "state"),
-                        readValue(address, "country"),
-                      ]
-                        .filter(Boolean)
-                        .map(String)
-                        .join(", ") || "—"}
-                    </div>
-                  ))
+                  addresses.map((address, idx) => {
+                    const isPrimary = Boolean(readValue(address, "is_primary", "isPrimary"));
+                    const line1 = String(readValue(address, "address_line1", "addressLine1") ?? "");
+                    const line2 = String(readValue(address, "address_line2", "addressLine2") ?? "");
+                    const city = String(readValue(address, "city") ?? "");
+                    const state = String(readValue(address, "state") ?? "");
+                    const country = String(readValue(address, "country") ?? "");
+                    const postal = String(readValue(address, "postal_code", "postalCode") ?? "");
+                    return (
+                      <div key={`${userId}-addr-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < addresses.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        {isPrimary && <span className="chipBadge" style={{ marginBottom: 6, display: "inline-block" }}>Primary</span>}
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          {line1 ? <ReadField label="Address Line 1" value={line1} /> : null}
+                          {line2 ? <ReadField label="Address Line 2" value={line2} /> : null}
+                          {city ? <ReadField label="City" value={city} /> : null}
+                          {state ? <ReadField label="Region / State" value={state} /> : null}
+                          {country ? <ReadField label="Country" value={country} /> : null}
+                          {postal ? <ReadField label="Postal Code" value={postal} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">Education</div>
+              <div className="profileSectionHeading">Education</div>
               <div style={{ marginTop: 6 }}>
                 {education.length === 0 ? (
                   <p className="pageText">No education records.</p>
                 ) : (
-                  education.map((edu, idx) => (
-                    <div key={`${userId}-edu-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                      {[
-                        readValue(edu, "institution"),
-                        readValue(edu, "qualification"),
-                        readValue(edu, "field_of_study", "fieldOfStudy"),
-                        readValue(edu, "start_year", "startYear"),
-                        readValue(edu, "end_year", "endYear"),
-                      ]
-                        .filter(Boolean)
-                        .map(String)
-                        .join(" • ") || "—"}
-                    </div>
-                  ))
+                  education.map((edu, idx) => {
+                    const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
+                    const qualification = String(readValue(edu, "qualification") ?? "");
+                    const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
+                    const grade = String(readValue(edu, "grade") ?? "");
+                    const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(edu, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(edu, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    return (
+                      <div key={`${userId}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Institution" value={institution} />
+                          <ReadField label="Qualification" value={qualification} />
+                          {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
+                          {grade ? <ReadField label="Grade" value={grade} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">Experience</div>
+              <div className="profileSectionHeading">Experience</div>
               <div style={{ marginTop: 6 }}>
                 {experience.length === 0 ? (
                   <p className="pageText">No experience records.</p>
                 ) : (
-                  experience.map((exp, idx) => (
-                    <div key={`${userId}-exp-${idx}`} className="readValue" style={{ marginBottom: 8 }}>
-                      <strong>{String(readValue(exp, "position") ?? "Role")}</strong>
-                      {" at "}
-                      <strong>{String(readValue(exp, "company") ?? "Company")}</strong>
-                      {(readValue(exp, "start_date", "startDate") || readValue(exp, "end_date", "endDate")) && (
-                        <span style={{ color: "var(--muted)", fontSize: 13, marginLeft: 6 }}>
-                          {[readValue(exp, "start_date", "startDate"), readValue(exp, "end_date", "endDate")]
-                            .filter(Boolean).map(String).join(" – ")}
-                        </span>
-                      )}
-                      {readValue(exp, "description") && (
-                        <div style={{ marginTop: 2, fontSize: 13, color: "var(--muted)" }}>
-                          {String(readValue(exp, "description")).slice(0, 180)}
+                  experience.map((exp, idx) => {
+                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "—");
+                    const companyName = String(readValue(exp, "company_name", "companyName", "company") ?? "—");
+                    const employmentType = String(readValue(exp, "employment_type", "employmentType") ?? "");
+                    const isCurrent = Boolean(readValue(exp, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(exp, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(exp, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
+                    return (
+                      <div key={`${userId}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Job Title" value={jobTitle} />
+                          <ReadField label="Company" value={companyName} />
+                          {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                          {responsibilities ? (
+                            <div className="readFieldFull">
+                              <span className="readLabel">Responsibilities</span>
+                              <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
+                            </div>
+                          ) : null}
                         </div>
-                      )}
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">References</div>
+              <div className="profileSectionHeading">References</div>
               <div style={{ marginTop: 6 }}>
                 {references.length === 0 ? (
                   <p className="pageText">No references listed.</p>
@@ -1805,7 +1849,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div className="readLabel">Documents</div>
+              <div className="profileSectionHeading">Documents</div>
               <div style={{ marginTop: 8 }}>
                 {(() => {
                   const cards: { title: string; url: string; hint?: string; fileName?: string }[] = [];
@@ -1845,6 +1889,14 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     const title = String(d.document_type ?? "Document").trim() || "Document";
                     const hint = String(d.description ?? "").trim() || undefined;
                     cards.push({ title, url, hint, fileName: String(d.original_name ?? "").trim() || undefined });
+                  }
+
+                  // Add CV from resume endpoint if available
+                  if (primaryResume) {
+                    const cvUrl = String(primaryResume.download_url ?? primaryResume.file_path ?? "").trim();
+                    if (cvUrl) {
+                      cards.push({ title: "My CV", url: cvUrl, fileName: String(primaryResume.file_name ?? "").trim() || undefined });
+                    }
                   }
 
                   const seen = new Set<string>();
@@ -3674,9 +3726,32 @@ function EducationSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [qualificationOpen, setQualificationOpen] = useState(false);
   const [studyOpen, setStudyOpen] = useState(false);
-  const [certDocPreview, setCertDocPreview] = useState<{ url: string; title: string } | null>(null);
+  const [certDocPreview, setCertDocPreview] = useState<{ url: string; title: string; key: string } | null>(null);
   const [pendingCertFile, setPendingCertFile] = useState<File | null>(null);
   const [pendingCertLocalUrl, setPendingCertLocalUrl] = useState("");
+  const [latestQualificationEvidence, setLatestQualificationEvidence] = useState<UserDocument | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const docs = await listMyDocuments(token, "qualification_evidence");
+        if (cancelled) return;
+        const sorted = (docs ?? []).slice().sort((a, b) => {
+          const at = new Date(String(a.created_at ?? "")).getTime();
+          const bt = new Date(String(b.created_at ?? "")).getTime();
+          return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+        });
+        setLatestQualificationEvidence(sorted[0] ?? null);
+      } catch {
+        if (!cancelled) setLatestQualificationEvidence(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, items]);
 
   const qualificationSuggestions = useMemo(() => {
     const q = form.qualification.trim().toLowerCase();
@@ -3791,7 +3866,14 @@ function EducationSection({
           const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
           const isCurrent = Boolean(e.is_current);
           const grade = String(e.grade ?? "");
-          const certificateUrl = String(e.certificate_url ?? "").trim();
+          const latestCertUrl = String(
+            latestQualificationEvidence?.download_url ??
+            latestQualificationEvidence?.file_url ??
+            "",
+          ).trim();
+          const latestCertOriginalName = String(latestQualificationEvidence?.original_name ?? "").trim();
+          const certificateUrl = latestCertUrl || String(e.certificate_url ?? "").trim();
+          const certPreviewKey = `qualification-evidence-${String(e.id ?? idx)}`;
 
           return (
             <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
@@ -3808,12 +3890,16 @@ function EducationSection({
                     <UploadedDocumentCard
                       title="Qualification Evidence"
                       url={certificateUrl}
+                      originalName={latestCertOriginalName || undefined}
                       token={token}
                       fallbackText="No file uploaded yet."
+                      previewKey={certPreviewKey}
                       previewMode="external"
-                      externalPreviewOpen={certDocPreview?.title === "Qualification Evidence"}
-                      onToggleExternalPreview={(blobUrl, title) =>
-                        setCertDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                      externalPreviewOpen={certDocPreview?.key === certPreviewKey}
+                      onToggleExternalPreview={(blobUrl, key) =>
+                        setCertDocPreview((prev) =>
+                          prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
+                        )
                       }
                     />
                   </div>
@@ -4040,10 +4126,13 @@ function EducationSection({
                 token={token}
                 fallbackText="No file uploaded yet."
                 hint={(pendingCertLocalUrl || form.certificateUrl) ? "Upload another file to replace the current one." : undefined}
+                previewKey="qualification-evidence-edit"
                 previewMode="external"
-                externalPreviewOpen={certDocPreview?.title === "Qualification Evidence"}
-                onToggleExternalPreview={(blobUrl, title) =>
-                  setCertDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                externalPreviewOpen={certDocPreview?.key === "qualification-evidence-edit"}
+                onToggleExternalPreview={(blobUrl, key) =>
+                  setCertDocPreview((prev) =>
+                    prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
+                  )
                 }
               />
               {certDocPreview?.url ? (

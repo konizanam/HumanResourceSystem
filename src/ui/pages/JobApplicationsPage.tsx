@@ -103,9 +103,13 @@ function resolveFileUrl(raw: unknown): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";
   if (/^(https?:\/\/|data:|blob:)/i.test(value)) return value;
-  const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-  if (!base) return value;
-  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+
+  // Keep document URL resolution aligned with API client defaults.
+  const configuredBase = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+  const base = configuredBase || "http://localhost:4000";
+
+  if (value.startsWith("/")) return `${base}${value}`;
+  return `${base}/${value.replace(/^\.?\//, "")}`;
 }
 
 export function JobApplicationsPage() {
