@@ -2980,6 +2980,35 @@ input[type="radio"][required] {
   padding: 16px;
 }
 
+.publicJobsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.publicJobsHeaderBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+}
+
+.publicJobsHeaderActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.publicJobsHeaderActions .appTopUserName {
+  min-width: 0;
+  max-width: min(360px, 100%);
+}
+
 .publicJobsLayout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -2991,6 +3020,16 @@ input[type="radio"][required] {
 .publicJobsFilters {
   background: color-mix(in srgb, var(--accent-soft) 42%, var(--card2));
   border: 1px solid color-mix(in srgb, var(--stroke) 72%, var(--menu-icon-active));
+}
+
+.publicJobsFiltersGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+
+.publicJobsFilterField {
+  min-width: 0;
 }
 
 .publicJobsPager {
@@ -3043,11 +3082,81 @@ input[type="radio"][required] {
     grid-template-columns: 1fr;
   }
 
+  .publicJobsFiltersGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .jobsSeekerLayout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .jobsSeekerFiltersCard {
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .jobsSeekerFiltersGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .jobsSeekerFilterField {
+    min-width: 0;
+  }
+
+  .jobsSeekerFiltersReset {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .jobsSeekerResults {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .publicJobsPager {
     width: fit-content !important;
     margin-left: auto;
     justify-content: flex-end;
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 700px) {
+  .publicJobsHeader {
+    align-items: flex-start;
+  }
+
+  .publicJobsHeaderBrand {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .publicJobsHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .publicJobsHeaderActions .btn {
+    flex: 1 1 140px;
+  }
+
+  .publicJobsHeaderActions .themeToggleBtn {
+    flex: 0 0 34px;
+  }
+
+  .publicJobsHeaderActions .appTopUserName {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .publicJobsFiltersGrid,
+  .jobsSeekerFiltersGrid {
+    grid-template-columns: 1fr;
   }
 }
 

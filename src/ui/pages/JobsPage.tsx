@@ -1486,18 +1486,18 @@ export function JobsPage() {
 
         {isJobSeekerView ? (
           <>
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div className="jobsSeekerLayout">
             {showSeekerFilters ? (
-              <div className="dashCard" style={{ width: 280, flex: "0 0 280px" }}>
+              <div className="dashCard jobsSeekerFiltersCard">
                 <div className="dashCardHeader" style={{ marginBottom: 8 }}>
                   <h2 className="dashCardTitle" style={{ fontSize: 16 }}>Filters</h2>
                 </div>
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                <div className="jobsSeekerFiltersGrid">
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Search</label>
                     <input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Title, company, category..." />
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Category</label>
                     <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
                       <option value="">All Categories</option>
@@ -1506,7 +1506,7 @@ export function JobsPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Employment Type</label>
                     <select className="input" value={filterEmploymentType} onChange={(e) => setFilterEmploymentType(e.target.value)}>
                       <option value="">All Employment Types</option>
@@ -1515,7 +1515,7 @@ export function JobsPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Experience Level</label>
                     <select className="input" value={filterExperienceLevel} onChange={(e) => setFilterExperienceLevel(e.target.value)}>
                       <option value="">All Experience Levels</option>
@@ -1524,7 +1524,7 @@ export function JobsPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Work Mode</label>
                     <select className="input" value={filterRemote} onChange={(e) => setFilterRemote(e.target.value as "all" | "remote" | "onsite" | "hybrid")}>
                       <option value="all">All</option>
@@ -1533,7 +1533,7 @@ export function JobsPage() {
                       <option value="onsite">On Site</option>
                     </select>
                   </div>
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field jobsSeekerFilterField" style={{ marginBottom: 0 }}>
                     <label className="fieldLabel">Location</label>
                     <select className="input" value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}>
                       <option value="">All Locations</option>
@@ -1544,7 +1544,7 @@ export function JobsPage() {
                   </div>
                   <button
                     type="button"
-                    className="btn btnGhost btnSm"
+                    className="btn btnGhost btnSm jobsSeekerFiltersReset"
                     onClick={() => {
                       setSearch("");
                       setFilterCategory("");
@@ -1560,7 +1560,7 @@ export function JobsPage() {
               </div>
             ) : null}
 
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="jobsSeekerResults">
             <div style={{ marginBottom: 12 }}>
               {renderSeekerPager()}
             </div>

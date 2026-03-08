@@ -679,8 +679,8 @@ export function PublicJobsPage() {
   return (
     <div className="page">
       <div className="publicJobsContainer">
-        <div className="companiesHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 240 }}>
+        <div className="companiesHeader publicJobsHeader">
+          <div className="publicJobsHeaderBrand">
             <img
               src={resolvedBrandingLogoSrc}
               alt={systemName ? `${systemName} logo` : "Company logo"}
@@ -692,7 +692,7 @@ export function PublicJobsPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="publicJobsHeaderActions">
             {!accessToken ? (
               <>
                 <Link
@@ -777,8 +777,8 @@ export function PublicJobsPage() {
               </button>
             </div>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <div>
+            <div className="publicJobsFiltersGrid">
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Search</label>
                 <input
                   className="input"
@@ -789,7 +789,7 @@ export function PublicJobsPage() {
                 />
               </div>
 
-              <div>
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Category</label>
                 <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} disabled={loading}>
                   <option value="">All categories</option>
@@ -801,7 +801,7 @@ export function PublicJobsPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Employment Type</label>
                 <select
                   className="input"
@@ -818,7 +818,7 @@ export function PublicJobsPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Experience Level</label>
                 <select
                   className="input"
@@ -835,7 +835,7 @@ export function PublicJobsPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Remote</label>
                 <select
                   className="input"
@@ -850,7 +850,7 @@ export function PublicJobsPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="publicJobsFilterField">
                 <label className="fieldLabel">Location contains</label>
                 <input
                   className="input"
