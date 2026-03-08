@@ -263,6 +263,23 @@ function resolveClientIp(req: any): string | null {
   return normalizeIp(req?.ip ?? null);
 }
 
+function countryNameFromGeoValue(rawCountry: string | null | undefined): string {
+  const value = String(rawCountry ?? "").trim();
+  if (!value) return "";
+
+  if (value.length !== 2) return value;
+
+  const code = value.toUpperCase();
+  if (code === "NA") return "Namibia";
+
+  try {
+    const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+    return displayNames.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 function resolveLocationFromIp(ip: string | null): string {
   const fallback = describeIpLocation(ip);
   const cleanIp = String(ip ?? "").replace(/^::ffff:/, "").trim();
@@ -272,10 +289,13 @@ function resolveLocationFromIp(ip: string | null): string {
   if (!lookedUp) return fallback;
 
   const city = String(lookedUp.city ?? "").trim();
-  const region = String(lookedUp.region ?? "").trim();
-  const country = String(lookedUp.country ?? "").trim();
-  const parts = [city, region, country].filter(Boolean);
-  return parts.length > 0 ? parts.join(", ") : fallback;
+  const country = countryNameFromGeoValue(String(lookedUp.country ?? "").trim());
+
+  if (city && country) return `${city}, ${country}`;
+  if (country) return country;
+  if (city) return city;
+
+  return fallback;
 }
 
 function resolveDeviceFromUserAgent(userAgentRaw: string | null | undefined): string {

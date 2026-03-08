@@ -274,6 +274,14 @@ function NonJobSeekerGate({ children }: { children: ReactNode }) {
 
 export function App() {
   const [footerCompanyName, setFooterCompanyName] = useState("Global Company Name");
+  const location = useLocation();
+
+  const hideShellFooter =
+    location.pathname.startsWith("/login") ||
+    location.pathname.startsWith("/register") ||
+    location.pathname.startsWith("/reset-password") ||
+    location.pathname.startsWith("/activate") ||
+    location.pathname.startsWith("/setup/main-company");
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -548,10 +556,12 @@ export function App() {
         <Route path="/" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/app" replace />} />
       </Routes>
-      <footer className="globalAppFooter">
-        <span>© 2026 All Rights Reserved. {footerCompanyName}. Developbed By: </span>
-        <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
-      </footer>
+      {!hideShellFooter ? (
+        <footer className="globalAppFooter">
+          <span>© 2026 All Rights Reserved. {footerCompanyName}. Developbed By: </span>
+          <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
+        </footer>
+      ) : null}
       </>
     </SetupGuard>
   );
