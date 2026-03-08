@@ -2405,7 +2405,7 @@ input[type="radio"][required] {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #000;
+  color: var(--heading);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-transform: none;

@@ -30,6 +30,7 @@ import {
   uploadJobSeekerResume,
   updateProfile,
   updatePersonalDetails,
+  updateMyAccount,
   saveAddress,
   deleteAddress,
   saveEducation,
@@ -2475,10 +2476,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
 
       {/* ── Step Content ────────────────────────── */}
       <div className="profileStepContent">
-        <div className="profileStepHeader">
-          <h2 className="profileStepTitle">{PROFILE_STEPS[activeStep]}</h2>
-        </div>
-
         {activeStep === 0 && (
           <PersonalDetailsSection
             key={`step-0-${editResetToken}`}
@@ -2604,6 +2601,8 @@ function PersonalDetailsSection({
     firstName: (d.first_name as string) ?? "",
     lastName: (d.last_name as string) ?? "",
     middleName: (d.middle_name as string) ?? "",
+    email: "",
+    phone: "",
     gender: (d.gender as string) ?? "",
     dateOfBirth: (d.date_of_birth as string) ?? "",
     nationality: (d.nationality as string) ?? "",
@@ -2676,6 +2675,11 @@ function PersonalDetailsSection({
           email: String(user?.email ?? "").trim(),
           phone: String(user?.phone ?? "").trim(),
         });
+        setForm((prev) => ({
+          ...prev,
+          email: String(user?.email ?? "").trim(),
+          phone: String(user?.phone ?? "").trim(),
+        }));
       } catch {
         if (cancelled) return;
         setAccountContact({ email: "", phone: "" });
@@ -2693,6 +2697,8 @@ function PersonalDetailsSection({
       firstName: (nd.first_name as string) ?? "",
       lastName: (nd.last_name as string) ?? "",
       middleName: (nd.middle_name as string) ?? "",
+      email: accountContact.email,
+      phone: accountContact.phone,
       gender: (nd.gender as string) ?? "",
       dateOfBirth: (nd.date_of_birth as string)?.split("T")[0] ?? "",
       nationality: (nd.nationality as string) ?? "",
@@ -2702,7 +2708,7 @@ function PersonalDetailsSection({
       maritalStatus: (nd.marital_status as string) ?? "",
       disabilityStatus: (nd.disability_status as boolean) ?? false,
     });
-  }, [data]);
+  }, [data, accountContact.email, accountContact.phone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2832,6 +2838,11 @@ function PersonalDetailsSection({
 
     if (!form.firstName.trim()) errs.firstName = "First name is required";
     if (!form.lastName.trim()) errs.lastName = "Last name is required";
+    if (!form.email.trim()) {
+      errs.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      errs.email = "Enter a valid email address";
+    }
     if (!form.gender) errs.gender = "Gender is required";
     if (!form.dateOfBirth) errs.dateOfBirth = "Date of birth is required";
     if (!form.nationality.trim()) errs.nationality = "Nationality is required";
@@ -2891,6 +2902,12 @@ function PersonalDetailsSection({
         setPendingCvFile(null);
         setPendingCvLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
       }
+
+      await updateMyAccount(token, {
+        email: form.email,
+        phone: form.phone || null,
+      });
+      setAccountContact({ email: form.email.trim(), phone: form.phone.trim() });
 
       await updatePersonalDetails(token, { ...form, idDocumentUrl: finalIdDocUrl });
       setSuccess("Personal details saved");
@@ -3096,15 +3113,15 @@ function PersonalDetailsSection({
         />
         <EditField
           label="Email"
-          value={accountContact.email || "-"}
-          onChange={() => {}}
-          disabled
+          value={form.email}
+          onChange={(v) => set("email", v)}
+          required
+          error={fieldErrors.email}
         />
         <EditField
           label="Phone Number"
-          value={accountContact.phone || "-"}
-          onChange={() => {}}
-          disabled
+          value={form.phone}
+          onChange={(v) => set("phone", v)}
         />
         <label className="field">
           <span className="fieldLabel">Gender</span>

@@ -1043,6 +1043,24 @@ export async function me(accessToken: string) {
   return res.json();
 }
 
+export async function updateMyAccount(
+  accessToken: string,
+  payload: { email: string; phone?: string | null },
+) {
+  const res = await fetch(`${API_BASE}/users/me`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({
+      email: String(payload.email ?? "").trim(),
+      phone: payload.phone === null || payload.phone === undefined ? null : String(payload.phone).trim(),
+    }),
+  });
+
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to update account details");
+  return body;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Job Seeker Profile                                                 */
 /* ------------------------------------------------------------------ */

@@ -88,6 +88,70 @@ meRouter.get("/me", authenticate, async (req, res, next) => {
   }
 });
 
+meRouter.patch("/me", authenticate, async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: { message: "User not found in token" } });
+    }
+
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    const phoneRaw = req.body?.phone;
+    const phone = phoneRaw === null || phoneRaw === undefined ? null : String(phoneRaw).trim();
+
+    if (!email) {
+      return res.status(400).json({ error: { message: "Email is required" } });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: { message: "Invalid email format" } });
+    }
+
+    const existing = await query(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1`,
+      [email, userId],
+    );
+    if ((existing.rows?.length ?? 0) > 0) {
+      return res.status(409).json({ error: { message: "Email already in use" } });
+    }
+
+    const result = await query(
+      `UPDATE users
+          SET email = $1,
+              phone = $2,
+              updated_at = NOW()
+        WHERE id = $3
+      RETURNING id, first_name, last_name, email, phone, is_active, created_at,
+                (profile_picture_data IS NOT NULL) as has_profile_picture,
+                profile_picture_updated_at`,
+      [email, phone && phone.length > 0 ? phone : null, userId],
+    );
+
+    const user = result.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: { message: "User not found" } });
+    }
+
+    return res.json({
+      user: {
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        phone: user.phone,
+        is_active: user.is_active,
+        created_at: user.created_at,
+        has_profile_picture: Boolean(user.has_profile_picture),
+        profile_picture_url: user.has_profile_picture ? '/api/v1/profile/picture' : null,
+        profile_picture_updated_at: user.profile_picture_updated_at ?? null,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 meRouter.get("/search", authenticate, async (req, res, next) => {
   try {
     const userRoles = (req.user?.roles ?? []).map((r) => String(r).toUpperCase());
