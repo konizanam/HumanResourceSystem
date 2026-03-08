@@ -529,20 +529,22 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve({ width: image.width || 1, height: image.height || 1 });
-    image.onerror = () => reject(new Error("Failed to read image dimensions."));
-    image.src = dataUrl;
-  });
-}
-
 function resolveImageFormat(mimeType: string): "PNG" | "JPEG" | null {
   const mime = String(mimeType ?? "").toLowerCase();
   if (mime.includes("png")) return "PNG";
   if (mime.includes("jpeg") || mime.includes("jpg")) return "JPEG";
   return null;
+}
+
+function downloadPdfBlob(fileName: string, blob: Blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 function readProfileValue(obj: Record<string, unknown> | null | undefined, ...keys: string[]) {
@@ -677,7 +679,6 @@ async function createProfilePdfReport(params: {
   const NAVY: [number, number, number] = [22, 36, 90];
   const NAVY_MID: [number, number, number] = [44, 62, 140];
   const ACCENT: [number, number, number] = [59, 130, 246];
-  const LIGHT_BLUE: [number, number, number] = [219, 234, 254];
   const DARK_TEXT: [number, number, number] = [30, 30, 45];
   const MUTED: [number, number, number] = [100, 110, 130];
   const WHITE: [number, number, number] = [255, 255, 255];
@@ -1009,109 +1010,34 @@ async function createProfilePdfReport(params: {
     tableLineWidth: 0.2,
   });
 
-  // ── Documents appendix (images embedded, PDFs noted) ───────────────────
+  // ── Collect PDF attachments to append after profile pages ──────────────
+  const pdfAttachments: Array<{ name: string; bytes: ArrayBuffer }> = [];
   if (params.documents.length > 0) {
-    doc.addPage();
-    // Appendix header
-    doc.setFillColor(...LIGHT_BLUE);
-    doc.rect(0, 0, pageWidth, 18, "F");
-    doc.setFillColor(...ACCENT);
-    doc.rect(0, 0, 4, 18, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(...NAVY);
-    doc.text("Supporting Documents — Appendix", margin + 6, 11.5);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...MUTED);
-    doc.text("Image documents are embedded below. Other file types are listed by name.", margin + 6, 17);
-
-    for (let i = 0; i < params.documents.length; i += 1) {
-      const entry = params.documents[i];
+    for (const entry of params.documents) {
       const resolvedUrl = resolveFileUrl(entry.url);
-      doc.addPage();
-      drawPageHeader();
-
-      let docY = 18;
-      // Document title banner
-      doc.setFillColor(...LIGHT_BLUE);
-      doc.rect(0, docY, pageWidth, 16, "F");
-      doc.setFillColor(...ACCENT);
-      doc.rect(0, docY, 4, 16, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(...NAVY);
-      doc.text(`${i + 1}. ${entry.title || "Document"}`, margin + 6, docY + 10);
-
-      docY += 22;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(...MUTED);
-      if (entry.hint) {
-        const hintLines = doc.splitTextToSize(`Notes: ${entry.hint}`, contentWidth);
-        doc.text(hintLines, margin, docY);
-        docY += hintLines.length * 4.5 + 2;
-      }
-      const fileLabel = entry.fileName || extractFileName(resolvedUrl) || "—";
-      doc.text(`File: ${fileLabel}`, margin, docY);
-      docY += 8;
-
+      if (!resolvedUrl) continue;
       try {
         const headers: Record<string, string> = {};
         if (params.accessToken) headers.authorization = `Bearer ${params.accessToken}`;
         const response = await fetch(resolvedUrl, { headers });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) continue;
 
-        const blob = await response.blob();
-        const mimeType = String(blob.type ?? "").toLowerCase();
-        const imageFormat = resolveImageFormat(mimeType);
-
-        if (mimeType.startsWith("image/") && imageFormat) {
-          const dataUrl = await blobToDataUrl(blob);
-          const dims = await getImageDimensions(dataUrl);
-          const maxW = contentWidth;
-          const maxH = pageHeight - docY - 20;
-          const scale = Math.min(maxW / dims.width, maxH / dims.height);
-          const rW = Math.max(1, dims.width * scale);
-          const rH = Math.max(1, dims.height * scale);
-          // Centered with light background box
-          const imgX = (pageWidth - rW) / 2;
-          doc.setFillColor(...LIGHT_BG);
-          doc.roundedRect(imgX - 3, docY - 2, rW + 6, rH + 6, 3, 3, "F");
-          doc.setDrawColor(...DIVIDER);
-          doc.setLineWidth(0.3);
-          doc.roundedRect(imgX - 3, docY - 2, rW + 6, rH + 6, 3, 3, "S");
-          doc.addImage(dataUrl, imageFormat, imgX, docY, rW, rH);
-        } else {
-          // Non-image: display a styled notice box with the source URL.
-          const isPdf = mimeType.includes("pdf") || /\.pdf(\?|$)/i.test(resolvedUrl);
-          const nonEmbeddableMessage = isPdf
-            ? "PDF files cannot be embedded inside this generated profile PDF."
-            : "This document type cannot be embedded in the PDF. Please use the download link.";
-          const urlLines = doc.splitTextToSize(`Source: ${resolvedUrl}`, contentWidth - 10);
-          const noticeHeight = 10 + Math.max(1, urlLines.length) * 4.2;
-          doc.setFillColor(...LIGHT_BG);
-          doc.roundedRect(margin, docY, contentWidth, noticeHeight, 3, 3, "F");
-          doc.setDrawColor(...ACCENT);
-          doc.setLineWidth(0.4);
-          doc.roundedRect(margin, docY, contentWidth, noticeHeight, 3, 3, "S");
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(9);
-          doc.setTextColor(...MUTED);
-          doc.text(nonEmbeddableMessage, margin + 5, docY + 6.5);
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(8);
-          doc.setTextColor(...NAVY_MID);
-          doc.text(urlLines, margin + 5, docY + 11);
+        const arrayBuffer = await response.arrayBuffer();
+        const contentType = String(response.headers.get("content-type") ?? "").toLowerCase();
+        let isPdf = contentType.includes("application/pdf") || /\.pdf(\?|$)/i.test(resolvedUrl);
+        if (!isPdf && arrayBuffer.byteLength >= 4) {
+          const header = new Uint8Array(arrayBuffer.slice(0, 4));
+          const magic = String.fromCharCode(...header);
+          isPdf = magic === "%PDF";
         }
+        if (!isPdf) continue;
+
+        pdfAttachments.push({
+          name: entry.fileName || extractFileName(resolvedUrl) || "document.pdf",
+          bytes: arrayBuffer,
+        });
       } catch {
-        doc.setFillColor(...LIGHT_BG);
-        doc.roundedRect(margin, docY, contentWidth, 14, 3, 3, "F");
-        doc.setFont("helvetica", "italic");
-        doc.setFontSize(9);
-        doc.setTextColor(...MUTED);
-        doc.text("Could not retrieve this file for the appendix.", margin + 5, docY + 9);
+        // Skip attachment fetch failure, profile PDF generation should continue.
       }
     }
   }
@@ -1131,7 +1057,35 @@ async function createProfilePdfReport(params: {
     doc.text("CONFIDENTIAL — For authorised use only", margin, footerY);
   }
 
-  doc.save(params.fileName);
+  const basePdfBytes = doc.output("arraybuffer");
+
+  if (pdfAttachments.length === 0) {
+    downloadPdfBlob(params.fileName, new Blob([basePdfBytes], { type: "application/pdf" }));
+    return;
+  }
+
+  try {
+    const { PDFDocument } = await import("pdf-lib");
+    const mergedPdf = await PDFDocument.load(basePdfBytes);
+
+    for (const attachment of pdfAttachments) {
+      try {
+        const sourcePdf = await PDFDocument.load(attachment.bytes);
+        const indices = sourcePdf.getPageIndices();
+        if (indices.length === 0) continue;
+        const copiedPages = await mergedPdf.copyPages(sourcePdf, indices);
+        copiedPages.forEach((p) => mergedPdf.addPage(p));
+      } catch {
+        // Ignore malformed/unsupported attached PDFs and continue with others.
+      }
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    downloadPdfBlob(params.fileName, new Blob([new Uint8Array(mergedBytes)], { type: "application/pdf" }));
+  } catch {
+    // Fallback: return the generated profile PDF when merge dependency fails.
+    downloadPdfBlob(params.fileName, new Blob([basePdfBytes], { type: "application/pdf" }));
+  }
 }
 
 /* ================================================================== */
