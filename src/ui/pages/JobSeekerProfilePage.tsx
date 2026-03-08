@@ -1,5 +1,7 @@
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { useAuth } from "../auth/AuthContext";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
@@ -385,6 +387,261 @@ function StepIcon({ step }: { step: number }) {
   }
 }
 
+type ProfileDocumentEntry = {
+  title: string;
+  url: string;
+  hint?: string;
+};
+
+function readProfileValue(obj: Record<string, unknown> | null | undefined, ...keys: string[]) {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = (obj as any)[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return null;
+}
+
+function formatDateValue(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "-";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("en-GB");
+}
+
+function collectProfileDocuments(params: {
+  personal: Record<string, unknown> | null;
+  profile: Record<string, unknown> | null;
+  education: Record<string, unknown>[];
+  docs?: UserDocument[];
+  resumes?: Array<{ file_name?: string; download_url?: string; file_path?: string; is_primary?: boolean }>;
+}): ProfileDocumentEntry[] {
+  const cards: ProfileDocumentEntry[] = [];
+
+  const idDoc = String(readProfileValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
+  if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
+
+  const profileCert = String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
+  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
+
+  for (const edu of params.education) {
+    const cert = String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
+    if (!cert) continue;
+    const inst = String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
+    cards.push({ title: "Education Certificate", url: cert, hint: inst || undefined });
+  }
+
+  const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
+  for (const d of uploadedDocs) {
+    const url = String(d.file_url ?? "").trim();
+    if (!url) continue;
+    cards.push({
+      title: String(d.document_type ?? "Document").trim() || "Document",
+      url,
+      hint: String(d.description ?? d.original_name ?? "").trim() || undefined,
+    });
+  }
+
+  const resumes = Array.isArray(params.resumes) ? params.resumes : [];
+  for (const resume of resumes) {
+    const url = String(resume.download_url ?? resume.file_path ?? "").trim();
+    if (!url) continue;
+    const fileName = String(resume.file_name ?? "").trim();
+    cards.push({
+      title: resume.is_primary ? "Primary Resume" : "Resume",
+      url,
+      hint: fileName || undefined,
+    });
+  }
+
+  const seen = new Set<string>();
+  return cards.filter((c) => {
+    const key = `${c.title}::${c.url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function createProfilePdfReport(params: {
+  fileName: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  personal: Record<string, unknown> | null;
+  profile: Record<string, unknown> | null;
+  addresses: Record<string, unknown>[];
+  education: Record<string, unknown>[];
+  experience: Record<string, unknown>[];
+  references: Record<string, unknown>[];
+  documents: ProfileDocumentEntry[];
+}) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(31, 41, 92);
+  doc.rect(0, 0, pageWidth, 30, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(17);
+  doc.text("Job Seeker Full Profile", 14, 14);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, 14, 21);
+
+  const name = String(params.fullName || "Job Seeker").trim();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text(name, 14, 38);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const contactLine = [String(params.email ?? "").trim(), String(params.phone ?? "").trim()].filter(Boolean).join(" | ");
+  if (contactLine) doc.text(contactLine, 14, 44);
+
+  const personalRows: [string, string][] = [
+    ["First Name", String(readProfileValue(params.personal, "first_name", "firstName") ?? "-")],
+    ["Last Name", String(readProfileValue(params.personal, "last_name", "lastName") ?? "-")],
+    ["Middle Name", String(readProfileValue(params.personal, "middle_name", "middleName") ?? "-")],
+    ["Gender", String(readProfileValue(params.personal, "gender") ?? "-")],
+    ["Date of Birth", formatDateValue(readProfileValue(params.personal, "date_of_birth", "dateOfBirth"))],
+    ["Nationality", String(readProfileValue(params.personal, "nationality") ?? "-")],
+    ["ID Type", String(readProfileValue(params.personal, "id_type", "idType") ?? "-")],
+    ["ID Number", String(readProfileValue(params.personal, "id_number", "idNumber") ?? "-")],
+    ["Marital Status", String(readProfileValue(params.personal, "marital_status", "maritalStatus") ?? "-")],
+    ["Disability", Boolean(readProfileValue(params.personal, "disability_status", "disabilityStatus")) ? "Yes" : "No"],
+  ];
+
+  autoTable(doc, {
+    startY: 50,
+    head: [["Personal Details", "Value"]],
+    body: personalRows,
+    styles: { fontSize: 9, cellPadding: 2.5 },
+    headStyles: { fillColor: [31, 41, 92] },
+    columnStyles: { 0: { cellWidth: 55, fontStyle: "bold" }, 1: { cellWidth: "auto" } },
+  });
+
+  let currentY = (doc as any).lastAutoTable?.finalY ?? 60;
+
+  const summary = String(readProfileValue(params.profile, "professional_summary", "professionalSummary") ?? "").trim() || "-";
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(31, 41, 92);
+  doc.setFontSize(12);
+  doc.text("Professional Summary", 14, currentY + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(40, 40, 40);
+  doc.setFontSize(10);
+  const wrappedSummary = doc.splitTextToSize(summary, pageWidth - 28);
+  doc.text(wrappedSummary, 14, currentY + 15);
+  currentY += 15 + wrappedSummary.length * 4;
+
+  autoTable(doc, {
+    startY: currentY + 4,
+    head: [["Professional Field", "Qualification", "Years Experience"]],
+    body: [[
+      String(readProfileValue(params.profile, "field_of_expertise", "fieldOfExpertise") ?? "-"),
+      String(readProfileValue(params.profile, "qualification_level", "qualificationLevel") ?? "-"),
+      String(readProfileValue(params.profile, "years_experience", "yearsExperience") ?? "-"),
+    ]],
+    styles: { fontSize: 9, cellPadding: 2.5 },
+    headStyles: { fillColor: [66, 82, 160] },
+  });
+
+  const addressRows = (Array.isArray(params.addresses) ? params.addresses : []).map((address) => [
+    String(readProfileValue(address, "address_line1", "addressLine1") ?? "-"),
+    String(readProfileValue(address, "address_line2", "addressLine2") ?? "-"),
+    String(readProfileValue(address, "city") ?? "-"),
+    String(readProfileValue(address, "state") ?? "-"),
+    String(readProfileValue(address, "country") ?? "-"),
+  ]);
+
+  autoTable(doc, {
+    startY: ((doc as any).lastAutoTable?.finalY ?? currentY) + 6,
+    head: [["Address Line 1", "Address Line 2", "City", "State", "Country"]],
+    body: addressRows.length > 0 ? addressRows : [["-", "-", "-", "-", "-"]],
+    styles: { fontSize: 8.5, cellPadding: 2.3 },
+    headStyles: { fillColor: [31, 41, 92] },
+  });
+
+  const educationRows = (Array.isArray(params.education) ? params.education : []).map((edu) => [
+    String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "-"),
+    String(readProfileValue(edu, "qualification") ?? "-"),
+    String(readProfileValue(edu, "field_of_study", "fieldOfStudy") ?? "-"),
+    formatDateValue(readProfileValue(edu, "start_date", "startDate", "start_year", "startYear")),
+    formatDateValue(readProfileValue(edu, "end_date", "endDate", "end_year", "endYear")),
+  ]);
+
+  autoTable(doc, {
+    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    head: [["Institution", "Qualification", "Field", "Start", "End"]],
+    body: educationRows.length > 0 ? educationRows : [["-", "-", "-", "-", "-"]],
+    styles: { fontSize: 8.5, cellPadding: 2.3 },
+    headStyles: { fillColor: [66, 82, 160] },
+  });
+
+  const experienceRows = (Array.isArray(params.experience) ? params.experience : []).map((exp) => [
+    String(readProfileValue(exp, "company") ?? "-"),
+    String(readProfileValue(exp, "position") ?? "-"),
+    formatDateValue(readProfileValue(exp, "start_date", "startDate")),
+    formatDateValue(readProfileValue(exp, "end_date", "endDate")),
+    String(readProfileValue(exp, "description") ?? "-").slice(0, 120) || "-",
+  ]);
+
+  autoTable(doc, {
+    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    head: [["Company", "Position", "Start", "End", "Description"]],
+    body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-"]],
+    styles: { fontSize: 8.2, cellPadding: 2.3 },
+    headStyles: { fillColor: [31, 41, 92] },
+  });
+
+  const referencesRows = (Array.isArray(params.references) ? params.references : []).map((ref) => [
+    String(readProfileValue(ref, "name") ?? "-"),
+    String(readProfileValue(ref, "relationship") ?? "-"),
+    String(readProfileValue(ref, "email") ?? "-"),
+    String(readProfileValue(ref, "phone") ?? "-"),
+  ]);
+
+  autoTable(doc, {
+    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    head: [["Reference Name", "Relationship", "Email", "Phone"]],
+    body: referencesRows.length > 0 ? referencesRows : [["-", "-", "-", "-"]],
+    styles: { fontSize: 8.5, cellPadding: 2.3 },
+    headStyles: { fillColor: [66, 82, 160] },
+  });
+
+  const documentRows = (Array.isArray(params.documents) ? params.documents : []).map((d) => [
+    d.title || "Document",
+    d.hint || "-",
+    extractFileName(d.url) || d.url,
+    d.url,
+  ]);
+
+  autoTable(doc, {
+    startY: ((doc as any).lastAutoTable?.finalY ?? 60) + 6,
+    head: [["Document", "Notes", "File", "URL"]],
+    body: documentRows.length > 0 ? documentRows : [["-", "-", "-", "-"]],
+    styles: { fontSize: 8, cellPadding: 2.1, overflow: "linebreak" },
+    headStyles: { fillColor: [31, 41, 92] },
+    columnStyles: {
+      0: { cellWidth: 30 },
+      1: { cellWidth: 35 },
+      2: { cellWidth: 45 },
+      3: { cellWidth: 75 },
+    },
+  });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i += 1) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - 30, doc.internal.pageSize.getHeight() - 6);
+  }
+
+  doc.save(params.fileName);
+}
+
 /* ================================================================== */
 /*  Main component                                                     */
 /* ================================================================== */
@@ -443,6 +700,8 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [success, setSuccess] = useState<string | null>(null);
   const [pendingJob, setPendingJob] = useState<JobListItem | null>(null);
   const [applyingPending, setApplyingPending] = useState(false);
+  const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
+  const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -610,6 +869,139 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   function clearMessages() {
     setError(null);
     setSuccess(null);
+  }
+
+  function toFileSafeName(value: string, fallback: string) {
+    const cleaned = String(value ?? "")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return cleaned || fallback;
+  }
+
+  async function onDownloadSelfFullProfile() {
+    if (!accessToken || !data) return;
+    try {
+      setDownloadingSelfProfile(true);
+      setError(null);
+
+      const personal = (data.personalDetails ?? null) as Record<string, unknown> | null;
+      const profile = (data.profile ?? null) as Record<string, unknown> | null;
+      const addresses = Array.isArray(data.addresses) ? data.addresses : [];
+      const education = Array.isArray(data.education) ? data.education : [];
+      const experience = Array.isArray(data.experience) ? data.experience : [];
+      const references = Array.isArray(data.references) ? data.references : [];
+
+      const [docs, resumes] = await Promise.all([
+        listMyDocuments(accessToken).catch(() => [] as UserDocument[]),
+        listJobSeekerResumes(accessToken).catch(() => ({ resumes: [], primary_resume: null, total_count: 0 })),
+      ]);
+
+      const fullName = [
+        String(readProfileValue(personal, "first_name", "firstName") ?? "").trim(),
+        String(readProfileValue(personal, "last_name", "lastName") ?? "").trim(),
+      ]
+        .filter(Boolean)
+        .join(" ") || "Job Seeker";
+
+      const email = String(readProfileValue(personal, "email") ?? "").trim();
+      const phone = String(readProfileValue(personal, "phone", "contact_phone", "contactPhone") ?? "").trim();
+
+      const resumeList = [
+        ...(resumes.primary_resume ? [resumes.primary_resume] : []),
+        ...(Array.isArray(resumes.resumes) ? resumes.resumes : []),
+      ];
+
+      createProfilePdfReport({
+        fileName: `${toFileSafeName(fullName, "job_seeker")}_full_profile.pdf`,
+        fullName,
+        email,
+        phone,
+        personal,
+        profile,
+        addresses,
+        education,
+        experience,
+        references,
+        documents: collectProfileDocuments({
+          personal,
+          profile,
+          education,
+          docs,
+          resumes: resumeList,
+        }),
+      });
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to download full profile PDF");
+    } finally {
+      setDownloadingSelfProfile(false);
+    }
+  }
+
+  async function onDownloadDirectoryFullProfile(seeker: JobSeekerListItem) {
+    const userId = String(seeker.id ?? "").trim();
+    if (!userId || !accessToken) return;
+
+    try {
+      setDownloadingDirectoryProfileId(userId);
+      setError(null);
+
+      let profile = directoryProfileByUserId[userId];
+      if (profile === undefined) {
+        profile = await getJobSeekerFullProfile(accessToken, userId);
+        setDirectoryProfileByUserId((prev) => ({ ...prev, [userId]: profile ?? null }));
+      }
+
+      if (!profile) {
+        throw new Error("Profile details are not available for this job seeker.");
+      }
+
+      let docs = directoryDocumentsByUserId[userId];
+      if (docs === undefined) {
+        docs = await listUserDocuments(accessToken, userId);
+        setDirectoryDocumentsByUserId((prev) => ({ ...prev, [userId]: Array.isArray(docs) ? docs : [] }));
+      }
+
+      const personal = ((profile as any).personalDetails ?? null) as Record<string, unknown> | null;
+      const mainProfile = ((profile as any).profile ?? null) as Record<string, unknown> | null;
+      const addresses = Array.isArray((profile as any).addresses) ? ((profile as any).addresses as Record<string, unknown>[]) : [];
+      const education = Array.isArray((profile as any).education) ? ((profile as any).education as Record<string, unknown>[]) : [];
+      const experience = Array.isArray((profile as any).experience) ? ((profile as any).experience as Record<string, unknown>[]) : [];
+      const references = Array.isArray((profile as any).references) ? ((profile as any).references as Record<string, unknown>[]) : [];
+
+      const fullName = [
+        String(readProfileValue(personal, "first_name", "firstName") ?? seeker.first_name ?? "").trim(),
+        String(readProfileValue(personal, "last_name", "lastName") ?? seeker.last_name ?? "").trim(),
+      ]
+        .filter(Boolean)
+        .join(" ") || String(seeker.email ?? "Job Seeker").trim();
+
+      const email = String(readProfileValue(personal, "email") ?? seeker.email ?? "").trim();
+      const phone = String(readProfileValue(personal, "phone", "contact_phone", "contactPhone") ?? seeker.phone ?? "").trim();
+
+      createProfilePdfReport({
+        fileName: `${toFileSafeName(fullName, "job_seeker")}_full_profile.pdf`,
+        fullName,
+        email,
+        phone,
+        personal,
+        profile: mainProfile,
+        addresses,
+        education,
+        experience,
+        references,
+        documents: collectProfileDocuments({
+          personal,
+          profile: mainProfile,
+          education,
+          docs: Array.isArray(docs) ? docs : [],
+        }),
+      });
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to download full profile PDF");
+    } finally {
+      setDownloadingDirectoryProfileId((prev) => (prev === userId ? null : prev));
+    }
   }
 
   const loadDirectory = useCallback(
@@ -1217,6 +1609,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                       {isOpen ? "Hide Profile" : "View Profile"}
                     </button>
 
+                    <button
+                      type="button"
+                      className="btn btnGhost btnSm"
+                      onClick={() => void onDownloadDirectoryFullProfile(seeker)}
+                      disabled={Boolean(downloadingDirectoryProfileId) || directoryLoading}
+                    >
+                      {downloadingDirectoryProfileId === String(seeker.id)
+                        ? "Preparing PDF..."
+                        : "Download Full Profile"}
+                    </button>
+
                     {canBlock ? (
                       <button
                         type="button"
@@ -1340,6 +1743,14 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     <div className="page">
       <div className="profileHeader">
         <h1 className="pageTitle">{pageTitle}</h1>
+        <button
+          type="button"
+          className="btn btnPrimary btnSm"
+          onClick={() => void onDownloadSelfFullProfile()}
+          disabled={downloadingSelfProfile || saving || loading}
+        >
+          {downloadingSelfProfile ? "Preparing PDF..." : "Download Full Profile"}
+        </button>
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -1637,12 +2048,6 @@ function PersonalDetailsSection({
   }, [data]);
 
   useEffect(() => {
-    const hasPicture = Boolean(String(profilePictureUrl ?? "").trim());
-    if (!hasPicture) {
-      setProfilePictureUrlState("");
-      return;
-    }
-
     let cancelled = false;
     let objectUrlToRevoke: string | null = null;
 
@@ -1738,13 +2143,11 @@ function PersonalDetailsSection({
     try {
       setUploadingProfilePicture(true);
       setError(null);
+      setSuccess(null);
       const uploaded = await uploadProfilePicture(token, file);
-      const nextUrl = String(uploaded.profile_picture_url ?? "").trim();
-      if (nextUrl) {
-        setProfilePictureRefreshKey((v) => v + 1);
-      }
+      void uploaded;
+      setProfilePictureRefreshKey((v) => v + 1);
       window.dispatchEvent(new CustomEvent("hrs:profile-picture-updated"));
-      setSuccess("Profile picture uploaded");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Profile picture upload failed");
