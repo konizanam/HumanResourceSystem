@@ -414,7 +414,11 @@ export class CompanyController {
         throw new ForbiddenError('You do not have permission to update system settings');
       }
 
-      if (updatingAppColor && !hasPermission(req, 'CHANGE_APP_COLOR')) {
+      if (
+        updatingAppColor &&
+        !hasPermission(req, 'CHANGE_APP_COLOR') &&
+        !hasPermission(req, 'MANAGE_USERS')
+      ) {
         throw new ForbiddenError('You do not have permission to change app colors');
       }
 

@@ -93,7 +93,7 @@ export function GlobalSettingsPage() {
     DEFAULT_APPLICATION_STATUS_NOTIFICATIONS,
   );
   const canEdit = hasPermission("MANAGE_USERS");
-  const canChangeAppColor = hasPermission("CHANGE_APP_COLOR");
+  const canChangeAppColor = canEdit || hasPermission("CHANGE_APP_COLOR");
   const canEditSystemSettings = canEdit || canChangeAppColor;
   const currentAppColor = normalizeHexColor(appColor);
   const existingLogoUrl = primaryCompany ? resolveCompanyLogoUrl(primaryCompany) : "";
@@ -476,6 +476,9 @@ export function GlobalSettingsPage() {
                   </button>
                 </div>
                 <p className="pageText">Use the picker or a valid hex value (for example, {DEFAULT_APP_COLOR}).</p>
+                {!canChangeAppColor ? (
+                  <p className="pageText">You need `MANAGE_USERS` or `CHANGE_APP_COLOR` permission to edit App Color.</p>
+                ) : null}
               </div>
             </div>
           </section>
