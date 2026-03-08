@@ -1033,7 +1033,7 @@ export function JobsPage() {
               {selectedCategory && (selectedCategory.subcategories ?? []).length === 0 ? (
                 <button
                   type="button"
-                  className="linkBtn"
+                  className="btn btnPrimary btnSm addActionBtn"
                   onClick={openAddSubcategoryModal}
                   disabled={saving}
                   style={{ width: "fit-content" }}
@@ -1352,7 +1352,7 @@ export function JobsPage() {
                 {selectedCategory && (selectedCategory.subcategories ?? []).length === 0 ? (
                   <button
                     type="button"
-                    className="linkBtn"
+                    className="btn btnPrimary btnSm addActionBtn"
                     onClick={openAddSubcategoryModal}
                     disabled={saving}
                     style={{ width: "fit-content" }}
@@ -1940,7 +1940,7 @@ export function JobsPage() {
               <button className="btn btnGhost" type="button" onClick={() => setAddSubcategoryModalOpen(false)} disabled={saving}>
                 Cancel
               </button>
-              <button className="btn btnPrimary" type="button" onClick={() => void onCreateSubcategoryFromJobForm()} disabled={saving}>
+              <button className="btn btnPrimary addActionBtn" type="button" onClick={() => void onCreateSubcategoryFromJobForm()} disabled={saving}>
                 {saving ? "Adding..." : "Add Subcategory"}
               </button>
             </div>

@@ -116,11 +116,7 @@ function normalizeHexColor(input: unknown): string | null {
     ? match[1].split("").map((c) => c + c).join("")
     : match[1];
 
-  const normalized = `#${hex.toLowerCase()}`;
-  if (normalized === "#6366f1" || normalized === "#7610ad") {
-    return "#6b7280";
-  }
-  return normalized;
+  return `#${hex.toLowerCase()}`;
 }
 
 const RESOLVED_SETTINGS_FILE_PATH = resolveSettingsFilePath();

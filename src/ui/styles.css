@@ -2899,6 +2899,44 @@ input[type="radio"][required] {
   justify-content: center;
 }
 
+.btn.addToggleBtn,
+.btn.addActionBtn {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  min-height: 42px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn.addToggleBtn::before,
+.btn.addActionBtn::before {
+  content: "+";
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #ffffff 62%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.btn.addToggleBtn:hover:not(:disabled),
+.btn.addActionBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, #000);
+  border-color: color-mix(in srgb, var(--primary) 88%, #000);
+}
+
 /* =====================================================
    PUBLIC JOBS (unauthenticated view)
    ===================================================== */

@@ -1,5 +1,4 @@
 const DEFAULT_APP_COLOR = "#6b7280";
-const LEGACY_PURPLE_DEFAULTS = new Set(["#6366f1", "#7610ad"]);
 
 function normalizeHexColor(input: unknown): string {
   const raw = String(input ?? "").trim();
@@ -13,8 +12,7 @@ function normalizeHexColor(input: unknown): string {
     ? match[1].split("").map((c) => c + c).join("")
     : match[1];
 
-  const normalized = `#${hex.toLowerCase()}`;
-  return LEGACY_PURPLE_DEFAULTS.has(normalized) ? DEFAULT_APP_COLOR : normalized;
+  return `#${hex.toLowerCase()}`;
 }
 
 function toRgb(hex: string): { r: number; g: number; b: number } {

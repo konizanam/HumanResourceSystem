@@ -18,6 +18,48 @@ import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
 import { RichTextView } from "../components/RichText";
 
+const THEME_KEY = "hrs-theme";
+
+function getStoredTheme(): "light" | "dark" {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "dark" || stored === "light") return stored;
+  } catch {
+    // ignore
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 function ReadField({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="readField">
@@ -122,7 +164,7 @@ function getApplyProfileCompleteness(profile: any, hasCv: boolean): ProfileCompl
 }
 
 export function PublicJobsPage() {
-  const { accessToken } = useAuth();
+  const { accessToken, logout, userName, userEmail } = useAuth();
   const { hasPermission, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
@@ -168,6 +210,25 @@ export function PublicJobsPage() {
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
+
+  const displayName = useMemo(() => {
+    const name = String(userName ?? "").trim();
+    if (name) return name;
+    return String(userEmail ?? "").trim();
+  }, [userEmail, userName]);
+
+  const displayNameInitials = useMemo(() => {
+    const base = String(displayName ?? "").trim();
+    if (!base) return "U";
+    const words = base.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+    }
+    const compact = base.replace(/[^a-zA-Z0-9]/g, "");
+    if (compact.length >= 2) return compact.slice(0, 2).toUpperCase();
+    return compact.slice(0, 1).toUpperCase() || "U";
+  }, [displayName]);
 
   const pageName = useMemo(() => {
     const rawJobId = String(jobId ?? "").trim();
@@ -367,6 +428,19 @@ export function PublicJobsPage() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   }, []);
 
   const renderPager = useCallback(() => {
@@ -619,10 +693,6 @@ export function PublicJobsPage() {
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="btn btnGhost btnSm" type="button" onClick={() => void load(pagination.page)} disabled={saving}>
-              Refresh
-            </button>
-
             {!accessToken ? (
               <>
                 <Link
@@ -640,7 +710,43 @@ export function PublicJobsPage() {
                   Register
                 </Link>
               </>
-            ) : null}
+            ) : (
+              <>
+                {displayName ? (
+                  <div className="appTopUserName" title={displayName}>
+                    <span className="appTopUserAvatarFallback" aria-hidden="true">
+                      {displayNameInitials}
+                    </span>
+                    Hello, {displayName}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn themeToggleBtn"
+                  onClick={toggleTheme}
+                  aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                  title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+                </button>
+                <button
+                  type="button"
+                  className="btn btnPrimary btnSm"
+                  onClick={() => navigate("/app/my-profile")}
+                >
+                  View My Profile
+                </button>
+                <button
+                  className="btn btnPrimary btnSm"
+                  onClick={logout}
+                  type="button"
+                  aria-label="Logout"
+                >
+                  <LogoutIcon />
+                  <span>Logout</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 

@@ -2556,7 +2556,7 @@ function AddressSection({
                 Cancel
               </button>
             )}
-            <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
+            <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Address" : "Add Address"}
             </button>
           </div>
@@ -2950,7 +2950,7 @@ function EducationSection({
             {editId && (
               <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
             )}
-            <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
+            <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Education" : "Add Education"}
             </button>
           </div>
@@ -3331,7 +3331,7 @@ function ExperienceSection({
             {editId && (
               <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
             )}
-            <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
+            <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Experience" : "Add Experience"}
             </button>
           </div>
@@ -3561,7 +3561,7 @@ function ReferencesSection({
             {editId && (
               <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
             )}
-            <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
+            <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Reference" : "Add Reference"}
             </button>
           </div>

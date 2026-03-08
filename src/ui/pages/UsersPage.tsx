@@ -552,7 +552,7 @@ export function UsersPage() {
                 Cancel
               </button>
               <button
-                className="btn btnGhost btnSm stepperSaveBtn"
+                className="btn btnGhost btnSm stepperSaveBtn addActionBtn"
                 type="button"
                 onClick={() => void onAddUser()}
                 disabled={saving || !addForm.first_name.trim() || !addForm.last_name.trim() || !addForm.email.trim() || !addForm.password || !addForm.role_id}
