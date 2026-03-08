@@ -1792,18 +1792,32 @@ input[type="radio"][required] {
 }
 
 @media (max-width: 900px) {
+  .loginPage {
+    min-height: 100dvh;
+    height: auto;
+    overflow-y: auto;
+    align-items: start;
+  }
+
   .authWrap,
   .authWrapNarrow {
     grid-template-columns: 1fr;
+    max-height: none;
   }
 
   .authVisual {
-    order: 2;
+    order: 1;
     padding: 18px;
+    max-height: none;
   }
 
   .authPanel {
-    order: 1;
+    order: 2;
+  }
+
+  .loginCard {
+    max-height: none;
+    overflow: visible;
   }
 }
 
