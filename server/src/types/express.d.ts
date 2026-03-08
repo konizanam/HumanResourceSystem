@@ -1,5 +1,12 @@
 import { File } from 'multer';
 
+interface AuthUser {
+  userId: string;
+  email: string;
+  roles: string[];
+  permissions: string[];
+}
+
 declare global {
   namespace Express {
     interface Request {

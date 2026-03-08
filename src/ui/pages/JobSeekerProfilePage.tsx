@@ -150,6 +150,27 @@ async function fetchProfilePictureObjectUrl(
   return URL.createObjectURL(blob);
 }
 
+async function fetchProfilePictureDataUrl(
+  token: string,
+  opts?: { userId?: string | null },
+): Promise<string | null> {
+  const apiBase = String(import.meta.env.VITE_API_URL ?? "http://localhost:4000").trim().replace(/\/$/, "");
+  const userId = String(opts?.userId ?? "").trim();
+  const url = userId
+    ? `${apiBase}/api/v1/users/profile-picture/${encodeURIComponent(userId)}`
+    : `${apiBase}/api/v1/profile/picture`;
+
+  try {
+    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob.type.startsWith("image/")) return null;
+    return blobToDataUrl(blob);
+  } catch {
+    return null;
+  }
+}
+
 function extractFileName(raw: unknown): string {
   const full = String(raw ?? "").trim();
   if (!full) return "";
@@ -510,6 +531,7 @@ async function createProfilePdfReport(params: {
   experience: Record<string, unknown>[];
   references: Record<string, unknown>[];
   documents: ProfileDocumentEntry[];
+  profilePictureDataUrl?: string;
 }) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -541,6 +563,23 @@ async function createProfilePdfReport(params: {
   doc.setFontSize(10);
   const contactLine = [String(params.email ?? "").trim(), String(params.phone ?? "").trim()].filter(Boolean).join(" | ");
   if (contactLine) doc.text(contactLine, 14, 44);
+
+  // Embed profile picture in top-right of header banner if available
+  if (params.profilePictureDataUrl) {
+    try {
+      const picMime = params.profilePictureDataUrl.split(";")[0]?.split(":")[1] ?? "";
+      const picFormat = resolveImageFormat(picMime);
+      if (picFormat) {
+        const picW = 26;
+        const picH = 26;
+        const picX = pageWidth - picW - 4;
+        const picY = 2;
+        doc.addImage(params.profilePictureDataUrl, picFormat, picX, picY, picW, picH);
+      }
+    } catch {
+      // Skip silently if the picture cannot be embedded
+    }
+  }
 
   const personalRows: [string, string][] = [
     ["First Name", String(readProfileValue(params.personal, "first_name", "firstName") ?? "-")],
@@ -820,6 +859,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [applyingPending, setApplyingPending] = useState(false);
   const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
   const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
+  const [headerPictureUrl, setHeaderPictureUrl] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -954,6 +994,49 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     }
   }, [location]);
 
+  // Fetch and maintain the profile picture for the page header
+  useEffect(() => {
+    if (!accessToken || !data?.has_profile_picture) {
+      setHeaderPictureUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let revokeUrl: string | null = null;
+
+    void fetchProfilePictureObjectUrl(accessToken).then((url) => {
+      if (cancelled) {
+        if (url) URL.revokeObjectURL(url);
+        return;
+      }
+      revokeUrl = url;
+      setHeaderPictureUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+    });
+
+    const onUpdate = () => {
+      void fetchProfilePictureObjectUrl(accessToken).then((url) => {
+        if (cancelled) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        revokeUrl = url;
+        setHeaderPictureUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      });
+    };
+    window.addEventListener("hrs:profile-picture-updated", onUpdate);
+
+    return () => {
+      cancelled = true;
+      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+      window.removeEventListener("hrs:profile-picture-updated", onUpdate);
+    };
+  }, [accessToken, data?.has_profile_picture, data?.profile_picture_updated_at]);
+
   const onCompletePendingApplication = useCallback(async () => {
     if (!accessToken || !pendingJob) return;
     const jobId = String(pendingJob.id ?? "").trim();
@@ -1010,9 +1093,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       const experience = Array.isArray(data.experience) ? data.experience : [];
       const references = Array.isArray(data.references) ? data.references : [];
 
-      const [docs, resumes] = await Promise.all([
+      const [docs, resumes, profilePicDataUrl] = await Promise.all([
         listMyDocuments(accessToken).catch(() => [] as UserDocument[]),
         listJobSeekerResumes(accessToken).catch(() => ({ resumes: [], primary_resume: null, total_count: 0 })),
+        fetchProfilePictureDataUrl(accessToken).catch(() => null),
       ]);
 
       const fullName = [
@@ -1049,6 +1133,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           docs,
           resumes: resumeList,
         }),
+        profilePictureDataUrl: profilePicDataUrl ?? undefined,
       });
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to download full profile PDF");
@@ -1080,6 +1165,8 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         docs = await listUserDocuments(accessToken, userId);
         setDirectoryDocumentsByUserId((prev) => ({ ...prev, [userId]: Array.isArray(docs) ? docs : [] }));
       }
+
+      const profilePicDataUrl = await fetchProfilePictureDataUrl(accessToken, { userId }).catch(() => null);
 
       const personal = ((profile as any).personalDetails ?? null) as Record<string, unknown> | null;
       const mainProfile = ((profile as any).profile ?? null) as Record<string, unknown> | null;
@@ -1116,6 +1203,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           education,
           docs: Array.isArray(docs) ? docs : [],
         }),
+        profilePictureDataUrl: profilePicDataUrl ?? undefined,
       });
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to download full profile PDF");
@@ -1862,6 +1950,13 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   return (
     <div className="page">
       <div className="profileHeader">
+        {headerPictureUrl && (
+          <img
+            src={headerPictureUrl}
+            alt="Profile"
+            className="profileHeaderAvatar"
+          />
+        )}
         <h1 className="pageTitle">{pageTitle}</h1>
         <button
           type="button"

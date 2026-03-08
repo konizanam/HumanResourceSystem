@@ -24,7 +24,6 @@ const app: Application = express();
 // Needed for correct client IP when behind a proxy/load balancer
 app.set('trust proxy', true);
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // =====================
 // Middleware
 // =====================
@@ -46,6 +45,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Static file serving — placed AFTER CORS/Helmet so uploads are served with proper
+// cross-origin headers, allowing the browser to fetch documents from the API origin.
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));

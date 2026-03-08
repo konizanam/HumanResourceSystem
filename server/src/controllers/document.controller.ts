@@ -267,7 +267,16 @@ export class DocumentController {
       const documentId = getStringParam(req, 'documentId');
       const userId = req.user!.userId;
 
-      const document = await documentService.getDocumentById(documentId, userId);
+      // Admins and users with VIEW_CV_DATABASE permission (HR/employers reviewing profiles)
+      // are allowed to download any document — skip the ownership check for them.
+      const userRoles: string[] = (req.user!.roles ?? []).map((r: string) => String(r).toUpperCase());
+      const userPermissions: string[] = (req.user!.permissions ?? []).map((p: string) => String(p).toUpperCase());
+      const hasElevatedAccess =
+        userRoles.includes('ADMIN') ||
+        userPermissions.includes('VIEW_CV_DATABASE');
+      const checkUserId = hasElevatedAccess ? undefined : userId;
+
+      const document = await documentService.getDocumentById(documentId, checkUserId);
       const filePath = String(document?.file_path ?? '').trim();
       if (!filePath) {
         return res.status(404).json({ error: { message: 'Document file not found' } });

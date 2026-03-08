@@ -2242,6 +2242,15 @@ input[type="radio"][required] {
   }
 }
 
+.profileHeaderAvatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--stroke);
+  flex-shrink: 0;
+}
+
 /* ── Profile stepper nav ──────────────────────── */
 
 .profileStepperNav {
