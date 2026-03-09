@@ -69,9 +69,9 @@ export function AuditPage() {
       const [companiesRes, categoriesRes, rolesRes, permissionsRes, usersRes] = await Promise.allSettled([
         listCompanies(accessToken),
         listJobCategories(accessToken),
-        listRoles(accessToken, { page: 1, limit: 500 }),
+        listRoles(accessToken, { page: 1, limit: 100 }),
         listPermissions(accessToken),
-        listAdminUsers(accessToken, { page: 1, limit: 500 }),
+        listAdminUsers(accessToken, { page: 1, limit: 100 }),
       ]);
 
       const companies: Record<string, string> = {};

@@ -1936,8 +1936,10 @@ export async function listAdminUsers(
   summary: { total_users: number; active_users: number; blocked_users: number };
 }> {
   const url = new URL(`${API_BASE}/admin/users`);
-  if (params?.page) url.searchParams.set("page", String(params.page));
-  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  const page = Math.max(1, Number(params?.page ?? 1) || 1);
+  const limit = Math.min(100, Math.max(1, Number(params?.limit ?? 20) || 20));
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("limit", String(limit));
   if (params?.search) url.searchParams.set("search", params.search);
   if (params?.role) url.searchParams.set("role", String(params.role).trim().toUpperCase());
   if (params?.status) url.searchParams.set("status", params.status);
