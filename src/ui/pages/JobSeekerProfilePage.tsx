@@ -1171,6 +1171,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     total: 0,
     pages: 1,
   });
+  const [directoryOverallStats, setDirectoryOverallStats] = useState({
+    total: 0,
+    active: 0,
+    blocked: 0,
+    inactive: 0,
+  });
   const [directorySearch, setDirectorySearch] = useState("");
   const [directoryStatus, setDirectoryStatus] = useState("");
   const [directoryLoading, setDirectoryLoading] = useState(false);
@@ -1618,10 +1624,55 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     [accessToken, directorySearch, directoryStatus, directoryPageLimit],
   );
 
+  const loadDirectoryOverallStats = useCallback(async () => {
+    if (!accessToken) return;
+    const search = directorySearch.trim() || undefined;
+
+    const readTotal = (payload: any): number => {
+      const total = Number(payload?.pagination?.total);
+      if (Number.isFinite(total) && total >= 0) return total;
+      const rows = Array.isArray(payload?.job_seekers) ? payload.job_seekers.length : 0;
+      return rows;
+    };
+
+    try {
+      const [allRes, activeRes, blockedRes, inactiveRes] = await Promise.all([
+        listJobSeekers(accessToken, { page: 1, limit: 1, search }),
+        listJobSeekers(accessToken, { page: 1, limit: 1, search, status: "active" }),
+        listJobSeekers(accessToken, { page: 1, limit: 1, search, status: "blocked" }),
+        listJobSeekers(accessToken, { page: 1, limit: 1, search, status: "inactive" }),
+      ]);
+
+      const active = readTotal(activeRes);
+      const blocked = readTotal(blockedRes);
+      const inactive = readTotal(inactiveRes);
+      const totalFromBreakdown = active + blocked + inactive;
+      const total = Math.max(readTotal(allRes), totalFromBreakdown);
+
+      setDirectoryOverallStats({ total, active, blocked, inactive });
+    } catch {
+      setDirectoryOverallStats((prev) => {
+        const total = Number(directoryPagination.total ?? 0);
+        if (prev.total === total && total > 0) return prev;
+        return {
+          total,
+          active: prev.active,
+          blocked: prev.blocked,
+          inactive: prev.inactive,
+        };
+      });
+    }
+  }, [accessToken, directorySearch, directoryPagination.total]);
+
   useEffect(() => {
     if (mode !== "directory") return;
     loadDirectory(directoryPage);
   }, [directoryPage, loadDirectory, mode]);
+
+  useEffect(() => {
+    if (mode !== "directory") return;
+    void loadDirectoryOverallStats();
+  }, [mode, loadDirectoryOverallStats]);
 
   useEffect(() => {
     if (mode !== "directory") return;
@@ -2031,28 +2082,13 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const isEditingThisStep = editingStep === activeStep;
 
   const directoryStatsCards = useMemo(() => {
-    let active = 0;
-    let blocked = 0;
-    let inactive = 0;
-
-    for (const seeker of jobSeekers) {
-      if (seeker.is_blocked) {
-        blocked += 1;
-      } else if (seeker.is_active) {
-        active += 1;
-      } else {
-        inactive += 1;
-      }
-    }
-
     return [
-      { label: "Total Profiles", value: Number(directoryPagination.total ?? 0) },
-      { label: "Profiles on Page", value: jobSeekers.length },
-      { label: "Active", value: active },
-      { label: "Blocked", value: blocked },
-      { label: "Inactive", value: inactive },
+      { label: "Total Profiles", value: Number(directoryOverallStats.total ?? 0) },
+      { label: "Active", value: Number(directoryOverallStats.active ?? 0) },
+      { label: "Blocked", value: Number(directoryOverallStats.blocked ?? 0) },
+      { label: "Inactive", value: Number(directoryOverallStats.inactive ?? 0) },
     ];
-  }, [directoryPagination.total, jobSeekers]);
+  }, [directoryOverallStats]);
 
   if (loading) {
     return (
