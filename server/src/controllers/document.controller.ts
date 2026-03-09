@@ -6,6 +6,7 @@ import { query } from '../config/database';
 import { getStringParam, getQueryString } from '../utils/params';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
 const documentService = new DocumentService();
 
@@ -30,6 +31,11 @@ function withDownloadUrl(document: any) {
   };
 }
 
+function buildStoredName(file: Express.Multer.File): string {
+  const ext = path.extname(String(file.originalname ?? '')).toLowerCase();
+  return `${randomUUID()}${ext || ''}`;
+}
+
 export class DocumentController {
   
   // Upload document for job seeker
@@ -40,23 +46,27 @@ export class DocumentController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+      if (!file.buffer || file.buffer.length === 0) {
+        return res.status(400).json({ error: 'Uploaded file is empty' });
+      }
 
       const userId = req.user!.userId;
       const { document_type, description, is_primary } = req.body;
+      const storedFileName = buildStoredName(file);
 
       // Determine file type folder
       const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
-      const fileUrl = getFileUrl(file.filename, fileType as any);
-      const fileData = file.buffer ?? fs.readFileSync(file.path);
+      const fileUrl = getFileUrl(storedFileName, fileType as any);
+      const fileData = file.buffer;
 
       // Save document metadata
       const document = await documentService.saveDocumentMetadata({
         user_id: userId,
-        file_name: file.filename,
+        file_name: storedFileName,
         original_name: file.originalname,
         file_size: file.size,
         mime_type: file.mimetype,
-        file_path: file.path,
+        file_path: `db://documents/${storedFileName}`,
         file_url: fileUrl,
         file_data: fileData,
         document_type: document_type || 'general',
@@ -92,10 +102,14 @@ export class DocumentController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+      if (!file.buffer || file.buffer.length === 0) {
+        return res.status(400).json({ error: 'Uploaded file is empty' });
+      }
 
       const userId = req.user!.userId;
       const companyId = getStringParam(req, 'companyId');
       const { document_type, description, is_primary } = req.body;
+      const storedFileName = buildStoredName(file);
 
       // Check if user has access to company
       const companyAccess = await query(
@@ -108,17 +122,17 @@ export class DocumentController {
       }
 
       const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
-      const fileUrl = getFileUrl(file.filename, fileType as any);
-      const fileData = file.buffer ?? fs.readFileSync(file.path);
+      const fileUrl = getFileUrl(storedFileName, fileType as any);
+      const fileData = file.buffer;
 
       // Save document metadata
       const document = await documentService.saveDocumentMetadata({
         company_id: companyId,
-        file_name: file.filename,
+        file_name: storedFileName,
         original_name: file.originalname,
         file_size: file.size,
         mime_type: file.mimetype,
-        file_path: file.path,
+        file_path: `db://documents/${storedFileName}`,
         file_url: fileUrl,
         file_data: fileData,
         document_type: document_type || 'general',
@@ -161,17 +175,21 @@ export class DocumentController {
       const uploadedDocs = [];
 
       for (const file of files) {
+        if (!file.buffer || file.buffer.length === 0) {
+          continue;
+        }
+        const storedFileName = buildStoredName(file);
         const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
-        const fileUrl = getFileUrl(file.filename, fileType as any);
-        const fileData = file.buffer ?? fs.readFileSync(file.path);
+        const fileUrl = getFileUrl(storedFileName, fileType as any);
+        const fileData = file.buffer;
 
         const document = await documentService.saveDocumentMetadata({
           user_id: userId,
-          file_name: file.filename,
+          file_name: storedFileName,
           original_name: file.originalname,
           file_size: file.size,
           mime_type: file.mimetype,
-          file_path: file.path,
+          file_path: `db://documents/${storedFileName}`,
           file_url: fileUrl,
           file_data: fileData,
           document_type: document_type || 'general',

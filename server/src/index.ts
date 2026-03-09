@@ -44,6 +44,11 @@ async function ensureSchema() {
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA",
   );
 
+  // Persist resumes in DB instead of relying on local disk paths.
+  await query(
+    "ALTER TABLE resumes ADD COLUMN IF NOT EXISTS file_data BYTEA",
+  );
+
   // Industries master table for dropdowns/management.
   await query(
     `CREATE TABLE IF NOT EXISTS industries (

@@ -1,47 +1,8 @@
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 
-// Create upload directories if they don't exist
-const createUploadDirs = () => {
-  const dirs = [
-    path.join(__dirname, '../../uploads'),
-    path.join(__dirname, '../../uploads/documents'),
-    path.join(__dirname, '../../uploads/images'),
-    path.join(__dirname, '../../uploads/temp')
-  ];
-  
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      console.log(`📁 Created upload directory: ${dir}`);
-    }
-  });
-};
-
-createUploadDirs();
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Determine destination based on file type
-    let uploadPath = path.join(__dirname, '../../uploads/documents');
-    
-    if (file.mimetype.startsWith('image/')) {
-      uploadPath = path.join(__dirname, '../../uploads/images');
-    }
-    
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueId = uuidv4();
-    const fileExt = path.extname(file.originalname);
-    const fileName = `${uniqueId}${fileExt}`;
-    cb(null, fileName);
-  }
-});
+// Store uploads in memory; controllers persist bytes to DB.
+const storage = multer.memoryStorage();
 
 // File filter function
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
@@ -76,21 +37,4 @@ export const getFileUrl = (filename: string, type: 'document' | 'image' = 'docum
   const baseUrl = process.env.API_URL || 'http://localhost:4000';
   const folder = type === 'image' ? 'images' : 'documents';
   return `${baseUrl}/uploads/${folder}/${filename}`;
-};
-
-// Helper function to delete file
-export const deleteFile = async (filename: string, type: 'document' | 'image' = 'document') => {
-  try {
-    const folder = type === 'image' ? 'images' : 'documents';
-    const filePath = path.join(__dirname, `../../uploads/${folder}`, filename);
-    
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error deleting file:', error);
-    return false;
-  }
 };

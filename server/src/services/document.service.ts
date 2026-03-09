@@ -1,5 +1,4 @@
 import { query } from '../config/database';
-import { getFileUrl, deleteFile } from '../config/upload';
 import { NotFoundError, ForbiddenError } from '../utils/errors';
 
 export interface DocumentData {
@@ -183,15 +182,10 @@ export class DocumentService {
 
   // Delete document
   async deleteDocument(documentId: string, userId: string) {
-    // Get document info
-    const document = await this.getDocumentById(documentId, userId);
+    await this.getDocumentById(documentId, userId);
 
     // Delete from database
     await query('DELETE FROM documents WHERE id = $1', [documentId]);
-
-    // Delete physical file
-    const fileType = document.mime_type.startsWith('image/') ? 'image' : 'document';
-    await deleteFile(document.file_name, fileType);
 
     return { message: 'Document deleted successfully' };
   }

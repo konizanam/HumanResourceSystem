@@ -215,6 +215,7 @@ CREATE TABLE resumes (
     file_path TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     mime_type VARCHAR(100) NOT NULL,
+    file_data BYTEA,
     is_primary BOOLEAN DEFAULT FALSE,
     uploaded_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),

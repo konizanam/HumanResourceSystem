@@ -5,28 +5,12 @@ import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import crypto from 'crypto';
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/resumes');
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueSuffix = crypto.randomBytes(16).toString('hex');
-    const ext = path.extname(file.originalname);
-    cb(null, `resume-${Date.now()}-${uniqueSuffix}${ext}`);
-  }
-});
+// Configure multer for in-memory uploads (stored in DB later).
+const storage = multer.memoryStorage();
 
 const fileFilter = (req: any, file: any, cb: multer.FileFilterCallback) => {
   // Accept only PDF files
@@ -53,6 +37,19 @@ const upload = multer({
 const validateResumeId = [
   param('id').isUUID().withMessage('Invalid resume ID')
 ];
+
+function normalizeBytea(raw: unknown): Buffer | null {
+  if (!raw) return null;
+  if (raw instanceof Buffer) return raw;
+  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('\\x') && trimmed.length > 2) {
+      return Buffer.from(trimmed.slice(2), 'hex');
+    }
+  }
+  return null;
+}
 
 /**
  * @swagger
@@ -172,6 +169,9 @@ router.post('/',
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+      if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'Uploaded file is empty' });
+      }
 
       const jobSeekerId = req.user!.userId;
       const isPrimary = req.body.is_primary === 'true' || req.body.is_primary === true;
@@ -188,26 +188,29 @@ router.post('/',
           );
         }
 
+        const storedFileName = `resume-${Date.now()}-${crypto.randomBytes(16).toString('hex')}${path.extname(req.file.originalname)}`;
+
         // Insert new resume
         const result = await dbQuery(
           `INSERT INTO resumes (
-            job_seeker_id, file_name, file_path, file_size, mime_type, is_primary, uploaded_at, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW())
+            job_seeker_id, file_name, file_path, file_size, mime_type, file_data, is_primary, uploaded_at, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), NOW())
           RETURNING *`,
           [
             jobSeekerId,
-            req.file.originalname,
-            req.file.path,
+            storedFileName,
+            `db://resumes/${storedFileName}`,
             req.file.size,
             req.file.mimetype,
+            req.file.buffer,
             isPrimary
           ]
         );
 
         // Update user's resume_url for backward compatibility
         if (isPrimary) {
-          // Construct URL for the resume (adjust based on your static file serving setup)
-          const resumeUrl = `/uploads/resumes/${path.basename(req.file.path)}`;
+          const resumeId = result.rows[0]?.id;
+          const resumeUrl = resumeId ? `/api/v1/job-seeker/resume/${resumeId}/download` : null;
           await dbQuery(
             'UPDATE users SET resume_url = $1 WHERE id = $2',
             [resumeUrl, jobSeekerId]
@@ -227,10 +230,6 @@ router.post('/',
         });
       } catch (error) {
         await dbQuery('ROLLBACK');
-        // Delete uploaded file if database insert fails
-        if (req.file && fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
         throw error;
       }
     } catch (error) {
@@ -469,18 +468,17 @@ router.get('/:id/download',
         return res.status(403).json({ error: 'You do not have permission to download this resume' });
       }
 
-      // Check if file exists
-      if (!fs.existsSync(resume.file_path)) {
-        return res.status(404).json({ error: 'Resume file not found' });
-      }
-
       // Set appropriate headers
       res.setHeader('Content-Type', resume.mime_type);
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(resume.file_name)}"`);
       res.setHeader('Content-Length', resume.file_size);
 
-      // Send file
-      res.sendFile(path.resolve(resume.file_path));
+      const fileData = normalizeBytea((resume as any).file_data);
+      if (fileData && fileData.length > 0) {
+        return res.status(200).send(fileData);
+      }
+
+      return res.status(404).json({ error: 'Resume file not found' });
     } catch (error) {
       console.error('Error downloading resume:', error);
       res.status(500).json({ error: 'Server error' });
@@ -585,12 +583,12 @@ router.delete('/:id',
 
             // Update user's resume_url
             const newPrimary = await dbQuery(
-              'SELECT file_path FROM resumes WHERE id = $1',
+              'SELECT id FROM resumes WHERE id = $1',
               [otherResume.rows[0].id]
             );
             
             if (newPrimary.rows.length > 0) {
-              const resumeUrl = `/uploads/resumes/${path.basename(newPrimary.rows[0].file_path)}`;
+              const resumeUrl = `/api/v1/job-seeker/resume/${newPrimary.rows[0].id}/download`;
               await dbQuery(
                 'UPDATE users SET resume_url = $1 WHERE id = $2',
                 [resumeUrl, jobSeekerId]
@@ -606,11 +604,6 @@ router.delete('/:id',
         }
 
         await dbQuery('COMMIT');
-
-        // Delete file from disk
-        if (fs.existsSync(resume.file_path)) {
-          fs.unlinkSync(resume.file_path);
-        }
 
         res.json({
           message: 'Resume deleted successfully',
@@ -721,7 +714,7 @@ router.patch('/:id/primary',
         );
 
         // Update user's resume_url
-        const resumeUrl = `/uploads/resumes/${path.basename(resume.file_path)}`;
+        const resumeUrl = `/api/v1/job-seeker/resume/${resume.id}/download`;
         await dbQuery(
           'UPDATE users SET resume_url = $1 WHERE id = $2',
           [resumeUrl, jobSeekerId]
