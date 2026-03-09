@@ -9,6 +9,19 @@ import path from 'path';
 
 const documentService = new DocumentService();
 
+function normalizeBytea(raw: unknown): Buffer | null {
+  if (!raw) return null;
+  if (raw instanceof Buffer) return raw;
+  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('\\x') && trimmed.length > 2) {
+      return Buffer.from(trimmed.slice(2), 'hex');
+    }
+  }
+  return null;
+}
+
 function withDownloadUrl(document: any) {
   if (!document || !document.id) return document;
   return {
@@ -34,6 +47,7 @@ export class DocumentController {
       // Determine file type folder
       const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
       const fileUrl = getFileUrl(file.filename, fileType as any);
+      const fileData = file.buffer ?? fs.readFileSync(file.path);
 
       // Save document metadata
       const document = await documentService.saveDocumentMetadata({
@@ -44,6 +58,7 @@ export class DocumentController {
         mime_type: file.mimetype,
         file_path: file.path,
         file_url: fileUrl,
+        file_data: fileData,
         document_type: document_type || 'general',
         description: description,
         uploaded_by: userId
@@ -94,6 +109,7 @@ export class DocumentController {
 
       const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
       const fileUrl = getFileUrl(file.filename, fileType as any);
+      const fileData = file.buffer ?? fs.readFileSync(file.path);
 
       // Save document metadata
       const document = await documentService.saveDocumentMetadata({
@@ -104,6 +120,7 @@ export class DocumentController {
         mime_type: file.mimetype,
         file_path: file.path,
         file_url: fileUrl,
+        file_data: fileData,
         document_type: document_type || 'general',
         description: description,
         uploaded_by: userId
@@ -146,6 +163,7 @@ export class DocumentController {
       for (const file of files) {
         const fileType = file.mimetype.startsWith('image/') ? 'image' : 'document';
         const fileUrl = getFileUrl(file.filename, fileType as any);
+        const fileData = file.buffer ?? fs.readFileSync(file.path);
 
         const document = await documentService.saveDocumentMetadata({
           user_id: userId,
@@ -155,6 +173,7 @@ export class DocumentController {
           mime_type: file.mimetype,
           file_path: file.path,
           file_url: fileUrl,
+          file_data: fileData,
           document_type: document_type || 'general',
           description: description,
           uploaded_by: userId
@@ -283,9 +302,7 @@ export class DocumentController {
       }
 
       const resolvedPath = path.resolve(filePath);
-      if (!fs.existsSync(resolvedPath)) {
-        return res.status(404).json({ error: { message: 'Document file not found' } });
-      }
+      const existsOnDisk = Boolean(filePath) && fs.existsSync(resolvedPath);
 
       const mimeType = String(document?.mime_type ?? '').trim();
       const originalName = String(document?.original_name ?? '').trim();
@@ -297,7 +314,16 @@ export class DocumentController {
       }
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
 
-      return res.sendFile(resolvedPath);
+      if (existsOnDisk) {
+        return res.sendFile(resolvedPath);
+      }
+
+      const fileData = normalizeBytea((document as any)?.file_data);
+      if (fileData && fileData.length > 0) {
+        return res.status(200).send(fileData);
+      }
+
+      return res.status(404).json({ error: { message: 'Document file not found' } });
     } catch (error) {
       next(error);
     }

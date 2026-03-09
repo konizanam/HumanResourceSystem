@@ -362,6 +362,7 @@ CREATE TABLE documents (
     mime_type VARCHAR(100) NOT NULL,
     file_path VARCHAR(500) NOT NULL,
     file_url VARCHAR(500) NOT NULL,
+    file_data BYTEA,
     document_type VARCHAR(100),
     category VARCHAR(100),
     description TEXT,

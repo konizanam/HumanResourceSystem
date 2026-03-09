@@ -39,6 +39,11 @@ async function ensureSchema() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP",
   );
 
+  // Persist uploaded documents in DB so downloads survive ephemeral file systems.
+  await query(
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA",
+  );
+
   // Industries master table for dropdowns/management.
   await query(
     `CREATE TABLE IF NOT EXISTS industries (

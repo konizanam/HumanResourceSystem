@@ -11,6 +11,7 @@ export interface DocumentData {
   mime_type: string;
   file_path: string;
   file_url: string;
+  file_data?: Buffer;
   document_type?: string;
   category?: string;
   description?: string;
@@ -25,9 +26,9 @@ export class DocumentService {
     const result = await query(
       `INSERT INTO documents (
         user_id, company_id, file_name, original_name, file_size, 
-        mime_type, file_path, file_url, document_type, category, 
+        mime_type, file_path, file_url, file_data, document_type, category, 
         description, is_public, uploaded_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         data.user_id || null,
@@ -38,6 +39,7 @@ export class DocumentService {
         data.mime_type,
         data.file_path,
         data.file_url,
+        data.file_data || null,
         data.document_type || null,
         data.category || null,
         data.description || null,
