@@ -463,10 +463,10 @@ export function UsersPage() {
             onChange={(e) => setRoleFilter(e.target.value)}
           >
             <option value="">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="employer">Employer</option>
-            <option value="job_seeker">Job Seeker</option>
-            <option value="hr_manager">HR Manager</option>
+            <option value="ADMIN">Admin</option>
+            <option value="EMPLOYER">Employer</option>
+            <option value="JOB_SEEKER">Job Seeker</option>
+            <option value="HR">HR</option>
           </select>
         </div>
         <div style={{ minWidth: 140 }}>

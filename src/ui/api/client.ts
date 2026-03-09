@@ -1939,7 +1939,7 @@ export async function listAdminUsers(
   if (params?.page) url.searchParams.set("page", String(params.page));
   if (params?.limit) url.searchParams.set("limit", String(params.limit));
   if (params?.search) url.searchParams.set("search", params.search);
-  if (params?.role) url.searchParams.set("role", params.role);
+  if (params?.role) url.searchParams.set("role", String(params.role).trim().toUpperCase());
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.verified !== undefined) url.searchParams.set("verified", String(params.verified));
   if (params?.from_date) url.searchParams.set("from_date", params.from_date);
