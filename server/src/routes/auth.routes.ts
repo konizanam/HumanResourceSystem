@@ -738,6 +738,12 @@ authRouter.post("/login", async (req, res, next) => {
       return res.status(401).json({ error: { message: "Invalid credentials" } });
     }
 
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is not active. Please contact support." },
+      });
+    }
+
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
       return res
@@ -859,6 +865,12 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
 
     if (!user) {
       return res.status(401).json({ error: { message: "Invalid credentials" } });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is not active. Please contact support." },
+      });
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
