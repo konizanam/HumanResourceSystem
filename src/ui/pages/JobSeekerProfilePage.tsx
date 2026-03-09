@@ -185,6 +185,24 @@ function extractFileName(raw: unknown): string {
   return parts.length ? parts[parts.length - 1] : clean;
 }
 
+function compactDisplayUrl(raw: string): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    const host = parsed.host;
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    if (pathParts.length <= 3) {
+      return `${host}${parsed.pathname}`;
+    }
+    const tail = pathParts.slice(-2).join("/");
+    return `${host}/.../${tail}`;
+  } catch {
+    if (value.length <= 64) return value;
+    return `${value.slice(0, 61)}...`;
+  }
+}
+
 function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
   const url = String(resolvedUrl ?? "").trim();
   if (!url) return "none";
@@ -226,6 +244,7 @@ function UploadedDocumentCard({
   const [authFetchFallback, setAuthFetchFallback] = useState(false);
 
   const resolvedUrl = resolveFileUrl(url);
+  const fallbackDisplayUrl = compactDisplayUrl(resolvedUrl);
   const hasFile = Boolean(resolvedUrl);
   const rawFileName = extractFileName(url);
   const isGenericSegment = !rawFileName ||
@@ -390,8 +409,8 @@ function UploadedDocumentCard({
       {authFetchFallback ? (
         <span className="uploadedDocCardHint">
           Using direct file URL fallback for this document: {" "}
-          <a href={resolvedUrl} target="_blank" rel="noreferrer">
-            {resolvedUrl}
+          <a href={resolvedUrl} target="_blank" rel="noreferrer" title={resolvedUrl}>
+            {fallbackDisplayUrl}
           </a>
         </span>
       ) : null}
