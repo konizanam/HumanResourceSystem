@@ -297,9 +297,8 @@ function UploadedDocumentCard({
     };
   }, []);
 
-  // Effective URL: blob if available, local URL if staged, raw resolved otherwise
-  const effectiveUrl = blobUrl ?? (isLocalUrl ? resolvedUrl : (needsAuthFetch ? "" : resolvedUrl));
-  const isReady = !needsAuthFetch || Boolean(blobUrl);
+  // Prefer authenticated blob URLs when available, but keep direct URLs usable as fallback.
+  const effectiveUrl = blobUrl ?? resolvedUrl;
 
   const inlineKind = getInlinePreviewKind(effectiveUrl || resolvedUrl);
   const isImage = inlineKind === "image";
@@ -348,7 +347,7 @@ function UploadedDocumentCard({
             type="button"
             className="btn btnPrimary btnSm uploadedDocViewBtn"
             onClick={onViewClick}
-            disabled={blobLoading || (!isReady && needsAuthFetch)}
+            disabled={blobLoading || !hasFile}
           >
             {blobLoading ? "…" : effectivePreviewOpen ? "Hide" : "View"}
           </button>
@@ -356,14 +355,14 @@ function UploadedDocumentCard({
             type="button"
             className="btn btnGhost btnSm uploadedDocDownloadBtn"
             onClick={onDownload}
-            disabled={blobLoading || (!isReady && needsAuthFetch)}
+            disabled={blobLoading || !hasFile}
           >
             Download
           </button>
         </div>
       ) : null}
 
-      {hasFile && !isExternalPreview && previewOpen && isReady ? (
+      {hasFile && !isExternalPreview && previewOpen ? (
         <div className="uploadedDocPreview">
           {canInlinePreview ? (
             isImage ? (
