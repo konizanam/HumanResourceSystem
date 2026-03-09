@@ -24,6 +24,17 @@ const app: Application = express();
 // Needed for correct client IP when behind a proxy/load balancer
 app.set('trust proxy', true);
 
+function parseOrigins(raw: string | undefined): string[] {
+  const value = String(raw ?? '').trim();
+  if (!value) return ['http://localhost:5173'];
+  return value
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
+const allowedWebOrigins = parseOrigins(process.env.WEB_ORIGIN);
+
 // =====================
 // Middleware
 // =====================
@@ -34,13 +45,27 @@ app.use(
     // Default is `same-origin`, which can block loading images (e.g. company logos)
     // from the API when the web app runs on a different origin during development.
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    // Allow document iframe previews from configured web origins.
+    frameguard: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'frame-ancestors': ["'self'", ...allowedWebOrigins],
+      },
+    },
   })
 );
 
 // CORS configuration
-const corsOrigin = process.env.WEB_ORIGIN || 'http://localhost:5173';
 app.use(cors({
-  origin: corsOrigin,
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    const normalized = origin.replace(/\/$/, '');
+    if (allowedWebOrigins.includes(normalized)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
