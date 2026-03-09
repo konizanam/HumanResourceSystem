@@ -6,7 +6,7 @@ import {
   getPublicCompanyById,
   getPublicSystemSettings,
   me,
-  requestTwoFactorChallenge,
+  resendTwoFactorCode,
   verifyTwoFactor,
 } from "../api/client";
 import { applyAppThemeColor } from "../utils/themeColor";
@@ -694,10 +694,15 @@ export function LoginPage() {
                     setError(null);
                     setBusy(true);
                     try {
-                      const nextChallenge = await requestTwoFactorChallenge(
-                        (pending?.userEmail ?? email).trim().toLowerCase(),
-                        password
-                      );
+                      if (!pending?.challengeId) {
+                        setError("Your sign-in session has ended. Please sign in again.");
+                        setStep("credentials");
+                        setPending(null);
+                        setTwoFactorExpiresAt(null);
+                        return;
+                      }
+
+                      const nextChallenge = await resendTwoFactorCode(pending.challengeId);
 
                       setPending((p) =>
                         p
@@ -708,6 +713,7 @@ export function LoginPage() {
                         Date.now() + nextChallenge.expiresInSeconds * 1000
                       );
                       setCode("");
+                      setError("A new authentication code was sent to your email.");
                     } catch (err) {
                       setError(resolveAuthErrorMessage(err, "resend2fa"));
                     } finally {

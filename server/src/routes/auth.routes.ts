@@ -458,6 +458,21 @@ async function applyActivationToken(token: string): Promise<{
   };
 }
 
+async function getPendingPasswordSetupToken(userId: string): Promise<string | null> {
+  const result = await query<{ password_reset_token: string | null }>(
+    `SELECT password_reset_token
+       FROM users
+      WHERE id = $1
+        AND password_reset_token IS NOT NULL
+        AND password_reset_expires_at > NOW()
+      LIMIT 1`,
+    [userId],
+  );
+
+  const token = String(result.rows[0]?.password_reset_token ?? '').trim();
+  return token || null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  POST /api/auth/register                                            */
 /* ------------------------------------------------------------------ */
@@ -611,6 +626,7 @@ authRouter.get("/activate", async (req, res, next) => {
     const accessToken = activationResult.accessToken;
 
     const pub = publicUser(user);
+    const pendingPasswordSetupToken = await getPendingPasswordSetupToken(userId);
 
     await persistUserSession({
       userId,
@@ -640,6 +656,11 @@ authRouter.get("/activate", async (req, res, next) => {
 
     const origin = webOrigin();
     if (origin) {
+      if (pendingPasswordSetupToken) {
+        return res.redirect(
+          `${origin}/reset-password?token=${encodeURIComponent(pendingPasswordSetupToken)}&activated=1`,
+        );
+      }
       // Keep activation feedback in URL while requiring an explicit login.
       return res.redirect(`${origin}/login#activated=1`);
     }
@@ -651,6 +672,12 @@ authRouter.get("/activate", async (req, res, next) => {
       accessToken,
       expiresIn: jwtExpiresIn(),
       user: pub,
+      ...(pendingPasswordSetupToken
+        ? {
+            requiresPasswordSetup: true,
+            passwordSetupToken: pendingPasswordSetupToken,
+          }
+        : {}),
     });
   } catch (err) {
     return next(err);
@@ -662,6 +689,7 @@ authRouter.post("/activate", async (req, res, next) => {
     const { token } = activateSchema.parse(req.body ?? {});
     const activationResult = await applyActivationToken(token);
     const user = activationResult.user;
+    const pendingPasswordSetupToken = await getPendingPasswordSetupToken(activationResult.userId);
 
     const pub = publicUser(user);
 
@@ -672,6 +700,12 @@ authRouter.post("/activate", async (req, res, next) => {
       accessToken: activationResult.accessToken,
       expiresIn: jwtExpiresIn(),
       user: pub,
+      ...(pendingPasswordSetupToken
+        ? {
+            requiresPasswordSetup: true,
+            passwordSetupToken: pendingPasswordSetupToken,
+          }
+        : {}),
     });
   } catch (err) {
     return next(err);
@@ -806,6 +840,10 @@ const twoFactorChallengeSchema = z.object({
   password: z.string().min(1),
 });
 
+const twoFactorResendSchema = z.object({
+  challengeId: z.string().uuid("Invalid challengeId"),
+});
+
 authRouter.post("/2fa/challenge", async (req, res, next) => {
   try {
     if (!(await isMainCompanyConfigured())) {
@@ -906,6 +944,49 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
       message: "2FA challenge created",
       challengeId: challenge.challengeId,
       expiresInSeconds: challenge.expiresInSeconds,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+authRouter.post("/2fa/resend", async (req, res, next) => {
+  try {
+    const { challengeId } = twoFactorResendSchema.parse(req.body ?? {});
+    const existing = twoFactorChallenges.get(challengeId);
+
+    if (!existing) {
+      return res
+        .status(400)
+        .json({ error: { message: "Invalid or expired challenge" } });
+    }
+
+    const next = createTwoFactorChallenge({
+      userId: existing.userId,
+      email: existing.email,
+      name: existing.name,
+      roles: existing.roles,
+    });
+    twoFactorChallenges.delete(challengeId);
+
+    // Best-effort: send new OTP to email.
+    void sendTwoFactorCodeEmail({
+      to: existing.email,
+      userFullName: existing.name,
+      code: next.code,
+      expiresInSeconds: next.expiresInSeconds,
+    });
+
+    logDevOtpToTerminal({
+      email: existing.email,
+      challengeId: next.challengeId,
+      code: next.code,
+    });
+
+    return res.json({
+      message: "Authentication code resent",
+      challengeId: next.challengeId,
+      expiresInSeconds: next.expiresInSeconds,
     });
   } catch (err) {
     return next(err);

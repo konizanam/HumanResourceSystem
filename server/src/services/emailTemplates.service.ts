@@ -189,6 +189,31 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
     body_html: '',
     placeholders: ['app_name', 'user_full_name', 'login_link', 'support_email'],
   },
+  admin_user_welcome: {
+    key: 'admin_user_welcome',
+    title: 'Admin User Welcome',
+    description: 'Sent when an admin creates a new non-job-seeker user account.',
+    subject: 'Your {{app_name}} account is ready',
+    body_text:
+      'Dear {{user_full_name}},\n\n'
+      + 'An account has been created for you on {{app_name}}.\n\n'
+      + 'Sign-in email: {{user_email}}\n'
+      + 'Assigned role: {{role_name}}\n'
+      + 'To activate your account and set your password, click the link below:\n'
+      + '{{activation_link}}\n\n'
+      + 'If you were not expecting this account, contact support at {{support_email}}.\n\n'
+      + 'Regards,\n'
+      + '{{app_name}} Team',
+    body_html: '',
+    placeholders: [
+      'app_name',
+      'user_full_name',
+      'user_email',
+      'role_name',
+      'activation_link',
+      'support_email',
+    ],
+  },
 };
 
 function escapeHtml(text: string): string {

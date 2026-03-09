@@ -6,6 +6,7 @@ import {
   listAdminUsers,
   getAdminUser,
   blockUser,
+  resendAdminUserActivationLink,
   getUserRoles,
   type Role,
   setUserRoles,
@@ -98,7 +99,6 @@ export function UsersPage() {
     first_name: "",
     last_name: "",
     email: "",
-    password: "",
     role_id: "",
   });
 
@@ -151,7 +151,7 @@ export function UsersPage() {
         const data = await listRoles(accessToken, { page: 1, limit: 200 });
         if (cancelled) return;
         const filtered = (data.roles ?? []).filter(
-          (role) => String(role.name ?? "").trim().toUpperCase() !== "JOB_SEEKER",
+          (role) => String(role.name ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_") !== "JOB_SEEKER",
         );
         setAssignableRoles(filtered);
         setAddForm((prev) => ({
@@ -278,20 +278,30 @@ export function UsersPage() {
     }
   }
 
+  async function onResendActivationLink(user: AdminUser) {
+    if (!accessToken || !canManageUsers) return;
+    if (user.email_verified) return;
+    try {
+      clearMessages();
+      setSaving(true);
+      const result = await resendAdminUserActivationLink(accessToken, user.id);
+      setSuccess(result.message ?? "Activation link sent successfully");
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to resend activation link");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onAddUser() {
     if (!accessToken || !canAddUser) return;
 
     const firstName = addForm.first_name.trim();
     const lastName = addForm.last_name.trim();
     const email = addForm.email.trim();
-    const password = addForm.password;
     const roleId = addForm.role_id;
-    if (!firstName || !lastName || !email || !password || !roleId) {
-      setError("First name, last name, email, password and role are required");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (!firstName || !lastName || !email || !roleId) {
+      setError("First name, last name, email and role are required");
       return;
     }
 
@@ -308,7 +318,6 @@ export function UsersPage() {
         first_name: firstName,
         last_name: lastName,
         email,
-        password,
         role_id: roleId,
       });
       setSuccess(result.message || "User added successfully");
@@ -317,7 +326,6 @@ export function UsersPage() {
         first_name: "",
         last_name: "",
         email: "",
-        password: "",
         role_id: String(assignableRoles[0]?.id ?? ""),
       });
       await load(1);
@@ -517,14 +525,12 @@ export function UsersPage() {
                 />
               </label>
               <label className="field">
-                <span className="fieldLabel">Temporary Password</span>
+                <span className="fieldLabel">Activation</span>
                 <input
                   className="input"
-                  type="password"
-                  value={addForm.password}
-                  onChange={(e) => setAddForm((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="Minimum 8 characters"
-                  required
+                  value="User will receive activation link to set password"
+                  readOnly
+                  aria-readonly="true"
                 />
               </label>
               <label className="field">
@@ -555,7 +561,7 @@ export function UsersPage() {
                 className="btn btnGhost btnSm stepperSaveBtn addActionBtn"
                 type="button"
                 onClick={() => void onAddUser()}
-                disabled={saving || !addForm.first_name.trim() || !addForm.last_name.trim() || !addForm.email.trim() || !addForm.password || !addForm.role_id}
+                disabled={saving || !addForm.first_name.trim() || !addForm.last_name.trim() || !addForm.email.trim() || !addForm.role_id}
               >
                 {saving ? "Adding..." : "Add User"}
               </button>
@@ -598,6 +604,7 @@ export function UsersPage() {
                     }}
                     onBlock={() => startBlock(user)}
                     onAssignRoles={() => void startAssignRoles(user)}
+                    onResendActivationLink={() => void onResendActivationLink(user)}
                   >
                     {isOpen && (
                       <tr className="tableExpandRow">
@@ -699,6 +706,16 @@ export function UsersPage() {
                                       >
                                         Assign Roles
                                       </button>
+                                      {!userDetail.email_verified && (
+                                        <button
+                                          className="btn btnGhost btnSm stepperSaveBtn"
+                                          type="button"
+                                          onClick={() => void onResendActivationLink(userDetail)}
+                                          disabled={saving}
+                                        >
+                                          Resend Activation Link
+                                        </button>
+                                      )}
                                     </>
                                   )}
                                 </div>
@@ -805,6 +822,7 @@ function UserRow({
   onView,
   onBlock,
   onAssignRoles,
+  onResendActivationLink,
   children,
 }: {
   user: AdminUser;
@@ -815,6 +833,7 @@ function UserRow({
   onView: () => void;
   onBlock: () => void;
   onAssignRoles: () => void;
+  onResendActivationLink: () => void;
   children: ReactNode;
 }) {
   const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-GB") : "—";
@@ -847,6 +866,9 @@ function UserRow({
                 : []),
               ...(canManageUsers
                 ? [{ key: "assign-roles", label: "Assign Roles", onClick: onAssignRoles }]
+                : []),
+              ...(canManageUsers && !user.email_verified
+                ? [{ key: "resend-activation", label: "Resend Activation Link", onClick: onResendActivationLink }]
                 : []),
             ]}
           />

@@ -322,6 +322,13 @@ function renderTokens(input: string, data: Record<string, string>, opts?: { html
       continue;
     }
 
+    if (opts?.html && key === 'change_password_link') {
+      const url = String(rawValue ?? '').trim();
+      const block = url ? buttonBlockHtml('Change Password', url) : '';
+      out = out.split(token).join(block);
+      continue;
+    }
+
     if (opts?.html && key === 'login_info_block') {
       out = out.split(token).join(loginInfoBlockHtml(data));
       continue;

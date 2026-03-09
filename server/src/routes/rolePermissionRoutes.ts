@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { query as dbQuery } from '../config/database';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { logAdminAction } from '../middleware/adminLogger';
 import { logAudit } from '../helpers/auditLogger';
@@ -159,7 +159,7 @@ const validateUserId = [
  */
 router.get('/admin/roles',
   authenticate,
-  authorize('ADMIN'),
+  authorizePermission('MANAGE_USERS', 'ADD_USER'),
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),

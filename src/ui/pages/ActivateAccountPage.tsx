@@ -26,8 +26,16 @@ export function ActivateAccountPage() {
       }
 
       try {
-        await activateAccount(token);
+        const result = await activateAccount(token);
         if (cancelled) return;
+        const setupToken = String(result.passwordSetupToken ?? "").trim();
+        if (result.requiresPasswordSetup && setupToken) {
+          setMessage("Account activated. Redirecting to set your password...");
+          window.setTimeout(() => {
+            navigate(`/reset-password?token=${encodeURIComponent(setupToken)}&activated=1`, { replace: true });
+          }, 600);
+          return;
+        }
         setMessage("Your account has been activated. Redirecting to login...");
         window.setTimeout(() => {
           navigate("/login#activated=1", { replace: true });

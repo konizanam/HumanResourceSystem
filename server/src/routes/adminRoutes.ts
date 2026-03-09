@@ -1,6 +1,8 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import bcrypt from 'bcrypt';
+import jwt, { type SignOptions } from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import { query as dbQuery, transaction as dbTransaction } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
@@ -8,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logAdminAction } from '../middleware/adminLogger';
 import { logAudit } from '../helpers/auditLogger';
+import { sendTemplatedEmail, webOrigin } from '../services/emailSender.service';
 
 const router = express.Router();
 
@@ -21,6 +24,26 @@ const validateUserId = [
 const validateJobId = [
   param('id').isUUID().withMessage('Invalid job ID')
 ];
+
+function activationExpiresIn(): SignOptions['expiresIn'] {
+  const raw = process.env.ACTIVATION_TOKEN_EXPIRES_IN;
+  if (!raw) return '24h';
+  const trimmed = raw.trim();
+  if (!trimmed) return '24h';
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^\d+(ms|s|m|h|d|w|y)$/.test(trimmed)) return trimmed as SignOptions['expiresIn'];
+  return '24h';
+}
+
+function signActivationToken(payload: { sub: string; email: string }) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is not configured');
+  return jwt.sign(
+    { sub: payload.sub, email: payload.email, type: 'activation' },
+    secret,
+    { expiresIn: activationExpiresIn() },
+  );
+}
 
 /**
  * @swagger
@@ -201,7 +224,6 @@ router.post('/users',
     body('first_name').isString().trim().isLength({ min: 1, max: 100 }).withMessage('First name is required'),
     body('last_name').isString().trim().isLength({ min: 1, max: 100 }).withMessage('Last name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').isString().isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters'),
     body('role_id').isUUID().withMessage('A valid role is required'),
   ],
   async (req: Request, res: Response) => {
@@ -214,7 +236,6 @@ router.post('/users',
       const firstName = String(req.body.first_name ?? '').trim();
       const lastName = String(req.body.last_name ?? '').trim();
       const email = String(req.body.email ?? '').trim().toLowerCase();
-      const password = String(req.body.password ?? '');
       const roleId = String(req.body.role_id ?? '').trim();
 
       const roleResult = await dbQuery(
@@ -246,14 +267,16 @@ router.post('/users',
         return res.status(409).json({ error: 'Email is already registered' });
       }
 
-      const passwordHash = await bcrypt.hash(password, 12);
+      const placeholderPasswordHash = await bcrypt.hash(uuidv4(), 12);
+      const setupPasswordToken = uuidv4();
+      const setupPasswordExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       const createdUser = await dbTransaction(async (client) => {
         const inserted = await client.query(
           `INSERT INTO users (first_name, last_name, email, password_hash, is_active, email_verified)
-           VALUES ($1, $2, $3, $4, TRUE, TRUE)
+           VALUES ($1, $2, $3, $4, FALSE, FALSE)
            RETURNING id, email, first_name, last_name, is_active, is_blocked, created_at`,
-          [firstName, lastName, email, passwordHash],
+          [firstName, lastName, email, placeholderPasswordHash],
         );
 
         const userId = String(inserted.rows[0]?.id ?? '').trim();
@@ -262,6 +285,16 @@ router.post('/users',
            VALUES ($1, $2)
            ON CONFLICT (user_id, role_id) DO NOTHING`,
           [userId, roleId],
+        );
+
+        await client.query(
+          `UPDATE users
+              SET password_reset_token = $1,
+                  password_reset_expires_at = $2,
+                  password_reset_requested_at = NOW(),
+                  updated_at = NOW()
+            WHERE id = $3`,
+          [setupPasswordToken, setupPasswordExpiresAt.toISOString(), userId],
         );
 
         const roleColumnExists = await client.query(
@@ -288,6 +321,32 @@ router.post('/users',
         };
       });
 
+      const activationTokenForUser = signActivationToken({
+        sub: String(createdUser.id),
+        email,
+      });
+      const activationLink = `${webOrigin()}/activate?token=${encodeURIComponent(activationTokenForUser)}`;
+      let emailWarning: string | null = null;
+
+      try {
+        const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || email;
+        await sendTemplatedEmail({
+          templateKey: 'admin_user_welcome',
+          to: email,
+          accent: 'security',
+          data: {
+            user_full_name: fullName,
+            user_email: email,
+            role_name: roleName,
+            activation_link: activationLink,
+            support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || '',
+          },
+        });
+      } catch (emailError) {
+        console.error('Failed to send new-user welcome email:', emailError);
+        emailWarning = 'User was created, but the welcome email could not be sent.';
+      }
+
       await logAudit({
         userId: String(req.user?.userId ?? ''),
         action: 'USER_CREATE',
@@ -300,7 +359,8 @@ router.post('/users',
       });
 
       return res.status(201).json({
-        message: 'User created successfully',
+        message: emailWarning ?? 'User created successfully. Activation email sent.',
+        ...(emailWarning ? { email_warning: emailWarning } : {}),
         user: createdUser,
       });
     } catch (error) {
@@ -754,6 +814,81 @@ router.put('/users/:id/block',
       res.status(500).json({ error: 'Server error' });
     }
   }
+);
+
+// ============================================================================
+// POST /api/admin/users/:id/resend-activation - Resend activation email
+// ============================================================================
+router.post('/users/:id/resend-activation',
+  authenticate,
+  authorizePermission('MANAGE_USERS', 'ADD_USER'),
+  logAdminAction('RESEND_USER_ACTIVATION_LINK', 'user'),
+  validateUserId,
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = String(req.params.id ?? '').trim();
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+
+      const userResult = await dbQuery(
+        `SELECT id, email, first_name, last_name, email_verified
+           FROM users
+          WHERE id = $1
+          LIMIT 1`,
+        [userId],
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult.rows[0];
+      if (Boolean(user.email_verified)) {
+        return res.status(400).json({ error: 'User is already activated' });
+      }
+
+      const activationToken = signActivationToken({
+        sub: String(user.id),
+        email: String(user.email),
+      });
+
+      const activationLink = `${webOrigin()}/activate?token=${encodeURIComponent(activationToken)}`;
+      const fullName = [String(user.first_name ?? '').trim(), String(user.last_name ?? '').trim()]
+        .filter(Boolean)
+        .join(' ') || String(user.email ?? 'User');
+
+      await sendTemplatedEmail({
+        templateKey: 'registration_activation',
+        to: String(user.email),
+        data: {
+          app_name: process.env.APP_NAME?.trim() || '',
+          user_full_name: fullName,
+          activation_link: activationLink,
+        },
+      });
+
+      await logAudit({
+        userId: String(req.user?.userId ?? ''),
+        action: 'USER_ACTIVATION_LINK_RESENT',
+        targetType: 'user',
+        targetId: String(user.id),
+        details: {
+          email: String(user.email),
+        },
+      });
+
+      return res.json({ message: 'Activation link sent successfully' });
+    } catch (error) {
+      console.error('Error resending activation link:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  },
 );
 
 // ============================================================================

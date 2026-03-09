@@ -969,6 +969,27 @@ export async function requestTwoFactorChallenge(
   };
 }
 
+export async function resendTwoFactorCode(
+  challengeId: string,
+): Promise<TwoFactorChallengeResponse> {
+  const res = await fetch(`${API_BASE}/auth/2fa/resend`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ challengeId }),
+  });
+
+  if (!res.ok) {
+    const body = await safeJson(res);
+    throw apiError(res, body, "Failed to resend authentication code");
+  }
+
+  const body = (await res.json()) as any;
+  return {
+    challengeId: String(body?.challengeId ?? ""),
+    expiresInSeconds: Number(body?.expiresInSeconds ?? 300),
+  };
+}
+
 export async function register(
   payload: RegisterPayload
 ): Promise<LoginResponse> {
@@ -986,7 +1007,11 @@ export async function register(
   return (await res.json()) as LoginResponse;
 }
 
-export async function activateAccount(token: string): Promise<{ message?: string }> {
+export async function activateAccount(token: string): Promise<{
+  message?: string;
+  requiresPasswordSetup?: boolean;
+  passwordSetupToken?: string;
+}> {
   const res = await fetch(`${API_BASE}/auth/activate`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -998,7 +1023,11 @@ export async function activateAccount(token: string): Promise<{ message?: string
     throw apiError(res, body, "Activation failed");
   }
 
-  return body as { message?: string };
+  return body as {
+    message?: string;
+    requiresPasswordSetup?: boolean;
+    passwordSetupToken?: string;
+  };
 }
 
 export async function forgotPassword(email: string) {
@@ -1529,8 +1558,14 @@ export async function listRoles(
   params?: { page?: number; limit?: number; search?: string },
 ): Promise<{ roles: Role[]; pagination: Pagination }> {
   const url = new URL(`${API_BASE}/admin/roles`);
-  if (params?.page) url.searchParams.set("page", String(params.page));
-  if (params?.limit) url.searchParams.set("limit", String(params.limit));
+  if (params?.page) {
+    const page = Math.max(1, Math.trunc(params.page));
+    url.searchParams.set("page", String(page));
+  }
+  if (params?.limit) {
+    const limit = Math.min(100, Math.max(1, Math.trunc(params.limit)));
+    url.searchParams.set("limit", String(limit));
+  }
   if (params?.search) url.searchParams.set("search", params.search);
 
   const res = await fetch(url, { headers: authHeaders(token) });
@@ -1986,7 +2021,6 @@ export async function createAdminUser(
     first_name: string;
     last_name: string;
     email: string;
-    password: string;
     role_id: string;
   },
 ): Promise<{ message: string; user: AdminUser }> {
@@ -1998,6 +2032,19 @@ export async function createAdminUser(
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to create user");
   return body as { message: string; user: AdminUser };
+}
+
+export async function resendAdminUserActivationLink(
+  token: string,
+  id: string,
+): Promise<{ message?: string }> {
+  const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(id)}/resend-activation`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  const body = await safeJson(res);
+  if (!res.ok) throw apiError(res, body, "Failed to resend activation link");
+  return body as { message?: string };
 }
 
 /* ------------------------------------------------------------------ */
