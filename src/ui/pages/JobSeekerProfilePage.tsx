@@ -223,6 +223,7 @@ function UploadedDocumentCard({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [blobLoading, setBlobLoading] = useState(false);
+  const [authFetchFallback, setAuthFetchFallback] = useState(false);
 
   const resolvedUrl = resolveFileUrl(url);
   const hasFile = Boolean(resolvedUrl);
@@ -240,15 +241,21 @@ function UploadedDocumentCard({
   // Pre-fetch authenticated blob URL whenever the source URL changes
   useEffect(() => {
     if (!needsAuthFetch || !resolvedUrl || !token) {
+      setAuthFetchFallback(false);
       setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       return;
     }
     let cancelled = false;
 
     setBlobLoading(true);
+    setAuthFetchFallback(false);
     fetch(resolvedUrl, { headers: { authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          setAuthFetchFallback(true);
+          return;
+        }
         const contentType = res.headers.get("content-type") ?? "";
         let mimeType = contentType.split(";")[0].trim();
         // Read the body as ArrayBuffer so we can inspect magic bytes for MIME detection
@@ -280,8 +287,11 @@ function UploadedDocumentCard({
           return;
         }
         setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return objectUrl; });
+        setAuthFetchFallback(false);
       })
-      .catch(() => { /* ignore, will show error state */ })
+      .catch(() => {
+        if (!cancelled) setAuthFetchFallback(true);
+      })
       .finally(() => { if (!cancelled) setBlobLoading(false); });
 
     // Only cancel the in-flight fetch; do NOT revoke any objectUrl here
@@ -377,6 +387,9 @@ function UploadedDocumentCard({
       ) : null}
 
       {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
+      {authFetchFallback ? (
+        <span className="uploadedDocCardHint">Using direct file URL fallback for this document.</span>
+      ) : null}
     </div>
   );
 }
