@@ -388,7 +388,12 @@ function UploadedDocumentCard({
 
       {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
       {authFetchFallback ? (
-        <span className="uploadedDocCardHint">Using direct file URL fallback for this document.</span>
+        <span className="uploadedDocCardHint">
+          Using direct file URL fallback for this document: {" "}
+          <a href={resolvedUrl} target="_blank" rel="noreferrer">
+            {resolvedUrl}
+          </a>
+        </span>
       ) : null}
     </div>
   );
