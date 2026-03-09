@@ -756,7 +756,7 @@ export function LoginPage() {
         </div>
       </div>
       <footer className="globalAppFooter authPageFooter">
-        <span>© 2026 All Rights Reserved. {systemName || "Human Resource System"}. Developbed By: </span>
+        <span>© 2026 All Rights Reserved. {systemName || "Human Resource System"}. Developed By: </span>
         <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
       </footer>
     </div>

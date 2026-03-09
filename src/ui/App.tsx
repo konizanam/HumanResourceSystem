@@ -558,7 +558,7 @@ export function App() {
       </Routes>
       {!hideShellFooter ? (
         <footer className="globalAppFooter">
-          <span>© 2026 All Rights Reserved. {footerCompanyName}. Developbed By: </span>
+          <span>© 2026 All Rights Reserved. {footerCompanyName}. Developed By: </span>
           <a href="https://it.konizanam.com" target="_blank" rel="noreferrer">Koniza Information Technology</a>
         </footer>
       ) : null}
