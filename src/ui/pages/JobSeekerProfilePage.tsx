@@ -142,6 +142,8 @@ type DirectoryResumeBundle = {
   resumes: JobSeekerResume[];
 };
 
+type PrefetchedBlobEntry = { url: string; mimeType: string } | null;
+
 async function fetchProfilePictureObjectUrl(
   token: string,
   opts?: { userId?: string | null },
@@ -203,6 +205,32 @@ function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
   return "pdf";
 }
 
+function detectMimeTypeFromBlobPayload(params: {
+  arrayBuffer: ArrayBuffer;
+  resolvedUrl: string;
+  contentType?: string;
+}): string {
+  const contentType = String(params.contentType ?? "").trim();
+  let mimeType = contentType.split(";")[0].trim();
+  if (!mimeType || mimeType === "application/octet-stream") {
+    const header = new Uint8Array(params.arrayBuffer.slice(0, 5));
+    const magic = String.fromCharCode(...header);
+    if (magic.startsWith("%PDF")) {
+      mimeType = "application/pdf";
+    } else if (header[0] === 0x89 && header[1] === 0x50) {
+      mimeType = "image/png";
+    } else if (header[0] === 0xFF && header[1] === 0xD8) {
+      mimeType = "image/jpeg";
+    } else {
+      const urlPath = params.resolvedUrl.split("?")[0].toLowerCase();
+      if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+        mimeType = "application/pdf";
+      }
+    }
+  }
+  return mimeType || "application/octet-stream";
+}
+
 function UploadedDocumentCard({
   title,
   url,
@@ -214,6 +242,7 @@ function UploadedDocumentCard({
   previewMode = "inline",
   externalPreviewOpen,
   onToggleExternalPreview,
+  prefetchedBlob,
 }: {
   title: string;
   url: string;
@@ -225,6 +254,7 @@ function UploadedDocumentCard({
   previewMode?: "inline" | "external";
   externalPreviewOpen?: boolean;
   onToggleExternalPreview?: (blobUrl: string, title: string) => void;
+  prefetchedBlob?: PrefetchedBlobEntry;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -239,13 +269,21 @@ function UploadedDocumentCard({
     /^[0-9a-f]{24,}$/i.test(rawFileName) ||
     ["download", "file", "view", "get", "document", "upload", "serve"].includes(rawFileName.toLowerCase());
   const fileName = originalName || (isGenericSegment ? title : rawFileName);
+  const prefetchedBlobUrl = String(prefetchedBlob?.url ?? "").trim();
+  const hasPrefetchedBlob = Boolean(prefetchedBlobUrl);
 
   // For blob: and data: URLs (local staged files) use directly, otherwise fetch with auth
   const isLocalUrl = resolvedUrl.startsWith("blob:") || resolvedUrl.startsWith("data:");
-  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token);
+  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token) && !hasPrefetchedBlob;
 
   // Pre-fetch authenticated blob URL whenever the source URL changes
   useEffect(() => {
+    if (hasPrefetchedBlob) {
+      setBlobLoading(false);
+      setAuthFetchFallback(false);
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      return;
+    }
     if (!needsAuthFetch || !resolvedUrl || !token) {
       setAuthFetchFallback(false);
       setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
@@ -262,29 +300,13 @@ function UploadedDocumentCard({
           setAuthFetchFallback(true);
           return;
         }
-        const contentType = res.headers.get("content-type") ?? "";
-        let mimeType = contentType.split(";")[0].trim();
-        // Read the body as ArrayBuffer so we can inspect magic bytes for MIME detection
         const arrayBuffer = await res.arrayBuffer();
-        // If server sends no type or generic octet-stream, sniff the magic bytes first
-        if (!mimeType || mimeType === "application/octet-stream") {
-          const header = new Uint8Array(arrayBuffer.slice(0, 5));
-          const magic = String.fromCharCode(...header);
-          if (magic.startsWith("%PDF")) {
-            mimeType = "application/pdf";
-          } else if (header[0] === 0x89 && header[1] === 0x50) {
-            mimeType = "image/png";
-          } else if (header[0] === 0xFF && header[1] === 0xD8) {
-            mimeType = "image/jpeg";
-          } else {
-            // Fallback: check URL/filename pattern
-            const urlPath = resolvedUrl.split("?")[0].toLowerCase();
-            if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
-              mimeType = "application/pdf";
-            }
-          }
-        }
-        const blob = new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" });
+        const mimeType = detectMimeTypeFromBlobPayload({
+          arrayBuffer,
+          resolvedUrl,
+          contentType: res.headers.get("content-type") ?? "",
+        });
+        const blob = new Blob([arrayBuffer], { type: mimeType });
         // Wrap blob with correct MIME type so browsers can preview/open it
         const objectUrl = URL.createObjectURL(blob);
         if (cancelled) {
@@ -304,7 +326,7 @@ function UploadedDocumentCard({
     // because setBlobUrl state may already hold it (revoking would blank the preview).
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedUrl, token]);
+  }, [resolvedUrl, token, hasPrefetchedBlob]);
 
   // Revoke blob URL on unmount to avoid memory leaks
   useEffect(() => {
@@ -314,7 +336,7 @@ function UploadedDocumentCard({
   }, []);
 
   // Prefer authenticated blob URLs when available, but keep direct URLs usable as fallback.
-  const effectiveUrl = blobUrl ?? resolvedUrl;
+  const effectiveUrl = prefetchedBlobUrl || blobUrl || resolvedUrl;
   const isLegacyUploadsUrl = /\/uploads\//i.test(resolvedUrl);
 
   const inlineKind = getInlinePreviewKind(effectiveUrl || resolvedUrl);
@@ -1204,6 +1226,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [directoryResumesByUserId, setDirectoryResumesByUserId] = useState<
     Record<string, DirectoryResumeBundle | undefined>
   >({});
+  const [directoryPrefetchedBlobsByUserId, setDirectoryPrefetchedBlobsByUserId] = useState<
+    Record<string, Record<string, PrefetchedBlobEntry>>
+  >({});
 
   const [blockModalUser, setBlockModalUser] = useState<JobSeekerListItem | null>(null);
   const [blockAction, setBlockAction] = useState<"block" | "unblock">("block");
@@ -1688,6 +1713,51 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     return null;
   }
 
+  async function prefetchDirectoryDocumentBlobs(userId: string, docUrls: string[], token: string) {
+    const normalizedUrls = Array.from(
+      new Set(
+        docUrls
+          .map((raw) => resolveFileUrl(raw))
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!normalizedUrls.length) return;
+
+    const existing = directoryPrefetchedBlobsByUserId[userId] ?? {};
+    const missingUrls = normalizedUrls.filter((docUrl) => !Object.prototype.hasOwnProperty.call(existing, docUrl));
+    if (!missingUrls.length) return;
+
+    const prefetchedEntries = await Promise.all(
+      missingUrls.map(async (docUrl): Promise<[string, PrefetchedBlobEntry]> => {
+        try {
+          const res = await fetch(docUrl, { headers: { authorization: `Bearer ${token}` } });
+          if (!res.ok) return [docUrl, null];
+          const arrayBuffer = await res.arrayBuffer();
+          const mimeType = detectMimeTypeFromBlobPayload({
+            arrayBuffer,
+            resolvedUrl: docUrl,
+            contentType: res.headers.get("content-type") ?? "",
+          });
+          const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType }));
+          return [docUrl, { url: objectUrl, mimeType }];
+        } catch {
+          return [docUrl, null];
+        }
+      }),
+    );
+
+    setDirectoryPrefetchedBlobsByUserId((prev) => {
+      const currentByUrl = prev[userId] ?? {};
+      const nextByUrl = { ...currentByUrl };
+      for (const [docUrl, blobEntry] of prefetchedEntries) {
+        if (Object.prototype.hasOwnProperty.call(nextByUrl, docUrl)) continue;
+        nextByUrl[docUrl] = blobEntry;
+      }
+      return { ...prev, [userId]: nextByUrl };
+    });
+  }
+
   async function onToggleDirectoryProfile(seeker: JobSeekerListItem) {
     const id = String(seeker.id ?? "").trim();
     if (!id) return;
@@ -1710,6 +1780,20 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       void getJobSeekerFullProfile(accessToken, id)
         .then((profile) => {
           setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: profile }));
+          const profileDocuments = collectProfileDocuments({
+            personal: ((profile as any)?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: ((profile as any)?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray((profile as any)?.education)
+              ? ((profile as any).education as Record<string, unknown>[])
+              : [],
+            docs: Array.isArray(directoryDocumentsByUserId[id]) ? directoryDocumentsByUserId[id] ?? [] : [],
+            resumes: Array.isArray(directoryResumesByUserId[id]?.resumes) ? directoryResumesByUserId[id]!.resumes : [],
+          });
+          void prefetchDirectoryDocumentBlobs(
+            id,
+            profileDocuments.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
@@ -1719,7 +1803,23 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     if (!hasDocs) {
       void listUserDocuments(accessToken, id)
         .then((docs) => {
-          setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: Array.isArray(docs) ? docs : [] }));
+          const nextDocs = Array.isArray(docs) ? docs : [];
+          setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: nextDocs }));
+          const profile = directoryProfileByUserId[id] ?? null;
+          const profileDocuments = collectProfileDocuments({
+            personal: ((profile as any)?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: ((profile as any)?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray((profile as any)?.education)
+              ? ((profile as any).education as Record<string, unknown>[])
+              : [],
+            docs: nextDocs,
+            resumes: Array.isArray(directoryResumesByUserId[id]?.resumes) ? directoryResumesByUserId[id]!.resumes : [],
+          });
+          void prefetchDirectoryDocumentBlobs(
+            id,
+            profileDocuments.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
@@ -1730,6 +1830,21 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       void listUserResumes(accessToken, id)
         .then((resumeResult) => {
           setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: resumeResult }));
+          const profile = directoryProfileByUserId[id] ?? null;
+          const profileDocuments = collectProfileDocuments({
+            personal: ((profile as any)?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: ((profile as any)?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray((profile as any)?.education)
+              ? ((profile as any).education as Record<string, unknown>[])
+              : [],
+            docs: Array.isArray(directoryDocumentsByUserId[id]) ? directoryDocumentsByUserId[id] ?? [] : [],
+            resumes: Array.isArray(resumeResult?.resumes) ? resumeResult.resumes : [],
+          });
+          void prefetchDirectoryDocumentBlobs(
+            id,
+            profileDocuments.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setDirectoryResumesByUserId((prev) => ({
@@ -2021,29 +2136,33 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   return (
                     <>
                       <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
-                        {unique.map((c, idx) => (
-                          <UploadedDocumentCard
-                            key={`${userId}-doc-${idx}`}
-                            title={c.title}
-                            url={c.url}
-                            token={accessToken ?? ""}
-                            fallbackText="—"
-                            hint={c.hint}
-                            originalName={c.fileName}
-                            previewKey={`${String(c.url ?? "").trim()}::${idx}`}
-                            previewMode="external"
-                            externalPreviewOpen={selectedPreview?.key === `${String(c.url ?? "").trim()}::${idx}`}
-                            onToggleExternalPreview={(blobUrl, key) => {
-                              setDirectoryDocPreviewByUserId((prev) => {
-                                const current = prev[userId];
-                                return {
-                                  ...prev,
-                                  [userId]: current?.key === key ? null : { url: blobUrl, title: c.title, key },
-                                };
-                              });
-                            }}
-                          />
-                        ))}
+                        {unique.map((c, idx) => {
+                          const prefetchedBlobKey = resolveFileUrl(c.url);
+                          return (
+                            <UploadedDocumentCard
+                              key={`${userId}-doc-${idx}`}
+                              title={c.title}
+                              url={c.url}
+                              token={accessToken ?? ""}
+                              fallbackText="—"
+                              hint={c.hint}
+                              originalName={c.fileName}
+                              prefetchedBlob={directoryPrefetchedBlobsByUserId[userId]?.[prefetchedBlobKey] ?? null}
+                              previewKey={`${String(c.url ?? "").trim()}::${idx}`}
+                              previewMode="external"
+                              externalPreviewOpen={selectedPreview?.key === `${String(c.url ?? "").trim()}::${idx}`}
+                              onToggleExternalPreview={(blobUrl, key) => {
+                                setDirectoryDocPreviewByUserId((prev) => {
+                                  const current = prev[userId];
+                                  return {
+                                    ...prev,
+                                    [userId]: current?.key === key ? null : { url: blobUrl, title: c.title, key },
+                                  };
+                                });
+                              }}
+                            />
+                          );
+                        })}
                       </div>
 
                       {selectedPreview?.url ? (

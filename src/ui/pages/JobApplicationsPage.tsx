@@ -131,6 +131,8 @@ type ProfileDocumentEntry = {
   fileName?: string;
 };
 
+type PrefetchedBlobEntry = { url: string; mimeType: string } | null;
+
 function collectProfileDocuments(params: {
   personal: Record<string, unknown> | null;
   profile: Record<string, unknown> | null;
@@ -263,6 +265,32 @@ function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
   return "pdf";
 }
 
+function detectMimeTypeFromBlobPayload(params: {
+  arrayBuffer: ArrayBuffer;
+  resolvedUrl: string;
+  contentType?: string;
+}): string {
+  const contentType = String(params.contentType ?? "").trim();
+  let mimeType = contentType.split(";")[0].trim();
+  if (!mimeType || mimeType === "application/octet-stream") {
+    const header = new Uint8Array(params.arrayBuffer.slice(0, 5));
+    const magic = String.fromCharCode(...header);
+    if (magic.startsWith("%PDF")) {
+      mimeType = "application/pdf";
+    } else if (header[0] === 0x89 && header[1] === 0x50) {
+      mimeType = "image/png";
+    } else if (header[0] === 0xFF && header[1] === 0xD8) {
+      mimeType = "image/jpeg";
+    } else {
+      const urlPath = params.resolvedUrl.split("?")[0].toLowerCase();
+      if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+        mimeType = "application/pdf";
+      }
+    }
+  }
+  return mimeType || "application/octet-stream";
+}
+
 function UploadedDocumentCard({
   title,
   url,
@@ -274,6 +302,7 @@ function UploadedDocumentCard({
   previewMode = "inline",
   externalPreviewOpen,
   onToggleExternalPreview,
+  prefetchedBlob,
 }: {
   title: string;
   url: string;
@@ -285,6 +314,7 @@ function UploadedDocumentCard({
   previewMode?: "inline" | "external";
   externalPreviewOpen?: boolean;
   onToggleExternalPreview?: (blobUrl: string, previewKey: string) => void;
+  prefetchedBlob?: PrefetchedBlobEntry;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -298,11 +328,18 @@ function UploadedDocumentCard({
     /^[0-9a-f]{24,}$/i.test(rawFileName) ||
     ["download", "file", "view", "get", "document", "upload", "serve"].includes(rawFileName.toLowerCase());
   const fileName = originalName || (isGenericSegment ? title : rawFileName);
+  const prefetchedBlobUrl = String(prefetchedBlob?.url ?? "").trim();
+  const hasPrefetchedBlob = Boolean(prefetchedBlobUrl);
 
   const isLocalUrl = resolvedUrl.startsWith("blob:") || resolvedUrl.startsWith("data:");
-  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token);
+  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token) && !hasPrefetchedBlob;
 
   useEffect(() => {
+    if (hasPrefetchedBlob) {
+      setBlobLoading(false);
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      return;
+    }
     if (!needsAuthFetch || !resolvedUrl || !token) {
       setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       return;
@@ -314,26 +351,13 @@ function UploadedDocumentCard({
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) return;
-        const contentType = res.headers.get("content-type") ?? "";
-        let mimeType = contentType.split(";")[0].trim();
         const arrayBuffer = await res.arrayBuffer();
-        if (!mimeType || mimeType === "application/octet-stream") {
-          const header = new Uint8Array(arrayBuffer.slice(0, 5));
-          const magic = String.fromCharCode(...header);
-          if (magic.startsWith("%PDF")) {
-            mimeType = "application/pdf";
-          } else if (header[0] === 0x89 && header[1] === 0x50) {
-            mimeType = "image/png";
-          } else if (header[0] === 0xFF && header[1] === 0xD8) {
-            mimeType = "image/jpeg";
-          } else {
-            const urlPath = resolvedUrl.split("?")[0].toLowerCase();
-            if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
-              mimeType = "application/pdf";
-            }
-          }
-        }
-        const blob = new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" });
+        const mimeType = detectMimeTypeFromBlobPayload({
+          arrayBuffer,
+          resolvedUrl,
+          contentType: res.headers.get("content-type") ?? "",
+        });
+        const blob = new Blob([arrayBuffer], { type: mimeType });
         const objectUrl = URL.createObjectURL(blob);
         if (cancelled) {
           URL.revokeObjectURL(objectUrl);
@@ -347,7 +371,7 @@ function UploadedDocumentCard({
       .finally(() => { if (!cancelled) setBlobLoading(false); });
 
     return () => { cancelled = true; };
-  }, [resolvedUrl, token, needsAuthFetch]);
+  }, [resolvedUrl, token, needsAuthFetch, hasPrefetchedBlob]);
 
   useEffect(() => {
     return () => {
@@ -355,7 +379,7 @@ function UploadedDocumentCard({
     };
   }, []);
 
-  const effectiveUrl = blobUrl ?? resolvedUrl;
+  const effectiveUrl = prefetchedBlobUrl || blobUrl || resolvedUrl;
   const inlineKind = getInlinePreviewKind(effectiveUrl || resolvedUrl);
   const isImage = inlineKind === "image";
   const canInlinePreview = inlineKind !== "none";
@@ -462,6 +486,7 @@ export function JobApplicationsPage() {
   const [resumesByAppId, setResumesByAppId] = useState<
     Record<string, { resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null } | null | undefined>
   >({});
+  const [prefetchedBlobsByAppId, setPrefetchedBlobsByAppId] = useState<Record<string, Record<string, PrefetchedBlobEntry>>>({});
   const [externalDocPreviewByAppId, setExternalDocPreviewByAppId] = useState<Record<string, { url: string; key: string } | null>>({});
   const [interviewApp, setInterviewApp] = useState<JobApplication | null>(null);
   const [interviewDate, setInterviewDate] = useState("");
@@ -703,6 +728,51 @@ export function JobApplicationsPage() {
     }
   }
 
+  async function prefetchAppDocumentBlobs(appId: string, docUrls: string[], token: string) {
+    const normalizedUrls = Array.from(
+      new Set(
+        docUrls
+          .map((raw) => resolveFileUrl(raw))
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!normalizedUrls.length) return;
+
+    const existing = prefetchedBlobsByAppId[appId] ?? {};
+    const missingUrls = normalizedUrls.filter((docUrl) => !Object.prototype.hasOwnProperty.call(existing, docUrl));
+    if (!missingUrls.length) return;
+
+    const prefetchedEntries = await Promise.all(
+      missingUrls.map(async (docUrl): Promise<[string, PrefetchedBlobEntry]> => {
+        try {
+          const res = await fetch(docUrl, { headers: { authorization: `Bearer ${token}` } });
+          if (!res.ok) return [docUrl, null];
+          const arrayBuffer = await res.arrayBuffer();
+          const mimeType = detectMimeTypeFromBlobPayload({
+            arrayBuffer,
+            resolvedUrl: docUrl,
+            contentType: res.headers.get("content-type") ?? "",
+          });
+          const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType }));
+          return [docUrl, { url: objectUrl, mimeType }];
+        } catch {
+          return [docUrl, null];
+        }
+      }),
+    );
+
+    setPrefetchedBlobsByAppId((prev) => {
+      const currentByUrl = prev[appId] ?? {};
+      const nextByUrl = { ...currentByUrl };
+      for (const [docUrl, blobEntry] of prefetchedEntries) {
+        if (Object.prototype.hasOwnProperty.call(nextByUrl, docUrl)) continue;
+        nextByUrl[docUrl] = blobEntry;
+      }
+      return { ...prev, [appId]: nextByUrl };
+    });
+  }
+
   async function onToggleProfile(app: JobApplication) {
     const nextOpen = openProfileId === app.id ? null : app.id;
     setOpenProfileId(nextOpen);
@@ -720,6 +790,19 @@ export function JobApplicationsPage() {
       void getJobSeekerFullProfile(accessToken, app.applicant_id)
         .then((profile) => {
           setProfileByAppId((prev) => ({ ...prev, [app.id]: profile ?? null }));
+          const profileDocs = collectProfileDocuments({
+            personal: (profile?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: (profile?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray(profile?.education) ? (profile?.education as Record<string, unknown>[]) : [],
+            docs: Array.isArray(documentsByAppId[app.id]) ? documentsByAppId[app.id] ?? [] : [],
+            resumes: resumesByAppId[app.id]?.resumes ?? [],
+            fallbackResumeUrl: String(app.applicant_resume ?? app.resume_url ?? "").trim(),
+          });
+          void prefetchAppDocumentBlobs(
+            app.id,
+            profileDocs.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setProfileByAppId((prev) => ({ ...prev, [app.id]: null }));
@@ -730,7 +813,22 @@ export function JobApplicationsPage() {
       setDocumentsByAppId((prev) => ({ ...prev, [app.id]: undefined }));
       void listUserDocuments(accessToken, app.applicant_id)
         .then((docs) => {
+          const nextDocs = Array.isArray(docs) ? docs : [];
           setDocumentsByAppId((prev) => ({ ...prev, [app.id]: Array.isArray(docs) ? docs : null }));
+          const profile = profileByAppId[app.id];
+          const profileDocs = collectProfileDocuments({
+            personal: (profile?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: (profile?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray(profile?.education) ? (profile?.education as Record<string, unknown>[]) : [],
+            docs: nextDocs,
+            resumes: resumesByAppId[app.id]?.resumes ?? [],
+            fallbackResumeUrl: String(app.applicant_resume ?? app.resume_url ?? "").trim(),
+          });
+          void prefetchAppDocumentBlobs(
+            app.id,
+            profileDocs.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setDocumentsByAppId((prev) => ({ ...prev, [app.id]: null }));
@@ -741,15 +839,30 @@ export function JobApplicationsPage() {
       setResumesByAppId((prev) => ({ ...prev, [app.id]: undefined }));
       void listUserResumes(accessToken, app.applicant_id)
         .then((resumes) => {
+          const nextResumes = resumes
+            ? {
+                resumes: Array.isArray(resumes.resumes) ? resumes.resumes : [],
+                primary_resume: resumes.primary_resume ?? null,
+              }
+            : null;
           setResumesByAppId((prev) => ({
             ...prev,
-            [app.id]: resumes
-              ? {
-                  resumes: Array.isArray(resumes.resumes) ? resumes.resumes : [],
-                  primary_resume: resumes.primary_resume ?? null,
-                }
-              : null,
+            [app.id]: nextResumes,
           }));
+          const profile = profileByAppId[app.id];
+          const profileDocs = collectProfileDocuments({
+            personal: (profile?.personalDetails ?? null) as Record<string, unknown> | null,
+            profile: (profile?.profile ?? null) as Record<string, unknown> | null,
+            education: Array.isArray(profile?.education) ? (profile?.education as Record<string, unknown>[]) : [],
+            docs: Array.isArray(documentsByAppId[app.id]) ? documentsByAppId[app.id] ?? [] : [],
+            resumes: nextResumes?.resumes ?? [],
+            fallbackResumeUrl: String(app.applicant_resume ?? app.resume_url ?? "").trim(),
+          });
+          void prefetchAppDocumentBlobs(
+            app.id,
+            profileDocs.map((entry) => entry.url),
+            accessToken,
+          );
         })
         .catch(() => {
           setResumesByAppId((prev) => ({ ...prev, [app.id]: null }));
@@ -886,6 +999,7 @@ export function JobApplicationsPage() {
                     {docs.map((doc, idx) => {
                       const previewKey = `${String(doc.url ?? "").trim()}::${idx}`;
                       const selectedPreview = externalDocPreviewByAppId[app.id];
+                      const prefetchedBlobKey = resolveFileUrl(doc.url);
                       return (
                         <UploadedDocumentCard
                           key={`${app.id}-doc-${idx}`}
@@ -897,6 +1011,7 @@ export function JobApplicationsPage() {
                           originalName={doc.fileName}
                           previewKey={previewKey}
                           previewMode="external"
+                          prefetchedBlob={prefetchedBlobsByAppId[app.id]?.[prefetchedBlobKey] ?? null}
                           externalPreviewOpen={selectedPreview?.key === previewKey}
                           onToggleExternalPreview={(blobUrl, key) => {
                             setExternalDocPreviewByAppId((prev) => {
