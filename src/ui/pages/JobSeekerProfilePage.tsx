@@ -2006,7 +2006,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     resumes: directoryResumeList,
                   });
 
-                  if (docs === undefined) {
+                  if (docs === undefined || !Object.prototype.hasOwnProperty.call(directoryResumesByUserId, userId)) {
                     return <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>;
                   }
 
