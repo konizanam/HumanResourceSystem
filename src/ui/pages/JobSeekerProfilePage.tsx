@@ -1364,32 +1364,6 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       setError(null);
       setSuccess(null);
 
-      const [myDocs, myResumes] = await Promise.all([
-        listMyDocuments(accessToken).catch(() => [] as UserDocument[]),
-        listJobSeekerResumes(accessToken).catch(() => ({
-          resumes: [] as { id: string; file_name?: string; download_url?: string; file_path?: string }[],
-          primary_resume: null,
-          total_count: 0,
-        })),
-      ]);
-
-      const hasLegacyDoc = (Array.isArray(myDocs) ? myDocs : []).some((doc) =>
-        [doc.download_url, doc.file_url, (doc as any)?.file_path].some((v) => hasLegacyUploadsReference(v)),
-      );
-
-      const resumeRows = Array.isArray(myResumes?.resumes) ? myResumes.resumes : [];
-      const hasLegacyResume = resumeRows.some((resume) =>
-        [resume.download_url, resume.file_path].some((v) => hasLegacyUploadsReference(v)),
-      );
-
-      if (hasLegacyDoc || hasLegacyResume) {
-        setError(
-          "Application blocked. Please update your documents before applying. Some existing files still use legacy /uploads/ links and might be corrupted due to a system change.",
-        );
-        setActiveStep(0);
-        return;
-      }
-
       await applyToJob(accessToken, { job_id: jobId });
       setSuccess(`Application submitted for "${pendingJob.title}".`);
       setPendingJob(null);
