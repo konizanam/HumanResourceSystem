@@ -1104,9 +1104,10 @@ export function PublicJobsPage() {
       {profileIncompleteModalOpen ? (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setProfileIncompleteModalOpen(false)}>
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modalTitle">Profile Incomplete</div>
+            <div className="modalTitle">Complete Your Profile</div>
             <div className="modalMessage">
-              Please complete your job seeker profile before applying.
+              Complete your profile before applying. You must upload a CV / resume, add at least one
+              education qualification, and upload an identity document.
             </div>
             <div className="modalActions">
               <button
@@ -1121,7 +1122,7 @@ export function PublicJobsPage() {
                 type="button"
                 onClick={() => navigate("/app/my-profile", { state: { pendingJob: applyContextJob } })}
               >
-                Go to Profile
+                Complete Profile
               </button>
             </div>
           </div>

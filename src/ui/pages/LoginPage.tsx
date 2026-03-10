@@ -203,6 +203,7 @@ export function LoginPage() {
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const [lastAppColor, setLastAppColor] = useState<string>(DEFAULT_APP_COLOR);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const apiBase = useMemo(
     () => String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, ""),
@@ -252,6 +253,7 @@ export function LoginPage() {
           ? `${apiBase}/api/v1/public/companies/${encodeURIComponent(mainCompanyId)}/logo`
           : "";
         setBrandingLogoUrl(mainCompanyLogo || String(settings.branding_logo_url ?? ""));
+        if (!cancelled) setSettingsLoaded(true);
       } catch {
         if (cancelled) return;
         setSystemName("");
@@ -260,6 +262,7 @@ export function LoginPage() {
         applyAppThemeColor(DEFAULT_APP_COLOR);
         setWelcomeTitle(DEFAULT_LOGIN_WELCOME_TITLE);
         setWelcomeSubtitle(DEFAULT_LOGIN_WELCOME_SUBTITLE);
+        setSettingsLoaded(true);
       }
     };
 
@@ -501,7 +504,7 @@ export function LoginPage() {
             <div className="loginLogo">
               <img
                 src={displayLogoSrc}
-                alt={systemName ? `${systemName} Logo` : "Company Logo"}
+                alt={settingsLoaded ? (systemName ? `${systemName} Logo` : "Company Logo") : ""}
                 className="loginLogoImg"
                 onError={() => {
                   if (displayLogoSrc !== fallbackLogoSrc) {

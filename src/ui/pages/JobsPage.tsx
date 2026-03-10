@@ -1958,10 +1958,10 @@ export function JobsPage() {
           onMouseDown={() => !saving && setProfileIncompleteModalOpen(false)}
         >
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modalTitle">Profile Incomplete</div>
+            <div className="modalTitle">Complete Your Profile</div>
             <div className="modalMessage">
-              Your profile is incomplete. Please fill in your personal details, add at least one education
-              record, and upload your CV before applying.
+              Complete your profile before applying. You must upload a CV / resume, add at least one
+              education qualification, and upload an identity document.
             </div>
             <div className="modalActions">
               <button
@@ -1976,7 +1976,7 @@ export function JobsPage() {
                 type="button"
                 onClick={() => navigate("/app/my-profile", { state: { pendingJob: applyContextJob } })}
               >
-                Go to Profile
+                Complete Profile
               </button>
             </div>
           </div>

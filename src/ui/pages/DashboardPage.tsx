@@ -8,11 +8,13 @@ import {
   getCompany,
   getEmployerDashboard,
   getJob,
+  getJobSeekerFullProfile,
   getPublicCompany,
   listJobCategories,
   listCompanies,
   listAuditLogs,
   listJobs,
+  listJobSeekerResumes,
   listMyApplications,
   withdrawMyApplication,
   type Company,
@@ -132,6 +134,8 @@ export function DashboardPage() {
   });
   const [seekerApplications, setSeekerApplications] = useState<JobApplication[]>([]);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
+  const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
+  const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
   const [seekerCompanies, setSeekerCompanies] = useState<Company[]>([]);
   const [seekerCategories, setSeekerCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -578,6 +582,18 @@ export function DashboardPage() {
     );
   }, [loading, seekerApplicationsPagination.page, seekerApplicationsPagination.pages, seekerApplicationsPagination.total]);
 
+  function getDashboardApplyProfileCompleteness(profile: any, hasCv: boolean) {
+    const details = profile?.personalDetails ?? profile?.personal_details ?? null;
+    const idDocumentUrl = String(details?.id_document_url ?? details?.idDocumentUrl ?? "").trim();
+    const education = Array.isArray(profile?.education) ? profile.education
+      : Array.isArray(profile?.educations) ? profile.educations : [];
+    const reasons: string[] = [];
+    if (!idDocumentUrl) reasons.push("missing identity document");
+    if (education.length < 1) reasons.push("missing education qualification");
+    if (!hasCv) reasons.push("missing CV");
+    return { complete: reasons.length === 0, reasons };
+  }
+
   const onApplyFromDashboard = useCallback(async (job: JobListItem) => {
     if (!accessToken || !canApplyJob) return;
     const jobId = String(job.id);
@@ -588,6 +604,18 @@ export function DashboardPage() {
       setApplyingJobId(jobId);
       setError(null);
       setSuccess(null);
+
+      const [profile, resumes] = await Promise.all([
+        getJobSeekerFullProfile(accessToken),
+        listJobSeekerResumes(accessToken),
+      ]);
+      const hasCv = Boolean(resumes.primary_resume || (Array.isArray(resumes.resumes) && resumes.resumes.length > 0));
+      const completeness = getDashboardApplyProfileCompleteness(profile, hasCv);
+      if (!completeness.complete) {
+        setApplyContextJob(job);
+        setProfileIncompleteModalOpen(true);
+        return;
+      }
 
       const created = await applyToJob(accessToken, { job_id: jobId });
       setSeekerApplications((prev) => [created, ...prev]);
@@ -1716,6 +1744,41 @@ export function DashboardPage() {
                 disabled={Boolean(applyingJobId)}
               >
                 Yes, update profile
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {profileIncompleteModalOpen ? (
+        <div
+          className="modalOverlay"
+          role="presentation"
+          onMouseDown={() => !applyingJobId && setProfileIncompleteModalOpen(false)}
+        >
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Complete Your Profile</div>
+            <div className="modalMessage">
+              Complete your profile before applying. You must upload a CV / resume, add at least one
+              education qualification, and upload an identity document.
+            </div>
+            <div className="modalActions">
+              <button
+                className="btn btnGhost"
+                type="button"
+                onClick={() => setProfileIncompleteModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={() => {
+                  setProfileIncompleteModalOpen(false);
+                  navigate("/app/my-profile", { state: { pendingJob: applyContextJob } });
+                }}
+              >
+                Complete Profile
               </button>
             </div>
           </div>
