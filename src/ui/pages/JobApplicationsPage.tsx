@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   getJobSeekerFullProfile,
@@ -252,6 +252,191 @@ function collectProfileDocuments(params: {
   });
 }
 
+function getInlinePreviewKind(resolvedUrl: string): "image" | "pdf" | "none" {
+  const url = String(resolvedUrl ?? "").trim();
+  if (!url) return "none";
+  if (/^data:image\//i.test(url)) return "image";
+  if (/^data:application\/pdf/i.test(url)) return "pdf";
+  const fileName = extractFileName(url).toLowerCase();
+  if (/\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(fileName)) return "image";
+  if (/\.(docx?|xlsx?|pptx?|txt|csv|zip|rar)$/i.test(fileName)) return "none";
+  return "pdf";
+}
+
+function UploadedDocumentCard({
+  title,
+  url,
+  fallbackText,
+  hint,
+  originalName,
+  token,
+  previewKey,
+  previewMode = "inline",
+  externalPreviewOpen,
+  onToggleExternalPreview,
+}: {
+  title: string;
+  url: string;
+  fallbackText: string;
+  hint?: string;
+  originalName?: string;
+  token?: string;
+  previewKey?: string;
+  previewMode?: "inline" | "external";
+  externalPreviewOpen?: boolean;
+  onToggleExternalPreview?: (blobUrl: string, previewKey: string) => void;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [blobLoading, setBlobLoading] = useState(false);
+
+  const resolvedUrl = resolveFileUrl(url);
+  const hasFile = Boolean(resolvedUrl);
+  const rawFileName = extractFileName(url);
+  const isGenericSegment = !rawFileName ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawFileName) ||
+    /^[0-9a-f]{24,}$/i.test(rawFileName) ||
+    ["download", "file", "view", "get", "document", "upload", "serve"].includes(rawFileName.toLowerCase());
+  const fileName = originalName || (isGenericSegment ? title : rawFileName);
+
+  const isLocalUrl = resolvedUrl.startsWith("blob:") || resolvedUrl.startsWith("data:");
+  const needsAuthFetch = hasFile && !isLocalUrl && Boolean(token);
+
+  useEffect(() => {
+    if (!needsAuthFetch || !resolvedUrl || !token) {
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      return;
+    }
+    let cancelled = false;
+
+    setBlobLoading(true);
+    fetch(resolvedUrl, { headers: { authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) return;
+        const contentType = res.headers.get("content-type") ?? "";
+        let mimeType = contentType.split(";")[0].trim();
+        const arrayBuffer = await res.arrayBuffer();
+        if (!mimeType || mimeType === "application/octet-stream") {
+          const header = new Uint8Array(arrayBuffer.slice(0, 5));
+          const magic = String.fromCharCode(...header);
+          if (magic.startsWith("%PDF")) {
+            mimeType = "application/pdf";
+          } else if (header[0] === 0x89 && header[1] === 0x50) {
+            mimeType = "image/png";
+          } else if (header[0] === 0xFF && header[1] === 0xD8) {
+            mimeType = "image/jpeg";
+          } else {
+            const urlPath = resolvedUrl.split("?")[0].toLowerCase();
+            if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+              mimeType = "application/pdf";
+            }
+          }
+        }
+        const blob = new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" });
+        const objectUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return objectUrl; });
+      })
+      .catch(() => {
+        // Silently fail
+      })
+      .finally(() => { if (!cancelled) setBlobLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [resolvedUrl, token, needsAuthFetch]);
+
+  useEffect(() => {
+    return () => {
+      setBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  }, []);
+
+  const effectiveUrl = blobUrl ?? resolvedUrl;
+  const inlineKind = getInlinePreviewKind(effectiveUrl || resolvedUrl);
+  const isImage = inlineKind === "image";
+  const canInlinePreview = inlineKind !== "none";
+  const isExternalPreview = previewMode === "external";
+  const effectivePreviewOpen = isExternalPreview ? Boolean(externalPreviewOpen) : previewOpen;
+
+  function onDownload(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dlUrl = effectiveUrl || resolvedUrl;
+    if (!dlUrl) return;
+    const anchor = document.createElement("a");
+    anchor.href = dlUrl;
+    anchor.download = fileName || "document";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  }
+
+  function onViewClick(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const viewUrl = effectiveUrl || resolvedUrl;
+    const previewIdentity = previewKey || title;
+    if (isExternalPreview) {
+      onToggleExternalPreview?.(viewUrl, previewIdentity);
+      return;
+    }
+    setPreviewOpen((v) => !v);
+  }
+
+  return (
+    <div className="uploadedDocCard">
+      <div className="uploadedDocCardTitle">{title}</div>
+      {hasFile ? (
+        <span className="uploadedDocCardLink" title={fileName}>
+          {blobLoading ? "Loading…" : (fileName || `View ${title.toLowerCase()}`)}
+        </span>
+      ) : (
+        <span className="readValue">{fallbackText}</span>
+      )}
+      {hasFile ? (
+        <div className="uploadedDocCardActions">
+          <button
+            type="button"
+            className="btn btnPrimary btnSm uploadedDocViewBtn"
+            onClick={onViewClick}
+            disabled={blobLoading || !hasFile}
+          >
+            {blobLoading ? "…" : effectivePreviewOpen ? "Hide" : "View"}
+          </button>
+          <button
+            type="button"
+            className="btn btnGhost btnSm uploadedDocDownloadBtn"
+            onClick={onDownload}
+            disabled={blobLoading || !hasFile}
+          >
+            Download
+          </button>
+        </div>
+      ) : null}
+
+      {hasFile && !isExternalPreview && previewOpen ? (
+        <div className="uploadedDocPreview">
+          {canInlinePreview ? (
+            isImage ? (
+              <img className="uploadedDocPreviewImage" src={effectiveUrl} alt={fileName || title} />
+            ) : (
+              <iframe className="uploadedDocPreviewFrame" src={effectiveUrl} title={fileName || title} />
+            )
+          ) : (
+            <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>
+          )}
+        </div>
+      ) : null}
+
+      {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
+    </div>
+  );
+}
+
 export function JobApplicationsPage() {
   const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
@@ -277,9 +462,7 @@ export function JobApplicationsPage() {
   const [resumesByAppId, setResumesByAppId] = useState<
     Record<string, { resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null } | null | undefined>
   >({});
-  const [documentUrlByAppId, setDocumentUrlByAppId] = useState<Record<string, string | null>>({});
-  const [docBlobByAppId, setDocBlobByAppId] = useState<Record<string, string | null>>({});
-  const [docLoadingByAppId, setDocLoadingByAppId] = useState<Record<string, boolean>>({});
+  const [externalDocPreviewByAppId, setExternalDocPreviewByAppId] = useState<Record<string, { url: string; key: string } | null>>({});
   const [interviewApp, setInterviewApp] = useState<JobApplication | null>(null);
   const [interviewDate, setInterviewDate] = useState("");
   const [interviewTime, setInterviewTime] = useState("");
@@ -523,7 +706,7 @@ export function JobApplicationsPage() {
   async function onToggleProfile(app: JobApplication) {
     const nextOpen = openProfileId === app.id ? null : app.id;
     setOpenProfileId(nextOpen);
-    setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: null }));
+    setExternalDocPreviewByAppId((prev) => ({ ...prev, [app.id]: null }));
     if (!nextOpen || !accessToken) return;
     const hasProfile = profileByAppId[app.id] !== undefined;
     const hasDocs = Object.prototype.hasOwnProperty.call(documentsByAppId, app.id);
@@ -593,7 +776,6 @@ export function JobApplicationsPage() {
     const documentsState = documentsByAppId[app.id];
     const resumesState = resumesByAppId[app.id];
     const personal = profile?.personalDetails ?? null;
-    const selectedDoc = documentUrlByAppId[app.id];
     const docs = profileDocuments(app);
 
     const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
@@ -702,102 +884,68 @@ export function JobApplicationsPage() {
                 <>
                   <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
                     {docs.map((doc, idx) => {
-                      const resolvedUrl = resolveFileUrl(doc.url);
-                      const fileName = String(doc.fileName ?? "").trim() || extractFileName(doc.url) || doc.title;
-                      const isSelected = selectedDoc === doc.url;
+                      const previewKey = `${String(doc.url ?? "").trim()}::${idx}`;
+                      const selectedPreview = externalDocPreviewByAppId[app.id];
                       return (
-                        <div key={`${app.id}-${doc.title}-${doc.url}-${idx}`} className="uploadedDocCard">
-                          <div className="uploadedDocCardTitle">{doc.title}</div>
-                          <span className="uploadedDocCardLink" title={fileName}>{fileName}</span>
-                          {doc.hint ? <span className="uploadedDocCardHint">{doc.hint}</span> : null}
-                          <div className="uploadedDocCardActions">
-                            <button
-                              type="button"
-                              className="btn btnPrimary btnSm uploadedDocViewBtn"
-                              disabled={docLoadingByAppId[app.id] || !resolvedUrl}
-                              onClick={() => {
-                                if (!resolvedUrl || !accessToken) return;
-                                setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }));
-                                setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: true }));
-                                fetch(resolvedUrl, { headers: { authorization: `Bearer ${accessToken}` } })
-                                  .then(async (res) => {
-                                    if (!res.ok) return;
-                                    const contentType = res.headers.get("content-type") ?? "";
-                                    let mimeType = contentType.split(";")[0].trim();
-                                    const arrayBuffer = await res.arrayBuffer();
-                                    if (!mimeType || mimeType === "application/octet-stream") {
-                                      const header = new Uint8Array(arrayBuffer.slice(0, 5));
-                                      const magic = String.fromCharCode(...header);
-                                      if (magic.startsWith("%PDF")) {
-                                        mimeType = "application/pdf";
-                                      } else if (header[0] === 0x89 && header[1] === 0x50) {
-                                        mimeType = "image/png";
-                                      } else if (header[0] === 0xFF && header[1] === 0xD8) {
-                                        mimeType = "image/jpeg";
-                                      } else {
-                                        const urlPath = resolvedUrl.split("?")[0].toLowerCase();
-                                        if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
-                                          mimeType = "application/pdf";
-                                        }
-                                      }
-                                    }
-                                    const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" }));
-                                    setDocBlobByAppId((prev) => {
-                                      if (prev[app.id]) URL.revokeObjectURL(prev[app.id]!);
-                                      return { ...prev, [app.id]: objectUrl };
-                                    });
-                                  })
-                                  .catch(() => {
-                                    // Keep UI stable; preview area will show fallback text.
-                                  })
-                                  .finally(() => setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: false })));
-                              }}
-                            >
-                              {docLoadingByAppId[app.id] && isSelected ? "Loading…" : isSelected ? "Refresh" : "View"}
-                            </button>
-                            <a
-                              href={resolvedUrl || undefined}
-                              className="btn btnGhost btnSm uploadedDocDownloadBtn"
-                              target="_blank"
-                              rel="noreferrer"
-                              download={fileName || "document"}
-                              onClick={(e) => {
-                                if (!resolvedUrl) e.preventDefault();
-                              }}
-                            >
-                              Download
-                            </a>
-                          </div>
-                        </div>
+                        <UploadedDocumentCard
+                          key={`${app.id}-doc-${idx}`}
+                          title={doc.title}
+                          url={doc.url}
+                          token={accessToken ?? ""}
+                          fallbackText="—"
+                          hint={doc.hint}
+                          originalName={doc.fileName}
+                          previewKey={previewKey}
+                          previewMode="external"
+                          externalPreviewOpen={selectedPreview?.key === previewKey}
+                          onToggleExternalPreview={(blobUrl, key) => {
+                            setExternalDocPreviewByAppId((prev) => {
+                              const current = prev[app.id];
+                              return {
+                                ...prev,
+                                [app.id]: current?.key === key ? null : { url: blobUrl, key },
+                              };
+                            });
+                          }}
+                        />
                       );
                     })}
                   </div>
 
-                  {selectedDoc && (
+                  {externalDocPreviewByAppId[app.id]?.url ? (
                     <div style={{ marginTop: 10 }}>
                       <div className="readLabel">Document Preview</div>
-                      {docLoadingByAppId[app.id] ? (
-                        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
-                          <span className="placeholderSpinner" aria-hidden="true" />
-                          <span className="srOnly">Loading</span>
-                        </div>
-                      ) : docBlobByAppId[app.id] ? (
-                        <iframe
-                          src={docBlobByAppId[app.id]!}
-                          title="Document preview"
-                          style={{
-                            width: "100%",
-                            height: 560,
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 8,
-                            background: "#fff",
-                          }}
-                        />
-                      ) : (
-                        <p className="pageText">Could not load document preview.</p>
-                      )}
+                      <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+                        {(() => {
+                          const kind = getInlinePreviewKind(externalDocPreviewByAppId[app.id]!.url);
+                          if (kind === "image") {
+                            return (
+                              <img
+                                className="uploadedDocPreviewImage"
+                                src={externalDocPreviewByAppId[app.id]!.url}
+                                alt="Document preview"
+                              />
+                            );
+                          }
+                          if (kind === "pdf") {
+                            return (
+                              <iframe
+                                className="uploadedDocPreviewFrame"
+                                src={externalDocPreviewByAppId[app.id]!.url}
+                                title="Document preview"
+                                style={{ minHeight: 600 }}
+                              />
+                            );
+                          }
+                          return (
+                            <span className="uploadedDocCardHint">
+                              Preview is not available for this file type. Use Download.
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  )}
+                  ) : null}
                 </>
               )}
             </Section>
