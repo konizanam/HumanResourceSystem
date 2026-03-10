@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { getPublicCompanyById, getPublicSystemSettings, getUnreadNotificationCount } from "../api/client";
+import { getPublicCompanyById, getPublicSystemSettings, getUnreadNotificationCount, me } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { applyAppThemeColor } from "../utils/themeColor";
@@ -257,6 +257,7 @@ export function AppLayout({
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
   const [profilePictureObjectUrl, setProfilePictureObjectUrl] = useState<string>("");
+  const [dbUserDisplayName, setDbUserDisplayName] = useState<string>("");
   // Don't call applyThemeToHtml here — if no stored pref, let CSS prefers-color-scheme handle it.
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
 
@@ -268,6 +269,9 @@ export function AppLayout({
   };
 
   const displayName = useMemo(() => {
+    const dbName = String(dbUserDisplayName ?? "").trim();
+    if (dbName) return dbName;
+
     const name = (userName ?? "").trim();
     if (name) return name;
     const email = (userEmail ?? "").trim();
@@ -287,7 +291,34 @@ export function AppLayout({
     } catch {
       return "";
     }
-  }, [accessToken, userEmail, userName]);
+  }, [accessToken, dbUserDisplayName, userEmail, userName]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setDbUserDisplayName("");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await me(accessToken);
+        if (cancelled) return;
+        const user = (session as any)?.user ?? {};
+        const first = String(user?.first_name ?? "").trim();
+        const last = String(user?.last_name ?? "").trim();
+        const fullName = [first, last].filter(Boolean).join(" ").trim();
+        setDbUserDisplayName(fullName);
+      } catch {
+        if (cancelled) return;
+        setDbUserDisplayName("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   const displayNameInitials = useMemo(() => {
     const words = String(displayName ?? "").trim().split(/\s+/).filter(Boolean);

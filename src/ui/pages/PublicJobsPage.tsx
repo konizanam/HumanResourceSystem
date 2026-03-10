@@ -12,6 +12,7 @@ import {
   listMyApplications,
   listPublicJobCategories,
   listPublicJobs,
+  me,
   type JobListItem,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -213,12 +214,43 @@ export function PublicJobsPage() {
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(getStoredTheme);
+  const [dbUserDisplayName, setDbUserDisplayName] = useState("");
 
   const displayName = useMemo(() => {
+    const dbName = String(dbUserDisplayName ?? "").trim();
+    if (dbName) return dbName;
+
     const name = String(userName ?? "").trim();
     if (name) return name;
     return String(userEmail ?? "").trim();
-  }, [userEmail, userName]);
+  }, [dbUserDisplayName, userEmail, userName]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setDbUserDisplayName("");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await me(accessToken);
+        if (cancelled) return;
+        const user = (session as any)?.user ?? {};
+        const first = String(user?.first_name ?? "").trim();
+        const last = String(user?.last_name ?? "").trim();
+        const fullName = [first, last].filter(Boolean).join(" ").trim();
+        setDbUserDisplayName(fullName);
+      } catch {
+        if (cancelled) return;
+        setDbUserDisplayName("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   const displayNameInitials = useMemo(() => {
     const base = String(displayName ?? "").trim();
