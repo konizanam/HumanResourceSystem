@@ -572,7 +572,7 @@ export function LoginPage() {
                   <div className="loginRow">
                     <button
                       type="button"
-                      className="linkBtn"
+                      className="linkBtn authLinkBtn"
                       onClick={() => {
                         setShowForgot(true);
                         setForgotEmail(email.trim());
@@ -604,7 +604,7 @@ export function LoginPage() {
                   <div className="loginRow">
                     <button
                       type="button"
-                      className="linkBtn"
+                      className="linkBtn authLinkBtn"
                       onClick={() => {
                         setShowForgot(false);
                         setForgotMessage(null);
@@ -676,7 +676,7 @@ export function LoginPage() {
               <div className="loginRow loginRowSplit">
                 <button
                   type="button"
-                  className="linkBtn"
+                  className="linkBtn authLinkBtn"
                   onClick={() => {
                     setStep("credentials");
                     setPending(null);
@@ -690,7 +690,7 @@ export function LoginPage() {
 
                 <button
                   type="button"
-                  className="linkBtn"
+                  className="linkBtn authLinkBtn"
                   onClick={async () => {
                     setError(null);
                     setBusy(true);
@@ -721,9 +721,9 @@ export function LoginPage() {
                       setBusy(false);
                     }
                   }}
-                  disabled={busy || countdownSeconds > 0}
+                  disabled={busy}
                 >
-                  {countdownSeconds > 0 ? `Resend in ${countdownLabel}` : "Resend code"}
+                  Resend code
                 </button>
               </div>
             </>
@@ -750,7 +750,7 @@ export function LoginPage() {
 
           <div className="loginFooter">
             Don't have an account?{" "}
-            <Link to="/register" className="linkBtn">
+            <Link to="/register" className="linkBtn authLinkBtn">
               Sign up
             </Link>
           </div>

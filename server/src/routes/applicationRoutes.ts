@@ -82,40 +82,65 @@ function isLegacyUploadPath(value: unknown): boolean {
   return raw.includes('/upload/') || raw.includes('/uploads/');
 }
 
-async function hasLegacyApplicationDocument(userId: string): Promise<boolean> {
-  const legacyResumeCheck = await dbQuery(
-    `SELECT 1
+function toDisplayDocumentType(rawType: unknown): string {
+  const normalized = String(rawType ?? '').trim().toLowerCase();
+  if (!normalized) return 'Document';
+
+  const known: Record<string, string> = {
+    id_document: 'Identification Document',
+    certificate: 'Profile Certificate',
+    qualification_evidence: 'Qualification Evidence',
+    license_document: 'License Document',
+    conduct_certificate: 'Conduct Certificate',
+  };
+  if (known[normalized]) return known[normalized];
+
+  return normalized
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Promise<string[]> {
+  const flagged = new Set<string>();
+
+  // Match profile-view behavior: validate only the effective/latest resume.
+  const latestResumeResult = await dbQuery(
+    `SELECT file_path
        FROM resumes
       WHERE job_seeker_id = $1
-        AND (
-          COALESCE(file_path, '') ILIKE '%/upload/%'
-          OR COALESCE(file_path, '') ILIKE '%/uploads/%'
-        )
+      ORDER BY is_primary DESC,
+               uploaded_at DESC NULLS LAST,
+               created_at DESC NULLS LAST,
+               id DESC
       LIMIT 1`,
     [userId]
   );
 
-  if (legacyResumeCheck.rows.length > 0) {
-    return true;
+  if (isLegacyUploadPath((latestResumeResult.rows[0] as any)?.file_path)) {
+    flagged.add('CV / Resume');
   }
 
   try {
-    const legacyDocumentCheck = await dbQuery(
-      `SELECT 1
+    // Match profile-view behavior: only latest uploaded document for each type.
+    const latestDocuments = await dbQuery(
+      `SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(document_type), ''), 'Document'))
+              document_type,
+              file_path,
+              file_url
          FROM documents
         WHERE user_id = $1
-          AND (
-            COALESCE(file_path, '') ILIKE '%/upload/%'
-            OR COALESCE(file_path, '') ILIKE '%/uploads/%'
-            OR COALESCE(file_url, '') ILIKE '%/upload/%'
-            OR COALESCE(file_url, '') ILIKE '%/uploads/%'
-          )
-        LIMIT 1`,
+        ORDER BY COALESCE(NULLIF(TRIM(document_type), ''), 'Document'),
+                 created_at DESC NULLS LAST,
+                 updated_at DESC NULLS LAST,
+                 id DESC`,
       [userId]
     );
 
-    if (legacyDocumentCheck.rows.length > 0) {
-      return true;
+    for (const doc of latestDocuments.rows) {
+      if (isLegacyUploadPath((doc as any)?.file_path) || isLegacyUploadPath((doc as any)?.file_url)) {
+        flagged.add(toDisplayDocumentType((doc as any)?.document_type));
+      }
     }
   } catch (e: any) {
     // Older deployments may not have the documents table/columns.
@@ -124,15 +149,7 @@ async function hasLegacyApplicationDocument(userId: string): Promise<boolean> {
     }
   }
 
-  const userResumeUrlResult = await dbQuery(
-    `SELECT resume_url
-       FROM users
-      WHERE id = $1
-      LIMIT 1`,
-    [userId]
-  );
-
-  return isLegacyUploadPath(userResumeUrlResult.rows[0]?.resume_url);
+  return Array.from(flagged.values());
 }
 
 /**
@@ -278,12 +295,15 @@ router.post('/',
         return res.status(400).json({ error: 'You have already applied to this job' });
       }
 
-      const hasLegacyDocument = await hasLegacyApplicationDocument(applicant_id);
-      if (hasLegacyDocument) {
+      const legacyDocuments = await getLegacyApplicationDocumentsNeedingReupload(applicant_id);
+      if (legacyDocuments.length > 0) {
+        const docsList = legacyDocuments.map((name) => `- ${name}`).join('\n');
         return res.status(409).json({
           error: {
             code: 'LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED',
-            message: 'A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.',
+            message:
+              `A legacy application document was detected (/upload/). Please re-upload the following documents using the new upload before applying:\n${docsList}`,
+            documents: legacyDocuments,
           },
         });
       }

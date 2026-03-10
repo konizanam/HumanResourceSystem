@@ -41,6 +41,12 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
         ? body.code
         : undefined;
 
+  const errorDocuments = Array.isArray(errorField?.documents)
+    ? errorField.documents.map((d: unknown) => String(d).trim()).filter(Boolean)
+    : Array.isArray(body?.documents)
+      ? body.documents.map((d: unknown) => String(d).trim()).filter(Boolean)
+      : undefined;
+
   if (res.status === 401 && typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("hrs:unauthorized", {
@@ -52,7 +58,11 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     );
   }
 
-  return Object.assign(new Error(message), { status: res.status, code: errorCode });
+  return Object.assign(new Error(message), {
+    status: res.status,
+    code: errorCode,
+    documents: errorDocuments,
+  });
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -1474,6 +1484,60 @@ export async function listUserResumes(
     resumes: Array.isArray((body as any)?.resumes) ? ((body as any).resumes as JobSeekerResume[]) : [],
     primary_resume: ((body as any)?.primary_resume ?? null) as JobSeekerResume | null,
   };
+}
+
+function hasLegacyUploadsReference(raw: unknown): boolean {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (!value) return false;
+  return value.includes("/upload/") || value.includes("/uploads/");
+}
+
+export async function getLegacyApplicationDocumentsNeedingReupload(token: string): Promise<string[]> {
+  const [documents, resumes] = await Promise.all([
+    listMyDocuments(token).catch(() => [] as UserDocument[]),
+    listJobSeekerResumes(token).catch(() => ({
+      resumes: [] as JobSeekerResume[],
+      primary_resume: null as JobSeekerResume | null,
+      total_count: 0,
+    })),
+  ]);
+
+  const uploadedDocs = Array.isArray(documents) ? documents : [];
+  const latestByType = new Map<string, UserDocument>();
+  for (const doc of uploadedDocs) {
+    const type = String(doc.document_type ?? "Document").trim() || "Document";
+    const existing = latestByType.get(type);
+    if (!existing) {
+      latestByType.set(type, doc);
+      continue;
+    }
+
+    const existingDate = new Date(String(existing.created_at ?? "")).getTime();
+    const newDate = new Date(String(doc.created_at ?? "")).getTime();
+    if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
+      latestByType.set(type, doc);
+    }
+  }
+
+  const flagged = new Set<string>();
+  for (const doc of Array.from(latestByType.values())) {
+    const isLegacy = [doc.download_url, doc.file_url, (doc as any)?.file_path].some((v) => hasLegacyUploadsReference(v));
+    if (!isLegacy) continue;
+    const type = String(doc.document_type ?? "Document").trim() || "Document";
+    flagged.add(type);
+  }
+
+  const resumeRows = Array.isArray(resumes?.resumes) ? resumes.resumes : [];
+  const effectiveResume = resumeRows.find((r) => Boolean((r as any)?.is_primary)) ?? resumeRows[0] ?? null;
+  const hasLegacyResume = Boolean(effectiveResume && [effectiveResume.download_url, effectiveResume.file_path].some((v) => hasLegacyUploadsReference(v)));
+  if (hasLegacyResume) flagged.add("CV / Resume");
+
+  return Array.from(flagged.values());
+}
+
+export async function hasLegacyApplicationDocuments(token: string): Promise<boolean> {
+  const docs = await getLegacyApplicationDocumentsNeedingReupload(token);
+  return docs.length > 0;
 }
 
 export async function uploadJobSeekerResume(

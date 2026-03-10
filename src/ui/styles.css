@@ -1759,6 +1759,23 @@ input[type="radio"][required] {
   gap: 8px;
 }
 
+.loginPage .authLinkBtn {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.loginPage .authLinkBtn:hover:not(:disabled) {
+  color: var(--menu-icon-active);
+}
+
+.loginPage .authLinkBtn:disabled {
+  color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
+  text-decoration: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .loginPage .hintBox {
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--stroke) 72%, var(--accent-soft));

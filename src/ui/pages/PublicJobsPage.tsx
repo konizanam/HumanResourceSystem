@@ -5,10 +5,12 @@ import {
   type Company,
   getPublicCompany,
   getPublicCompanyById,
+  getLegacyApplicationDocumentsNeedingReupload,
   getJobSeekerFullProfile,
   listJobSeekerResumes,
   getPublicSystemSettings,
   getPublicJob,
+  listMyApplications,
   listPublicJobCategories,
   listPublicJobs,
   type JobListItem,
@@ -164,6 +166,17 @@ function getApplyProfileCompleteness(profile: any, hasCv: boolean): ProfileCompl
 }
 
 export function PublicJobsPage() {
+    const buildLegacyReuploadMessage = useCallback((documents: string[]): string => {
+      const cleaned = documents.map((d) => String(d).trim()).filter(Boolean);
+      if (!cleaned.length) {
+        return "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.";
+      }
+      return [
+        "A legacy application document was detected (/upload/). Please re-upload the following documents using the new upload before applying:",
+        ...cleaned.map((doc) => `- ${doc}`),
+      ].join("\n");
+    }, []);
+
   const { accessToken, logout, userName, userEmail } = useAuth();
   const { hasPermission, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
@@ -192,6 +205,7 @@ export function PublicJobsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState<number>(5);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const [pagination, setPagination] = useState({ page: 1, limit: 5, total: 0, pages: 1 });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("");
@@ -503,10 +517,57 @@ export function PublicJobsPage() {
 
     setOpenJobId(String(jobId));
     const target = jobs.find((j) => String(j.id) === String(jobId));
-    if (target) setUpdateProfileBeforeApplyJob(target);
+    if (target) void onStartApply(target);
     params.delete("apply");
     navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : "" }, { replace: true });
-  }, [accessToken, canApplyJob, jobId, jobs, location.pathname, location.search, navigate, permissionsLoading]);
+  }, [accessToken, canApplyJob, jobId, jobs, location.pathname, location.search, navigate, onStartApply, permissionsLoading]);
+
+  useEffect(() => {
+    if (!accessToken || permissionsLoading || !canApplyJob) {
+      setAppliedJobIds(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    const loadAppliedJobs = async () => {
+      try {
+        const ids = new Set<string>();
+        let page = 1;
+        let totalPages = 1;
+
+        do {
+          const response = await listMyApplications(accessToken, {
+            page,
+            limit: 100,
+            sort: "newest",
+          });
+
+          const rows = Array.isArray(response?.applications) ? response.applications : [];
+          for (const row of rows) {
+            const id = String(row?.job_id ?? "").trim();
+            if (id) ids.add(id);
+          }
+
+          const nextTotalPages = Number(response?.pagination?.pages ?? 1);
+          totalPages = Number.isFinite(nextTotalPages) && nextTotalPages > 0 ? nextTotalPages : 1;
+          page += 1;
+        } while (page <= totalPages);
+
+        if (!cancelled) {
+          setAppliedJobIds(ids);
+        }
+      } catch {
+        if (!cancelled) {
+          setAppliedJobIds(new Set());
+        }
+      }
+    };
+
+    void loadAppliedJobs();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, canApplyJob, permissionsLoading]);
 
   async function onApplyClick(job: JobListItem) {
     if (!accessToken) {
@@ -542,7 +603,20 @@ export function PublicJobsPage() {
     }
   }
 
-  function onStartApply(job: JobListItem) {
+  async function onStartApply(job: JobListItem) {
+    if (!accessToken) return;
+
+    try {
+      const legacyDocuments = await getLegacyApplicationDocumentsNeedingReupload(accessToken);
+      if (legacyDocuments.length > 0) {
+        setLegacyApplyBlockedJob(job);
+        setLegacyApplyBlockedMessage(buildLegacyReuploadMessage(legacyDocuments));
+        return;
+      }
+    } catch {
+      // Ignore precheck failures and continue with existing flow.
+    }
+
     setUpdateProfileBeforeApplyJob(job);
   }
 
@@ -552,12 +626,20 @@ export function PublicJobsPage() {
       setSaving(true);
       setError(null);
       await applyToJob(accessToken, { job_id: applyConfirmJob.id });
+      setAppliedJobIds((prev) => {
+        const next = new Set(prev);
+        next.add(String(applyConfirmJob.id));
+        return next;
+      });
       setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
       setApplyConfirmJob(null);
     } catch (e) {
-      const error = e as Error & { code?: string };
+      const error = e as Error & { code?: string; documents?: string[] };
       const message = String(error?.message ?? "").trim();
       const code = String(error?.code ?? "").trim().toUpperCase();
+      const documents = Array.isArray(error?.documents)
+        ? error.documents.map((d) => String(d).trim()).filter(Boolean)
+        : [];
       const isLegacyBlocked =
         code === "LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED" ||
         message.toLowerCase().includes("legacy application document");
@@ -566,8 +648,7 @@ export function PublicJobsPage() {
         setApplyConfirmJob(null);
         setLegacyApplyBlockedJob(applyConfirmJob);
         setLegacyApplyBlockedMessage(
-          message ||
-            "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.",
+          message || buildLegacyReuploadMessage(documents),
         );
       } else {
         setError(message || "Failed to apply for job");
@@ -905,6 +986,7 @@ export function PublicJobsPage() {
                     visibleJobs.map((job, idx) => {
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
                 const isOpen = String(openJobId ?? "") === String(job.id);
+                  const alreadyApplied = appliedJobIds.has(String(job.id));
 
                 const shareHref =
                   typeof window !== "undefined"
@@ -975,9 +1057,9 @@ export function PublicJobsPage() {
                           }
                           onStartApply(job);
                         }}
-                        disabled={saving || permissionsLoading}
+                        disabled={saving || permissionsLoading || alreadyApplied}
                       >
-                        Apply
+                        {alreadyApplied ? "Applied" : "Apply"}
                       </button>
 
                       {!isOpen ? (
@@ -1018,9 +1100,9 @@ export function PublicJobsPage() {
                               }
                               onStartApply(job);
                             }}
-                            disabled={saving || permissionsLoading}
+                            disabled={saving || permissionsLoading || alreadyApplied}
                           >
-                            Apply
+                            {alreadyApplied ? "Applied" : "Apply"}
                           </button>
                           <button
                             type="button"
@@ -1150,7 +1232,7 @@ export function PublicJobsPage() {
       {legacyApplyBlockedJob ? (
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setLegacyApplyBlockedJob(null)}>
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modalTitle">Re-upload CV Required</div>
+            <div className="modalTitle">Re-upload Documents Required</div>
             <div className="modalMessage">{legacyApplyBlockedMessage}</div>
             <div className="modalActions">
               <button className="btn btnGhost" type="button" onClick={() => setLegacyApplyBlockedJob(null)}>
