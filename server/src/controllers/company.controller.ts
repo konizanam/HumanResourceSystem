@@ -389,13 +389,17 @@ export class CompanyController {
           ? undefined
           : (req.body.application_status_notifications as unknown);
       const loginWelcomeTitle =
-        req.body?.login_welcome_title === undefined
-          ? undefined
-          : String(req.body.login_welcome_title);
+        req.body?.login_welcome_title !== undefined
+          ? String(req.body.login_welcome_title)
+          : req.body?.loginWelcomeTitle !== undefined
+            ? String(req.body.loginWelcomeTitle)
+            : undefined;
       const loginWelcomeSubtitle =
-        req.body?.login_welcome_subtitle === undefined
-          ? undefined
-          : String(req.body.login_welcome_subtitle);
+        req.body?.login_welcome_subtitle !== undefined
+          ? String(req.body.login_welcome_subtitle)
+          : req.body?.loginWelcomeSubtitle !== undefined
+            ? String(req.body.loginWelcomeSubtitle)
+            : undefined;
 
       const updatingGeneralSettings =
         systemName !== undefined ||

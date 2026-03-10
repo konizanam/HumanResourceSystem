@@ -550,6 +550,7 @@ export async function getSystemSettings(token: string): Promise<SystemSettings> 
 export async function getPublicSystemSettings(): Promise<SystemSettings> {
   const res = await fetch(`${API_BASE}/public/system-settings`, {
     headers: publicHeaders(),
+    cache: "no-store",
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to load system settings");

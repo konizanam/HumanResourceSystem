@@ -177,11 +177,15 @@ async function readSettings(): Promise<SystemSettings> {
     const loginWelcomeTitle =
       typeof (parsed as any).login_welcome_title === "string"
         ? String((parsed as any).login_welcome_title).trim()
-        : "";
+        : typeof (parsed as any).loginWelcomeTitle === "string"
+          ? String((parsed as any).loginWelcomeTitle).trim()
+          : "";
     const loginWelcomeSubtitle =
       typeof (parsed as any).login_welcome_subtitle === "string"
         ? String((parsed as any).login_welcome_subtitle).trim()
-        : "";
+        : typeof (parsed as any).loginWelcomeSubtitle === "string"
+          ? String((parsed as any).loginWelcomeSubtitle).trim()
+          : "";
 
     const notificationsRaw = (parsed as any).application_status_notifications as unknown;
     const application_status_notifications: ApplicationStatusNotificationSettings = {
