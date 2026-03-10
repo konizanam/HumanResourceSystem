@@ -1185,11 +1185,32 @@ export function JobsPage() {
   async function onStartApply(job: JobListItem) {
     if (!accessToken) return;
 
-    setUpdateProfileBeforeApplyJob({
+    const enriched = {
       ...job,
       company: resolveJobCompanyName(job),
       company_id: String((job as any).company_id ?? "").trim() || (job as any).company_id,
-    });
+    };
+
+    try {
+      setApplyContextJob(enriched);
+      setSaving(true);
+      setError(null);
+      const [profile, resumes] = await Promise.all([
+        getJobSeekerFullProfile(accessToken),
+        listJobSeekerResumes(accessToken),
+      ]);
+      const hasCv = Boolean(resumes.primary_resume || (Array.isArray(resumes.resumes) && resumes.resumes.length > 0));
+      const completeness = getApplyProfileCompleteness(profile, hasCv);
+      if (!completeness.complete) {
+        setProfileIncompleteModalOpen(true);
+        return;
+      }
+      setUpdateProfileBeforeApplyJob(enriched);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to validate profile completeness");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function onConfirmApply() {

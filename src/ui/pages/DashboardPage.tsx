@@ -631,7 +631,23 @@ export function DashboardPage() {
   const onStartApplyFromDashboard = useCallback(async (job: JobListItem) => {
     if (!accessToken) return;
 
-    setUpdateProfileBeforeApplyJob(job);
+    try {
+      setApplyContextJob(job);
+      setError(null);
+      const [profile, resumes] = await Promise.all([
+        getJobSeekerFullProfile(accessToken),
+        listJobSeekerResumes(accessToken),
+      ]);
+      const hasCv = Boolean(resumes.primary_resume || (Array.isArray(resumes.resumes) && resumes.resumes.length > 0));
+      const completeness = getDashboardApplyProfileCompleteness(profile, hasCv);
+      if (!completeness.complete) {
+        setProfileIncompleteModalOpen(true);
+        return;
+      }
+      setUpdateProfileBeforeApplyJob(job);
+    } catch (e) {
+      setError(String((e as Error)?.message ?? "") || "Failed to validate profile completeness");
+    }
   }, [accessToken]);
 
   const onOpenCompanyInfo = useCallback(async (job: JobListItem) => {
