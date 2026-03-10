@@ -1500,50 +1500,9 @@ function hasLegacyUploadsReference(raw: unknown): boolean {
 }
 
 export async function getLegacyApplicationDocumentsNeedingReupload(token: string): Promise<string[]> {
-  const [documents, resumes] = await Promise.all([
-    listMyDocuments(token).catch(() => [] as UserDocument[]),
-    listJobSeekerResumes(token).catch(() => ({
-      resumes: [] as JobSeekerResume[],
-      primary_resume: null as JobSeekerResume | null,
-      total_count: 0,
-    })),
-  ]);
-
-  const uploadedDocs = Array.isArray(documents) ? documents : [];
-  const latestByType = new Map<string, UserDocument>();
-  for (const doc of uploadedDocs) {
-    const type = String(doc.document_type ?? "Document").trim() || "Document";
-    const existing = latestByType.get(type);
-    if (!existing) {
-      latestByType.set(type, doc);
-      continue;
-    }
-
-    const existingDate = new Date(String(existing.created_at ?? "")).getTime();
-    const newDate = new Date(String(doc.created_at ?? "")).getTime();
-    if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
-      latestByType.set(type, doc);
-    }
-  }
-
-  const flagged = new Set<string>();
-  for (const doc of Array.from(latestByType.values())) {
-    const isLegacy = [doc.download_url, doc.file_url, (doc as any)?.file_path].some((v) => hasLegacyUploadsReference(v));
-    if (!isLegacy) continue;
-    const type = String(doc.document_type ?? "Document").trim() || "Document";
-    flagged.add(type);
-  }
-
-  const resumeRows = Array.isArray(resumes?.resumes) ? resumes.resumes : [];
-  const effectiveResume =
-    resumes?.primary_resume ??
-    resumeRows.find((r) => Boolean((r as any)?.is_primary)) ??
-    resumeRows[0] ??
-    null;
-  const hasLegacyResume = Boolean(effectiveResume && [effectiveResume.download_url, effectiveResume.file_path].some((v) => hasLegacyUploadsReference(v)));
-  if (hasLegacyResume) flagged.add("CV / Resume");
-
-  return Array.from(flagged.values());
+  // Legacy upload-path apply blocking has been removed from apply flows.
+  void token;
+  return [];
 }
 
 export async function hasLegacyApplicationDocuments(token: string): Promise<boolean> {

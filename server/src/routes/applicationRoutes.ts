@@ -374,19 +374,6 @@ router.post('/',
         return res.status(400).json({ error: 'You have already applied to this job' });
       }
 
-      const legacyDocuments = await getLegacyApplicationDocumentsNeedingReupload(applicant_id);
-      if (legacyDocuments.length > 0) {
-        const docsList = legacyDocuments.map((name) => `- ${name}`).join('\n');
-        return res.status(409).json({
-          error: {
-            code: 'LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED',
-            message:
-              `A legacy application document was detected (/upload/). Please re-upload the following documents using the new upload before applying:\n${docsList}`,
-            documents: legacyDocuments,
-          },
-        });
-      }
-
       const readiness = await getApplicantReadinessForApply(applicant_id);
       if (!readiness.ready) {
         return res.status(409).json({

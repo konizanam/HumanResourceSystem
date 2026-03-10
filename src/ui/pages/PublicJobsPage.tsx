@@ -5,7 +5,6 @@ import {
   type Company,
   getPublicCompany,
   getPublicCompanyById,
-  getLegacyApplicationDocumentsNeedingReupload,
   getJobSeekerFullProfile,
   listJobSeekerResumes,
   getPublicSystemSettings,
@@ -166,17 +165,6 @@ function getApplyProfileCompleteness(profile: any, hasCv: boolean): ProfileCompl
 }
 
 export function PublicJobsPage() {
-    const buildLegacyReuploadMessage = useCallback((documents: string[]): string => {
-      const cleaned = documents.map((d) => String(d).trim()).filter(Boolean);
-      if (!cleaned.length) {
-        return "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.";
-      }
-      return [
-        "A legacy application document was detected (/upload/). Please re-upload the following documents using the new upload before applying:",
-        ...cleaned.map((doc) => `- ${doc}`),
-      ].join("\n");
-    }, []);
-
   const { accessToken, logout, userName, userEmail } = useAuth();
   const { hasPermission, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
@@ -220,10 +208,6 @@ export function PublicJobsPage() {
   const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
-  const [legacyApplyBlockedJob, setLegacyApplyBlockedJob] = useState<JobListItem | null>(null);
-  const [legacyApplyBlockedMessage, setLegacyApplyBlockedMessage] = useState<string>(
-    "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.",
-  );
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
   const [companyDetails, setCompanyDetails] = useState<Company | null>(null);
@@ -606,17 +590,6 @@ export function PublicJobsPage() {
   async function onStartApply(job: JobListItem) {
     if (!accessToken) return;
 
-    try {
-      const legacyDocuments = await getLegacyApplicationDocumentsNeedingReupload(accessToken);
-      if (legacyDocuments.length > 0) {
-        setLegacyApplyBlockedJob(job);
-        setLegacyApplyBlockedMessage(buildLegacyReuploadMessage(legacyDocuments));
-        return;
-      }
-    } catch {
-      // Ignore precheck failures and continue with existing flow.
-    }
-
     setUpdateProfileBeforeApplyJob(job);
   }
 
@@ -634,25 +607,8 @@ export function PublicJobsPage() {
       setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
       setApplyConfirmJob(null);
     } catch (e) {
-      const error = e as Error & { code?: string; documents?: string[] };
-      const message = String(error?.message ?? "").trim();
-      const code = String(error?.code ?? "").trim().toUpperCase();
-      const documents = Array.isArray(error?.documents)
-        ? error.documents.map((d) => String(d).trim()).filter(Boolean)
-        : [];
-      const isLegacyBlocked =
-        code === "LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED" ||
-        message.toLowerCase().includes("legacy application document");
-
-      if (isLegacyBlocked) {
-        setApplyConfirmJob(null);
-        setLegacyApplyBlockedJob(applyConfirmJob);
-        setLegacyApplyBlockedMessage(
-          message || buildLegacyReuploadMessage(documents),
-        );
-      } else {
-        setError(message || "Failed to apply for job");
-      }
+      const message = String((e as Error)?.message ?? "").trim();
+      setError(message || "Failed to apply for job");
     } finally {
       setSaving(false);
     }
@@ -1223,31 +1179,6 @@ export function PublicJobsPage() {
               </button>
               <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onConfirmApply} disabled={saving}>
                 {saving ? "Applying..." : "Confirm Apply"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {legacyApplyBlockedJob ? (
-        <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setLegacyApplyBlockedJob(null)}>
-          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modalTitle">Re-upload Documents Required</div>
-            <div className="modalMessage">{legacyApplyBlockedMessage}</div>
-            <div className="modalActions">
-              <button className="btn btnGhost" type="button" onClick={() => setLegacyApplyBlockedJob(null)}>
-                Close
-              </button>
-              <button
-                className="btn btnGhost btnSm stepperSaveBtn"
-                type="button"
-                onClick={() => {
-                  const job = legacyApplyBlockedJob;
-                  setLegacyApplyBlockedJob(null);
-                  navigate("/app/my-profile", { state: { pendingJob: job } });
-                }}
-              >
-                Go to Member Profile
               </button>
             </div>
           </div>

@@ -1775,6 +1775,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const docs = userId ? directoryDocumentsByUserId[userId] : null;
     const selectedPreview = userId ? (directoryDocPreviewByUserId[userId] ?? null) : null;
     const primaryResume = userId ? (directoryResumesByUserId[userId]?.primary_resume ?? null) : null;
+    const resumeRows = userId ? (Array.isArray(directoryResumesByUserId[userId]?.resumes) ? directoryResumesByUserId[userId]!.resumes! : []) : [];
+    const directoryResumeList = primaryResume
+      ? [primaryResume, ...resumeRows.filter((r) => String((r as any)?.id ?? "") !== String((primaryResume as any)?.id ?? ""))]
+      : resumeRows;
 
     if (!userId) {
       return (
@@ -1986,7 +1990,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     profile: mainProfile,
                     education,
                     docs: Array.isArray(docs) ? docs : [],
-                    resumes: primaryResume ? [primaryResume] : [],
+                    resumes: directoryResumeList,
                   });
 
                   if (docs === undefined) {

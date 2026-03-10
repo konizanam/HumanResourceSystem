@@ -50,7 +50,7 @@ const menu = [
   { path: "status", title: "Status", icon: "list" },
   { path: "job-categories", title: "Job Categories", icon: "tag" },
   { path: "industries", title: "Industries", icon: "building" },
-  { path: "audit", title: "Audit", icon: "file" },
+  { path: "audit", title: "Audit", icon: "shield" },
   { path: "email-templates", title: "Email Templates", icon: "file" },
   { path: "reports", title: "Reports", icon: "chart" },
 ] as const;
