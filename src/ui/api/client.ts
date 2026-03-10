@@ -34,6 +34,13 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     validationMessage ??
     fallbackMessage;
 
+  const errorCode =
+    typeof errorField?.code === "string"
+      ? errorField.code
+      : typeof body?.code === "string"
+        ? body.code
+        : undefined;
+
   if (res.status === 401 && typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("hrs:unauthorized", {
@@ -45,7 +52,7 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     );
   }
 
-  return Object.assign(new Error(message), { status: res.status });
+  return Object.assign(new Error(message), { status: res.status, code: errorCode });
 }
 
 function authHeaders(token: string): HeadersInit {

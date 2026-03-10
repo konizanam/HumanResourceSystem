@@ -132,6 +132,10 @@ export function DashboardPage() {
   });
   const [seekerApplications, setSeekerApplications] = useState<JobApplication[]>([]);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
+  const [legacyApplyBlockedJob, setLegacyApplyBlockedJob] = useState<JobListItem | null>(null);
+  const [legacyApplyBlockedMessage, setLegacyApplyBlockedMessage] = useState<string>(
+    "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.",
+  );
   const [seekerCompanies, setSeekerCompanies] = useState<Company[]>([]);
   const [seekerCategories, setSeekerCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -593,7 +597,22 @@ export function DashboardPage() {
       setSeekerApplications((prev) => [created, ...prev]);
       setSuccess(`Application submitted for "${job.title}".`);
     } catch (e) {
-      setError((e as Error)?.message ?? "Failed to apply for job");
+      const error = e as Error & { code?: string };
+      const message = String(error?.message ?? "").trim();
+      const code = String(error?.code ?? "").trim().toUpperCase();
+      const isLegacyBlocked =
+        code === "LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED" ||
+        message.toLowerCase().includes("legacy application document");
+
+      if (isLegacyBlocked) {
+        setLegacyApplyBlockedJob(job);
+        setLegacyApplyBlockedMessage(
+          message ||
+            "A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.",
+        );
+      } else {
+        setError(message || "Failed to apply for job");
+      }
     } finally {
       setApplyingJobId(null);
     }
@@ -1713,6 +1732,31 @@ export function DashboardPage() {
                 disabled={Boolean(applyingJobId)}
               >
                 Yes, update profile
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {legacyApplyBlockedJob ? (
+        <div className="modalOverlay" role="presentation" onMouseDown={() => !applyingJobId && setLegacyApplyBlockedJob(null)}>
+          <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Re-upload CV Required</div>
+            <div className="modalMessage">{legacyApplyBlockedMessage}</div>
+            <div className="modalActions">
+              <button className="btn btnGhost" type="button" onClick={() => setLegacyApplyBlockedJob(null)}>
+                Close
+              </button>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={() => {
+                  const job = legacyApplyBlockedJob;
+                  setLegacyApplyBlockedJob(null);
+                  navigate("/app/my-profile", { state: { pendingJob: job } });
+                }}
+              >
+                Go to Member Profile
               </button>
             </div>
           </div>
