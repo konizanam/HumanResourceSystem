@@ -272,7 +272,7 @@ export function JobApplicationsPage() {
   const [pageSize, setPageSize] = useState(5);
 
   const [openProfileId, setOpenProfileId] = useState<string | null>(null);
-  const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null>>({});
+  const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null | undefined>>({});
   const [documentsByAppId, setDocumentsByAppId] = useState<Record<string, UserDocument[] | null | undefined>>({});
   const [resumesByAppId, setResumesByAppId] = useState<
     Record<string, { resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null } | null | undefined>
@@ -529,27 +529,48 @@ export function JobApplicationsPage() {
     const hasDocs = Object.prototype.hasOwnProperty.call(documentsByAppId, app.id);
     const hasResumes = Object.prototype.hasOwnProperty.call(resumesByAppId, app.id);
     if (hasProfile && hasDocs && hasResumes) return;
-    try {
-      const [profile, docs, resumes] = await Promise.all([
-        getJobSeekerFullProfile(accessToken, app.applicant_id).catch(() => null),
-        listUserDocuments(accessToken, app.applicant_id).catch(() => null),
-        listUserResumes(accessToken, app.applicant_id).catch(() => null),
-      ]);
-      setProfileByAppId((prev) => ({ ...prev, [app.id]: profile }));
-      setDocumentsByAppId((prev) => ({ ...prev, [app.id]: Array.isArray(docs) ? docs : null }));
-      setResumesByAppId((prev) => ({
-        ...prev,
-        [app.id]: resumes
-          ? {
-              resumes: Array.isArray(resumes.resumes) ? resumes.resumes : [],
-              primary_resume: resumes.primary_resume ?? null,
-            }
-          : null,
-      }));
-    } catch {
-      setProfileByAppId((prev) => ({ ...prev, [app.id]: null }));
-      setDocumentsByAppId((prev) => ({ ...prev, [app.id]: null }));
-      setResumesByAppId((prev) => ({ ...prev, [app.id]: null }));
+
+    // Load profile/details independently so the profile can render immediately,
+    // while documents/resumes continue loading in the background.
+    if (!hasProfile) {
+      setProfileByAppId((prev) => ({ ...prev, [app.id]: undefined }));
+      void getJobSeekerFullProfile(accessToken, app.applicant_id)
+        .then((profile) => {
+          setProfileByAppId((prev) => ({ ...prev, [app.id]: profile ?? null }));
+        })
+        .catch(() => {
+          setProfileByAppId((prev) => ({ ...prev, [app.id]: null }));
+        });
+    }
+
+    if (!hasDocs) {
+      setDocumentsByAppId((prev) => ({ ...prev, [app.id]: undefined }));
+      void listUserDocuments(accessToken, app.applicant_id)
+        .then((docs) => {
+          setDocumentsByAppId((prev) => ({ ...prev, [app.id]: Array.isArray(docs) ? docs : null }));
+        })
+        .catch(() => {
+          setDocumentsByAppId((prev) => ({ ...prev, [app.id]: null }));
+        });
+    }
+
+    if (!hasResumes) {
+      setResumesByAppId((prev) => ({ ...prev, [app.id]: undefined }));
+      void listUserResumes(accessToken, app.applicant_id)
+        .then((resumes) => {
+          setResumesByAppId((prev) => ({
+            ...prev,
+            [app.id]: resumes
+              ? {
+                  resumes: Array.isArray(resumes.resumes) ? resumes.resumes : [],
+                  primary_resume: resumes.primary_resume ?? null,
+                }
+              : null,
+          }));
+        })
+        .catch(() => {
+          setResumesByAppId((prev) => ({ ...prev, [app.id]: null }));
+        });
     }
   }
 
@@ -569,6 +590,8 @@ export function JobApplicationsPage() {
 
   function renderProfilePanel(app: JobApplication) {
     const profile = profileByAppId[app.id];
+    const documentsState = documentsByAppId[app.id];
+    const resumesState = resumesByAppId[app.id];
     const personal = profile?.personalDetails ?? null;
     const selectedDoc = documentUrlByAppId[app.id];
     const docs = profileDocuments(app);
@@ -668,7 +691,12 @@ export function JobApplicationsPage() {
             </Section>
 
             <Section title="Documents">
-              {docs.length === 0 ? (
+              {documentsState === undefined || resumesState === undefined ? (
+                <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+                  <span className="placeholderSpinner" aria-hidden="true" />
+                  <span className="srOnly">Loading</span>
+                </div>
+              ) : docs.length === 0 ? (
                 <p className="pageText">No document links found.</p>
               ) : (
                 <>
