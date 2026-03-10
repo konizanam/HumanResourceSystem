@@ -139,8 +139,35 @@ function collectProfileDocuments(params: {
   resumes?: Array<{ file_name?: string; download_url?: string; file_path?: string; is_primary?: boolean }>;
   fallbackResumeUrl?: string;
 }): ProfileDocumentEntry[] {
+  const normalizeDocumentKey = (raw: unknown): string => {
+    const resolved = resolveFileUrl(raw);
+    if (!resolved) return "";
+    return resolved.split("#")[0].split("?")[0].trim().toLowerCase();
+  };
+
   const cards: ProfileDocumentEntry[] = [];
   const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
+  const documentNameByUrl = new Map<string, string>();
+
+  for (const doc of uploadedDocs) {
+    const originalName = String(doc.original_name ?? "").trim();
+    if (!originalName) continue;
+    const keys = [doc.download_url, doc.file_url]
+      .map((value) => normalizeDocumentKey(value))
+      .filter(Boolean);
+    for (const key of keys) {
+      if (!documentNameByUrl.has(key)) {
+        documentNameByUrl.set(key, originalName);
+      }
+    }
+  }
+
+  const fileNameFromUrl = (raw: unknown): string | undefined => {
+    const key = normalizeDocumentKey(raw);
+    if (!key) return undefined;
+    const name = String(documentNameByUrl.get(key) ?? "").trim();
+    return name || undefined;
+  };
   const activeEducation = (Array.isArray(params.education) ? params.education : []).filter((edu) => {
     const status = String((edu as any)?.status ?? "").trim().toLowerCase();
     if (status && ["inactive", "deleted", "archived"].includes(status)) return false;
@@ -172,11 +199,11 @@ function collectProfileDocuments(params: {
   ).trim();
 
   const idDoc = latestIdDocumentUrl || String(readValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
-  if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
+  if (idDoc) cards.push({ title: "Identification Document", url: idDoc, fileName: fileNameFromUrl(idDoc) });
 
   const profileCert =
     latestProfileCertificateUrl || String(readValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
-  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
+  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert, fileName: fileNameFromUrl(profileCert) });
 
   const educationCertificateUrls = new Set<string>();
   for (let eduIndex = 0; eduIndex < activeEducation.length; eduIndex += 1) {
@@ -186,7 +213,7 @@ function collectProfileDocuments(params: {
     const inst = String(readValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
     const title = inst ? `Education Certificate ${eduIndex + 1} - ${inst}` : `Education Certificate ${eduIndex + 1}`;
     educationCertificateUrls.add(cert);
-    cards.push({ title, url: cert, hint: inst || undefined });
+    cards.push({ title, url: cert, hint: inst || undefined, fileName: fileNameFromUrl(cert) });
   }
 
   for (const d of latestByType.values()) {
