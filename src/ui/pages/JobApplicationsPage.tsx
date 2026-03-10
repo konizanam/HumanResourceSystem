@@ -591,7 +591,6 @@ export function JobApplicationsPage() {
   function renderProfilePanel(app: JobApplication) {
     const profile = profileByAppId[app.id];
     const documentsState = documentsByAppId[app.id];
-    const resumesState = resumesByAppId[app.id];
     const personal = profile?.personalDetails ?? null;
     const selectedDoc = documentUrlByAppId[app.id];
     const docs = profileDocuments(app);
@@ -691,7 +690,7 @@ export function JobApplicationsPage() {
             </Section>
 
             <Section title="Documents">
-              {documentsState === undefined || resumesState === undefined ? (
+              {documentsState === undefined ? (
                 <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
                   <span className="placeholderSpinner" aria-hidden="true" />
                   <span className="srOnly">Loading</span>

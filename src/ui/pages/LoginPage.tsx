@@ -188,6 +188,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [activationNotice, setActivationNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"credentials" | "twoFactor">("credentials");
@@ -411,6 +412,7 @@ export function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setBusy(true);
 
     try {
@@ -680,6 +682,7 @@ export function LoginPage() {
                     setPending(null);
                     setTwoFactorExpiresAt(null);
                     setError(null);
+                    setNotice(null);
                   }}
                   disabled={busy}
                 >
@@ -691,6 +694,7 @@ export function LoginPage() {
                   className="linkBtn authLinkBtn"
                   onClick={async () => {
                     setError(null);
+                    setNotice(null);
                     setBusy(true);
                     try {
                       if (!pending?.challengeId) {
@@ -712,7 +716,7 @@ export function LoginPage() {
                         Date.now() + nextChallenge.expiresInSeconds * 1000
                       );
                       setCode("");
-                      setError("A new authentication code was sent to your email.");
+                      setNotice("A new authentication code was sent to your email.");
                     } catch (err) {
                       setError(resolveAuthErrorMessage(err, "resend2fa"));
                     } finally {
@@ -730,6 +734,12 @@ export function LoginPage() {
           {error ? (
             <div className="errorBox" role="alert" aria-live="assertive">
               {error}
+            </div>
+          ) : null}
+
+          {notice ? (
+            <div className="hintBox" role="status" aria-live="polite">
+              {notice}
             </div>
           ) : null}
 
