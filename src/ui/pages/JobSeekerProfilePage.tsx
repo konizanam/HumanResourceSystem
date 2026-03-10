@@ -393,9 +393,14 @@ function UploadedDocumentCard({
       ) : null}
 
       {hint ? <span className="uploadedDocCardHint">{hint}</span> : null}
-      {authFetchFallback && isLegacyUploadsUrl ? (
+      {isLegacyUploadsUrl ? (
         <span className="uploadedDocCardHint">
-          Please update this document before applying. This file appears to come from a legacy uploads folder and might be corrupted after a system change.
+          Legacy upload path detected (`/upload` or `/uploads`). This document is still linked to old file storage and should be re-uploaded so it is saved in the database.
+        </span>
+      ) : null}
+      {authFetchFallback && !isLegacyUploadsUrl ? (
+        <span className="uploadedDocCardHint">
+          Could not fetch this file for preview. You can still use Download.
         </span>
       ) : null}
     </div>

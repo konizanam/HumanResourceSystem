@@ -1535,7 +1535,11 @@ export async function getLegacyApplicationDocumentsNeedingReupload(token: string
   }
 
   const resumeRows = Array.isArray(resumes?.resumes) ? resumes.resumes : [];
-  const effectiveResume = resumeRows.find((r) => Boolean((r as any)?.is_primary)) ?? resumeRows[0] ?? null;
+  const effectiveResume =
+    resumes?.primary_resume ??
+    resumeRows.find((r) => Boolean((r as any)?.is_primary)) ??
+    resumeRows[0] ??
+    null;
   const hasLegacyResume = Boolean(effectiveResume && [effectiveResume.download_url, effectiveResume.file_path].some((v) => hasLegacyUploadsReference(v)));
   if (hasLegacyResume) flagged.add("CV / Resume");
 
