@@ -76,6 +76,65 @@ async function filterRecipientsByJobSeekerAlertPreference(
   return result.rows.map((row: any) => String(row.id)).filter(Boolean);
 }
 
+function isLegacyUploadPath(value: unknown): boolean {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return false;
+  return raw.includes('/upload/') || raw.includes('/uploads/');
+}
+
+async function hasLegacyApplicationDocument(userId: string): Promise<boolean> {
+  const legacyResumeCheck = await dbQuery(
+    `SELECT 1
+       FROM resumes
+      WHERE job_seeker_id = $1
+        AND (
+          COALESCE(file_path, '') ILIKE '%/upload/%'
+          OR COALESCE(file_path, '') ILIKE '%/uploads/%'
+        )
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (legacyResumeCheck.rows.length > 0) {
+    return true;
+  }
+
+  try {
+    const legacyDocumentCheck = await dbQuery(
+      `SELECT 1
+         FROM documents
+        WHERE user_id = $1
+          AND (
+            COALESCE(file_path, '') ILIKE '%/upload/%'
+            OR COALESCE(file_path, '') ILIKE '%/uploads/%'
+            OR COALESCE(file_url, '') ILIKE '%/upload/%'
+            OR COALESCE(file_url, '') ILIKE '%/uploads/%'
+          )
+        LIMIT 1`,
+      [userId]
+    );
+
+    if (legacyDocumentCheck.rows.length > 0) {
+      return true;
+    }
+  } catch (e: any) {
+    // Older deployments may not have the documents table/columns.
+    if (!['42P01', '42703'].includes(String(e?.code ?? ''))) {
+      throw e;
+    }
+  }
+
+  const userResumeUrlResult = await dbQuery(
+    `SELECT resume_url
+       FROM users
+      WHERE id = $1
+      LIMIT 1`,
+    [userId]
+  );
+
+  return isLegacyUploadPath(userResumeUrlResult.rows[0]?.resume_url);
+}
+
 /**
  * @swagger
  * components:
@@ -217,6 +276,16 @@ router.post('/',
 
       if (existingApplication.rows.length > 0) {
         return res.status(400).json({ error: 'You have already applied to this job' });
+      }
+
+      const hasLegacyDocument = await hasLegacyApplicationDocument(applicant_id);
+      if (hasLegacyDocument) {
+        return res.status(409).json({
+          error: {
+            code: 'LEGACY_APPLICATION_DOCUMENT_REUPLOAD_REQUIRED',
+            message: 'A legacy application document was detected (/upload/). Please re-upload your CV using the new upload before applying.',
+          },
+        });
       }
 
       // Check if user is trying to apply to their own job (employers can't apply to their own jobs)
