@@ -2,9 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   getJobSeekerFullProfile,
+  listUserDocuments,
   listJobApplicationsForJob,
+  listUserResumes,
+  type JobSeekerResume,
   type JobApplication,
   type JobSeekerFullProfile,
+  type UserDocument,
   updateJobApplicationStatus,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -120,6 +124,107 @@ function extractFileName(raw: unknown): string {
   return parts.length ? parts[parts.length - 1] : clean;
 }
 
+type ProfileDocumentEntry = {
+  title: string;
+  url: string;
+  hint?: string;
+  fileName?: string;
+};
+
+function collectProfileDocuments(params: {
+  personal: Record<string, unknown> | null;
+  profile: Record<string, unknown> | null;
+  education: Record<string, unknown>[];
+  docs?: UserDocument[];
+  resumes?: Array<{ file_name?: string; download_url?: string; file_path?: string; is_primary?: boolean }>;
+  fallbackResumeUrl?: string;
+}): ProfileDocumentEntry[] {
+  const cards: ProfileDocumentEntry[] = [];
+  const uploadedDocs: UserDocument[] = Array.isArray(params.docs) ? params.docs : [];
+  const activeEducation = (Array.isArray(params.education) ? params.education : []).filter((edu) => {
+    const status = String((edu as any)?.status ?? "").trim().toLowerCase();
+    if (status && ["inactive", "deleted", "archived"].includes(status)) return false;
+    if (Boolean((edu as any)?.is_deleted)) return false;
+    if ((edu as any)?.deleted_at) return false;
+    return true;
+  });
+
+  const latestByType = new Map<string, UserDocument>();
+  for (const d of uploadedDocs) {
+    const type = String(d.document_type ?? "Document").trim() || "Document";
+    const existing = latestByType.get(type);
+    if (!existing) {
+      latestByType.set(type, d);
+      continue;
+    }
+    const existingDate = new Date(String(existing.created_at ?? "")).getTime();
+    const newDate = new Date(String(d.created_at ?? "")).getTime();
+    if (!Number.isNaN(newDate) && (Number.isNaN(existingDate) || newDate > existingDate)) {
+      latestByType.set(type, d);
+    }
+  }
+
+  const latestIdDocument = latestByType.get("id_document");
+  const latestIdDocumentUrl = String(latestIdDocument?.download_url ?? latestIdDocument?.file_url ?? "").trim();
+  const latestProfileCertificate = latestByType.get("certificate");
+  const latestProfileCertificateUrl = String(
+    latestProfileCertificate?.download_url ?? latestProfileCertificate?.file_url ?? "",
+  ).trim();
+
+  const idDoc = latestIdDocumentUrl || String(readValue(params.personal, "id_document_url", "idDocumentUrl") ?? "").trim();
+  if (idDoc) cards.push({ title: "Identification Document", url: idDoc });
+
+  const profileCert =
+    latestProfileCertificateUrl || String(readValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
+  if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
+
+  const educationCertificateUrls = new Set<string>();
+  for (let eduIndex = 0; eduIndex < activeEducation.length; eduIndex += 1) {
+    const edu = activeEducation[eduIndex];
+    const cert = String(readValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
+    if (!cert) continue;
+    const inst = String(readValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
+    const title = inst ? `Education Certificate ${eduIndex + 1} - ${inst}` : `Education Certificate ${eduIndex + 1}`;
+    educationCertificateUrls.add(cert);
+    cards.push({ title, url: cert, hint: inst || undefined });
+  }
+
+  for (const d of latestByType.values()) {
+    const url = String(d.download_url ?? d.file_url ?? "").trim();
+    if (!url) continue;
+    const docType = String(d.document_type ?? "Document").trim() || "Document";
+    if (docType.toLowerCase() === "id_document" && url === idDoc) continue;
+    if (docType.toLowerCase() === "certificate" && url === profileCert) continue;
+    if (docType.toLowerCase() === "qualification_evidence" && educationCertificateUrls.has(url)) continue;
+    cards.push({
+      title: docType,
+      url,
+      fileName: String(d.original_name ?? "").trim() || undefined,
+      hint: String(d.description ?? "").trim() || undefined,
+    });
+  }
+
+  const resumes = Array.isArray(params.resumes) ? params.resumes : [];
+  const primaryResume = resumes.find((r) => r.is_primary) ?? resumes[0] ?? null;
+  const resumeUrl = String(primaryResume?.download_url ?? primaryResume?.file_path ?? params.fallbackResumeUrl ?? "").trim();
+  if (resumeUrl) {
+    cards.push({
+      title: "CV / Resume",
+      url: resumeUrl,
+      fileName: String(primaryResume?.file_name ?? "").trim() || undefined,
+    });
+  }
+
+  const seen = new Set<string>();
+  return cards.filter((c) => {
+    const resolved = resolveFileUrl(c.url);
+    const key = (resolved || c.url || c.title || "").split("#")[0].split("?")[0].trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function JobApplicationsPage() {
   const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
@@ -141,6 +246,10 @@ export function JobApplicationsPage() {
 
   const [openProfileId, setOpenProfileId] = useState<string | null>(null);
   const [profileByAppId, setProfileByAppId] = useState<Record<string, JobSeekerFullProfile | null>>({});
+  const [documentsByAppId, setDocumentsByAppId] = useState<Record<string, UserDocument[] | null | undefined>>({});
+  const [resumesByAppId, setResumesByAppId] = useState<
+    Record<string, { resumes: JobSeekerResume[]; primary_resume: JobSeekerResume | null } | null | undefined>
+  >({});
   const [documentUrlByAppId, setDocumentUrlByAppId] = useState<Record<string, string | null>>({});
   const [docBlobByAppId, setDocBlobByAppId] = useState<Record<string, string | null>>({});
   const [docLoadingByAppId, setDocLoadingByAppId] = useState<Record<string, boolean>>({});
@@ -388,36 +497,47 @@ export function JobApplicationsPage() {
     const nextOpen = openProfileId === app.id ? null : app.id;
     setOpenProfileId(nextOpen);
     setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: null }));
-    if (!nextOpen || profileByAppId[app.id] !== undefined || !accessToken) return;
+    if (!nextOpen || !accessToken) return;
+    const hasProfile = profileByAppId[app.id] !== undefined;
+    const hasDocs = Object.prototype.hasOwnProperty.call(documentsByAppId, app.id);
+    const hasResumes = Object.prototype.hasOwnProperty.call(resumesByAppId, app.id);
+    if (hasProfile && hasDocs && hasResumes) return;
     try {
-      const profile = await getJobSeekerFullProfile(accessToken, app.applicant_id);
+      const [profile, docs, resumes] = await Promise.all([
+        getJobSeekerFullProfile(accessToken, app.applicant_id).catch(() => null),
+        listUserDocuments(accessToken, app.applicant_id).catch(() => null),
+        listUserResumes(accessToken, app.applicant_id).catch(() => null),
+      ]);
       setProfileByAppId((prev) => ({ ...prev, [app.id]: profile }));
+      setDocumentsByAppId((prev) => ({ ...prev, [app.id]: Array.isArray(docs) ? docs : null }));
+      setResumesByAppId((prev) => ({
+        ...prev,
+        [app.id]: resumes
+          ? {
+              resumes: Array.isArray(resumes.resumes) ? resumes.resumes : [],
+              primary_resume: resumes.primary_resume ?? null,
+            }
+          : null,
+      }));
     } catch {
       setProfileByAppId((prev) => ({ ...prev, [app.id]: null }));
+      setDocumentsByAppId((prev) => ({ ...prev, [app.id]: null }));
+      setResumesByAppId((prev) => ({ ...prev, [app.id]: null }));
     }
   }
 
   function profileDocuments(app: JobApplication) {
     const profile = profileByAppId[app.id];
-    const docs: { label: string; url: string }[] = [];
-    const personal = profile?.personalDetails ?? null;
-    const mainProfile = profile?.profile ?? null;
-
-    const idDoc = readValue(personal, "id_document_url", "idDocumentUrl");
-    if (idDoc) docs.push({ label: "ID Document", url: String(idDoc) });
-
-    const certDocFromProfile = readValue(mainProfile, "certificate_url", "certificateUrl");
-    if (certDocFromProfile) docs.push({ label: "Certificate", url: String(certDocFromProfile) });
-
-    for (const edu of profile?.education ?? []) {
-      const cert = readValue(edu, "certificate_url", "certificateUrl");
-      if (cert) docs.push({ label: "Certificate", url: String(cert) });
-    }
-
-    const resume = app.applicant_resume ?? app.resume_url;
-    if (resume) docs.push({ label: "Resume", url: String(resume) });
-
-    return docs;
+    const docs = documentsByAppId[app.id];
+    const resumes = resumesByAppId[app.id];
+    return collectProfileDocuments({
+      personal: (profile?.personalDetails ?? null) as Record<string, unknown> | null,
+      profile: (profile?.profile ?? null) as Record<string, unknown> | null,
+      education: Array.isArray(profile?.education) ? (profile?.education as Record<string, unknown>[]) : [],
+      docs: Array.isArray(docs) ? docs : [],
+      resumes: resumes?.resumes ?? [],
+      fallbackResumeUrl: String(app.applicant_resume ?? app.resume_url ?? "").trim(),
+    });
   }
 
   function renderProfilePanel(app: JobApplication) {
@@ -528,12 +648,13 @@ export function JobApplicationsPage() {
                   <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
                     {docs.map((doc, idx) => {
                       const resolvedUrl = resolveFileUrl(doc.url);
-                      const fileName = extractFileName(doc.url) || doc.label;
+                      const fileName = String(doc.fileName ?? "").trim() || extractFileName(doc.url) || doc.title;
                       const isSelected = selectedDoc === doc.url;
                       return (
-                        <div key={`${app.id}-${doc.label}-${doc.url}-${idx}`} className="uploadedDocCard">
-                          <div className="uploadedDocCardTitle">{doc.label}</div>
+                        <div key={`${app.id}-${doc.title}-${doc.url}-${idx}`} className="uploadedDocCard">
+                          <div className="uploadedDocCardTitle">{doc.title}</div>
                           <span className="uploadedDocCardLink" title={fileName}>{fileName}</span>
+                          {doc.hint ? <span className="uploadedDocCardHint">{doc.hint}</span> : null}
                           <div className="uploadedDocCardActions">
                             <button
                               type="button"

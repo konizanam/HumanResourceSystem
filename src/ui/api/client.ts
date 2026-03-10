@@ -47,6 +47,12 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
       ? body.documents.map((d: unknown) => String(d).trim()).filter(Boolean)
       : undefined;
 
+  const errorReasons = Array.isArray(errorField?.reasons)
+    ? errorField.reasons.map((r: unknown) => String(r).trim()).filter(Boolean)
+    : Array.isArray(body?.reasons)
+      ? body.reasons.map((r: unknown) => String(r).trim()).filter(Boolean)
+      : undefined;
+
   if (res.status === 401 && typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("hrs:unauthorized", {
@@ -62,6 +68,7 @@ function apiError(res: Response, body: any, fallbackMessage: string) {
     status: res.status,
     code: errorCode,
     documents: errorDocuments,
+    reasons: errorReasons,
   });
 }
 

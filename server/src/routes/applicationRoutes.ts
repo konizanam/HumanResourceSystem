@@ -152,6 +152,79 @@ async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Pro
   return Array.from(flagged.values());
 }
 
+async function getApplicantReadinessForApply(userId: string): Promise<{ ready: boolean; reasons: string[] }> {
+  const [latestResumeResult, qualificationCountResult, personalDetailsResult] = await Promise.all([
+    dbQuery(
+      `SELECT file_path
+         FROM resumes
+        WHERE job_seeker_id = $1
+        ORDER BY is_primary DESC,
+                 uploaded_at DESC NULLS LAST,
+                 created_at DESC NULLS LAST,
+                 id DESC
+        LIMIT 1`,
+      [userId]
+    ),
+    dbQuery(
+      `SELECT COUNT(*)::int AS total
+         FROM job_seeker_education
+        WHERE user_id = $1
+          AND NULLIF(TRIM(COALESCE(qualification, '')), '') IS NOT NULL`,
+      [userId]
+    ),
+    dbQuery(
+      `SELECT id_document_url
+         FROM job_seeker_personal_details
+        WHERE user_id = $1
+        LIMIT 1`,
+      [userId]
+    ),
+  ]);
+
+  let latestUploadedIdDocumentUrl = '';
+  try {
+    const latestIdDocumentResult = await dbQuery(
+      `SELECT COALESCE(NULLIF(TRIM(download_url), ''), NULLIF(TRIM(file_url), ''), NULLIF(TRIM(file_path), '')) AS url
+         FROM documents
+        WHERE user_id = $1
+          AND LOWER(COALESCE(NULLIF(TRIM(document_type), ''), '')) = 'id_document'
+        ORDER BY created_at DESC NULLS LAST,
+                 updated_at DESC NULLS LAST,
+                 id DESC
+        LIMIT 1`,
+      [userId]
+    );
+    latestUploadedIdDocumentUrl = String((latestIdDocumentResult.rows[0] as any)?.url ?? '').trim();
+  } catch (e: any) {
+    if (!['42P01', '42703'].includes(String(e?.code ?? ''))) {
+      throw e;
+    }
+  }
+
+  const reasons: string[] = [];
+  const resumePath = String((latestResumeResult.rows[0] as any)?.file_path ?? '').trim();
+  const qualificationCount = Number(qualificationCountResult.rows[0]?.total ?? 0);
+  const personalIdDocumentUrl = String((personalDetailsResult.rows[0] as any)?.id_document_url ?? '').trim();
+  const effectiveIdDocumentUrl = latestUploadedIdDocumentUrl || personalIdDocumentUrl;
+
+  if (!resumePath) {
+    reasons.push('Missing CV / resume upload.');
+  }
+
+  if (!Number.isFinite(qualificationCount) || qualificationCount < 1) {
+    reasons.push('At least one education qualification is required.');
+  }
+
+  if (!effectiveIdDocumentUrl) {
+    reasons.push('Missing identity document upload.');
+  }
+
+  return {
+    ready: reasons.length === 0,
+    reasons,
+  };
+}
+
 /**
  * @swagger
  * components:
@@ -304,6 +377,18 @@ router.post('/',
             message:
               `A legacy application document was detected (/upload/). Please re-upload the following documents using the new upload before applying:\n${docsList}`,
             documents: legacyDocuments,
+          },
+        });
+      }
+
+      const readiness = await getApplicantReadinessForApply(applicant_id);
+      if (!readiness.ready) {
+        return res.status(409).json({
+          error: {
+            code: 'APPLICATION_PROFILE_INCOMPLETE',
+            message:
+              'Complete your profile before applying. You must upload a CV / resume, add at least one education qualification, and upload an identity document.',
+            reasons: readiness.reasons,
           },
         });
       }
