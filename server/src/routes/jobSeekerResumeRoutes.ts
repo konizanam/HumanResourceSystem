@@ -38,6 +38,14 @@ const validateResumeId = [
   param('id').isUUID().withMessage('Invalid resume ID')
 ];
 
+function hasPermission(req: Request, permission: string): boolean {
+  if (!req.user) return false;
+  const normalizedRoles = (req.user.roles ?? []).map((role) => String(role).trim().toUpperCase());
+  if (normalizedRoles.includes('ADMIN')) return true;
+  const target = String(permission).trim().toUpperCase();
+  return (req.user.permissions ?? []).some((perm) => String(perm).trim().toUpperCase() === target);
+}
+
 function normalizeBytea(raw: unknown): Buffer | null {
   if (!raw) return null;
   if (raw instanceof Buffer) return raw;
@@ -278,13 +286,27 @@ router.post('/',
  */
 router.get('/',
   authenticate,
-  authorizePermission('APPLY_JOB'),
+  authorizePermission('APPLY_JOB', 'VIEW_CV_DATABASE'),
   [
-    query('include_download_urls').optional().isBoolean().toBoolean()
+    query('include_download_urls').optional().isBoolean().toBoolean(),
+    query('user_id').optional().isUUID().withMessage('Invalid user_id')
   ],
   async (req: Request, res: Response) => {
     try {
-      const jobSeekerId = req.user!.userId;
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const requesterId = req.user!.userId;
+      const requestedUserId = typeof req.query.user_id === 'string' ? req.query.user_id.trim() : '';
+      const canViewCvDatabase = hasPermission(req, 'VIEW_CV_DATABASE');
+
+      if (requestedUserId && requestedUserId !== requesterId && !canViewCvDatabase) {
+        return res.status(403).json({ error: 'You do not have permission to view resumes for this user' });
+      }
+
+      const jobSeekerId = requestedUserId || requesterId;
       const includeDownloadUrls = req.query.include_download_urls !== 'false';
 
       // Get all resumes for the job seeker
@@ -363,7 +385,7 @@ router.get('/',
  */
 router.get('/:id',
   authenticate,
-  authorizePermission('APPLY_JOB'),
+  authorizePermission('APPLY_JOB', 'VIEW_CV_DATABASE'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {
@@ -373,7 +395,8 @@ router.get('/:id',
       }
 
       const resumeId = req.params.id;
-      const jobSeekerId = req.user!.userId;
+      const requesterId = req.user!.userId;
+      const canViewCvDatabase = hasPermission(req, 'VIEW_CV_DATABASE');
 
       // Get resume
       const result = await dbQuery(
@@ -388,7 +411,7 @@ router.get('/:id',
       const resume = result.rows[0];
 
       // Check if resume belongs to the job seeker
-      if (resume.job_seeker_id !== jobSeekerId) {
+      if (resume.job_seeker_id !== requesterId && !canViewCvDatabase) {
         return res.status(403).json({ error: 'You do not have permission to view this resume' });
       }
 
@@ -439,7 +462,7 @@ router.get('/:id',
  */
 router.get('/:id/download',
   authenticate,
-  authorizePermission('APPLY_JOB'),
+  authorizePermission('APPLY_JOB', 'VIEW_CV_DATABASE'),
   validateResumeId,
   async (req: Request, res: Response) => {
     try {
@@ -449,7 +472,8 @@ router.get('/:id/download',
       }
 
       const resumeId = req.params.id;
-      const jobSeekerId = req.user!.userId;
+      const requesterId = req.user!.userId;
+      const canViewCvDatabase = hasPermission(req, 'VIEW_CV_DATABASE');
 
       // Get resume
       const result = await dbQuery(
@@ -464,7 +488,7 @@ router.get('/:id/download',
       const resume = result.rows[0];
 
       // Check if resume belongs to the job seeker
-      if (resume.job_seeker_id !== jobSeekerId) {
+      if (resume.job_seeker_id !== requesterId && !canViewCvDatabase) {
         return res.status(403).json({ error: 'You do not have permission to download this resume' });
       }
 
