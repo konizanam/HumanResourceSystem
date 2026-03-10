@@ -567,7 +567,7 @@ export function GlobalSettingsPage() {
               </label>
               <div className="field fieldFull">
                 <p className="pageText" style={{ margin: 0 }}>
-                  If these are left blank, the default login message is used automatically.
+                  If these are left blank, no welcome title/subtitle is shown on the login screen.
                 </p>
               </div>
             </div>

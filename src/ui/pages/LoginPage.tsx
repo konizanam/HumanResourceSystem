@@ -13,9 +13,6 @@ import { applyAppThemeColor } from "../utils/themeColor";
 
 const THEME_KEY = "hrs-theme";
 const DEFAULT_APP_COLOR = "#6b7280";
-const DEFAULT_LOGIN_WELCOME_TITLE = "Welcome to your recruitment command center";
-const DEFAULT_LOGIN_WELCOME_SUBTITLE =
-  "Sign in to hire, apply, and stay updated on applications - all in one secure place.";
 
 function joinBaseAndPath(base: string, path: string): string {
   const cleanBase = String(base ?? "").trim().replace(/\/$/, "");
@@ -185,8 +182,8 @@ export function LoginPage() {
   const location = useLocation();
   const [systemName, setSystemName] = useState<string>("");
   const [brandingLogoUrl, setBrandingLogoUrl] = useState<string>("");
-  const [welcomeTitle, setWelcomeTitle] = useState<string>(DEFAULT_LOGIN_WELCOME_TITLE);
-  const [welcomeSubtitle, setWelcomeSubtitle] = useState<string>(DEFAULT_LOGIN_WELCOME_SUBTITLE);
+  const [welcomeTitle, setWelcomeTitle] = useState<string>("");
+  const [welcomeSubtitle, setWelcomeSubtitle] = useState<string>("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -245,8 +242,8 @@ export function LoginPage() {
           applyAppThemeColor(nextAppColor);
           const nextWelcomeTitle = String((settings as any).login_welcome_title ?? "").trim();
           const nextWelcomeSubtitle = String((settings as any).login_welcome_subtitle ?? "").trim();
-          setWelcomeTitle(nextWelcomeTitle || DEFAULT_LOGIN_WELCOME_TITLE);
-          setWelcomeSubtitle(nextWelcomeSubtitle || DEFAULT_LOGIN_WELCOME_SUBTITLE);
+          setWelcomeTitle(nextWelcomeTitle);
+          setWelcomeSubtitle(nextWelcomeSubtitle);
         }
 
         const mainCompanyLogo = mainCompanyId && apiBase
@@ -260,8 +257,8 @@ export function LoginPage() {
         setBrandingLogoUrl("");
         setLastAppColor(DEFAULT_APP_COLOR);
         applyAppThemeColor(DEFAULT_APP_COLOR);
-        setWelcomeTitle(DEFAULT_LOGIN_WELCOME_TITLE);
-        setWelcomeSubtitle(DEFAULT_LOGIN_WELCOME_SUBTITLE);
+        setWelcomeTitle("");
+        setWelcomeSubtitle("");
         setSettingsLoaded(true);
       }
     };
@@ -492,10 +489,8 @@ export function LoginPage() {
       <div className="authWrap">
         <aside className="authVisual" aria-hidden="true">
           <div className="authVisualBadge">{systemName}</div>
-          <h2 className="authVisualTitle">{welcomeTitle}</h2>
-          <p className="authVisualText">
-            {welcomeSubtitle}
-          </p>
+          {welcomeTitle ? <h2 className="authVisualTitle">{welcomeTitle}</h2> : null}
+          {welcomeSubtitle ? <p className="authVisualText">{welcomeSubtitle}</p> : null}
           <div className="authVisualMeta">Fast • Secure • Reliable</div>
         </aside>
 
