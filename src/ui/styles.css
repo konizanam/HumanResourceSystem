@@ -1550,6 +1550,7 @@ input[type="radio"][required] {
   padding: clamp(22px, 4vw, 36px);
   max-height: none;
   overflow: visible;
+  margin-inline: auto;
 }
 
 .signupStepGrid {
@@ -2119,6 +2120,8 @@ input[type="radio"][required] {
 .confirmValue {
   font-weight: 600;
   color: var(--heading);
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .confirmCaptcha {
@@ -2153,6 +2156,71 @@ input[type="radio"][required] {
   color: var(--text);
   font-weight: 900;
   letter-spacing: 0.02em;
+}
+
+@media (max-width: 640px) {
+  .signupPage {
+    padding: 8px;
+  }
+
+  .signupCard {
+    width: 100%;
+    padding: 14px;
+    border-radius: var(--radius-lg);
+  }
+
+  .signupCard .stepper {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 8px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .signupCard .stepper::before,
+  .signupCard .stepperLine {
+    display: none;
+  }
+
+  .signupCard .stepperItem {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .signupCard .stepperLabel {
+    white-space: normal;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  .signupCard .stepperCircle {
+    width: 28px;
+    height: 28px;
+  }
+
+  .signupCard .stepperActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .signupCard .stepperActions .btn {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .confirmItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .confirmValue {
+    text-align: left;
+  }
 }
 
 .captchaInputRow {
