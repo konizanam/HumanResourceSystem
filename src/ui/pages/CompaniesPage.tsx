@@ -794,7 +794,10 @@ export function CompaniesPage() {
         <div className="companiesHeader">
           <h1 className="pageTitle">Companies</h1>
         </div>
-        <p className="pageText">Loading…</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
       </div>
     );
   }
@@ -1579,7 +1582,7 @@ function CompanyPostJobPanel({
       <h2 className="editFormTitle">Post Job — {company.name}</h2>
 
       {loadingCategories ? (
-        <p className="pageText">Loading categories...</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
       ) : (
         <div className="editGrid">
           <div className="field">

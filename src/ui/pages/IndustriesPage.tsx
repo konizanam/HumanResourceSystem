@@ -263,7 +263,7 @@ export function IndustriesPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Industries</h1></div>
-        <p className="pageText">Loading...</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
       </div>
     );
   }

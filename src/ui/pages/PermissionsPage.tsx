@@ -88,7 +88,15 @@ export function PermissionsPage() {
   }
 
   if (loading) {
-    return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Permissions</h1></div><p className="pageText">Loading…</p></div>);
+    return (
+      <div className="page">
+        <div className="companiesHeader"><h1 className="pageTitle">Permissions</h1></div>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
+      </div>
+    );
   }
 
   const moduleKeys = Object.keys(filteredGrouped).sort();

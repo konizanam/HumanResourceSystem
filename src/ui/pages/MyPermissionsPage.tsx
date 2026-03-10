@@ -175,7 +175,7 @@ export function MyPermissionsPage() {
       {error ? <div className="errorBox">{error}</div> : null}
 
       {loading ? (
-        <p className="pageText">Loading...</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
       ) : (
         permissionsByModule.length === 0 ? (
           <div className="dashCard" style={{ marginTop: 12 }}>

@@ -390,7 +390,10 @@ export function RolesPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Roles</h1></div>
-        <p className="pageText">Loading…</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
       </div>
     );
   }
@@ -568,7 +571,10 @@ export function RolesPage() {
                             <div className="editForm">
                               <h2 className="editFormTitle">Manage Roles — {role.name}</h2>
                               {permissionsLoading ? (
-                                <p className="pageText">Loading permissions…</p>
+                                <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+                                  <span className="placeholderSpinner" aria-hidden="true" />
+                                  <span className="srOnly">Loading</span>
+                                </div>
                               ) : (
                                 <>
                                   <div className="permCardsGrid" role="list" aria-label="Permissions by module">

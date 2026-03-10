@@ -150,7 +150,7 @@ export function ApplicationsPage() {
       {error ? <div className="errorBox">{error}</div> : null}
 
       {loading && jobs.length === 0 ? (
-        <p className="pageText">Loading...</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
       ) : (
         <>
           <div className="statsCardsGrid" role="region" aria-label="Applications statistics">

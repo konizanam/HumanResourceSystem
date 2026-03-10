@@ -317,7 +317,12 @@ export function EmailTemplatesPage() {
         </div>
       )}
 
-      {isLoading ? <p className="pageText">Loading…</p> : null}
+      {isLoading ? (
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
+      ) : null}
 
       <div className="emailTemplatesList">
         {templates.map((t) => {

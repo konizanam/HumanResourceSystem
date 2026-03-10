@@ -1037,7 +1037,7 @@ export function DashboardPage() {
   }, [visibleJobPostTrendChart]);
 
   if (loading || permissionsLoading) {
-    return <div className="page"><h1 className="pageTitle">Dashboard</h1><p className="pageText">Loading...</p></div>;
+    return <div className="page"><h1 className="pageTitle">Dashboard</h1><div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div></div>;
   }
 
   return (

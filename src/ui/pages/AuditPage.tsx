@@ -212,7 +212,15 @@ export function AuditPage() {
   }
 
   if (loading && logs.length === 0) {
-    return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div><p className="pageText">Loading…</p></div>);
+    return (
+      <div className="page">
+        <div className="companiesHeader"><h1 className="pageTitle">Audit Logs</h1></div>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
+      </div>
+    );
   }
 
   if (!canViewAudit) {

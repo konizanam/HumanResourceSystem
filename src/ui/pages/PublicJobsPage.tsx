@@ -941,7 +941,7 @@ export function PublicJobsPage() {
 
           <section>
             {loading ? (
-              <p className="pageText">Loading...</p>
+              <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>

@@ -1228,7 +1228,15 @@ export function ReportsPage() {
   }
 
   if (loading) {
-    return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Reports &amp; Statistics</h1></div><p className="pageText">Loading…</p></div>);
+    return (
+      <div className="page">
+        <div className="companiesHeader"><h1 className="pageTitle">Reports &amp; Statistics</h1></div>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
+      </div>
+    );
   }
 
   if (!canViewReports) {
@@ -2090,7 +2098,12 @@ export function ReportsPage() {
         Last generated: {lastGeneratedAt ? formatDate(lastGeneratedAt) : "—"}
       </p>
 
-      {loadingApplications && canViewApplicantsReport ? <p className="pageText">Loading application analytics…</p> : null}
+      {loadingApplications && canViewApplicantsReport ? (
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -108,6 +108,22 @@ meRouter.patch("/me", authenticate, async (req, res, next) => {
       return res.status(400).json({ error: { message: "Invalid email format" } });
     }
 
+    if (!phone) {
+      return res.status(400).json({ error: { message: "Phone number is required" } });
+    }
+
+    if (!/^\+?[\d\s]+$/.test(phone)) {
+      return res.status(400).json({ error: { message: "Invalid phone format" } });
+    }
+
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length > 15) {
+      return res.status(400).json({ error: { message: "Phone number must not exceed 15 digits" } });
+    }
+    if (phoneDigits.length < 6) {
+      return res.status(400).json({ error: { message: "Phone number appears too short" } });
+    }
+
     const existing = await query(
       `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1`,
       [email, userId],
@@ -125,7 +141,7 @@ meRouter.patch("/me", authenticate, async (req, res, next) => {
       RETURNING id, first_name, last_name, email, phone, is_active, created_at,
                 (profile_picture_data IS NOT NULL) as has_profile_picture,
                 profile_picture_updated_at`,
-      [email, phone && phone.length > 0 ? phone : null, userId],
+      [email, phone, userId],
     );
 
     const user = result.rows[0];

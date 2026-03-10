@@ -394,7 +394,10 @@ export function UsersPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Users</h1></div>
-        <p className="pageText">Loading…</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
       </div>
     );
   }
@@ -611,7 +614,10 @@ export function UsersPage() {
                         <td colSpan={7}>
                           <div className="dropPanel">
                             {detailLoading ? (
-                              <p className="pageText">Loading user details…</p>
+                              <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+                                <span className="placeholderSpinner" aria-hidden="true" />
+                                <span className="srOnly">Loading</span>
+                              </div>
                             ) : userDetail ? (
                               <div className="editForm">
                                 <h2 className="editFormTitle">User Details</h2>
@@ -781,7 +787,7 @@ export function UsersPage() {
       >
         <div style={{ padding: "0 24px", marginBottom: 8 }}>
           {rolesLoading ? (
-            <p className="pageText">Loading roles...</p>
+            <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
               {allRoles.map((role) => (

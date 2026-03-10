@@ -315,7 +315,7 @@ export function GlobalSettingsPage() {
 
       <div className="dropPanel">
         <h2 className="editFormTitle">Main Company Information</h2>
-        {loading ? <p className="pageText">Loading...</p> : null}
+        {loading ? <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div> : null}
         {!loading && !primaryCompany ? <div className="emptyState">No company found. Create a company first.</div> : null}
         {!loading && primaryCompany ? (
           <>

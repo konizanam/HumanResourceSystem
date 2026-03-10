@@ -560,7 +560,7 @@ export function JobApplicationsPage() {
       <div className="dropPanel">
         <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
         {profile === undefined ? (
-          <p className="pageText">Loading profile...</p>
+          <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
         ) : profile === null ? (
           <p className="pageText">Profile details are not available for this applicant.</p>
         ) : (
@@ -722,7 +722,10 @@ export function JobApplicationsPage() {
                     <div style={{ marginTop: 10 }}>
                       <div className="readLabel">Document Preview</div>
                       {docLoadingByAppId[app.id] ? (
-                        <p className="pageText">Loading preview…</p>
+                        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+                          <span className="placeholderSpinner" aria-hidden="true" />
+                          <span className="srOnly">Loading</span>
+                        </div>
                       ) : docBlobByAppId[app.id] ? (
                         <iframe
                           src={docBlobByAppId[app.id]!}
@@ -763,7 +766,7 @@ export function JobApplicationsPage() {
     return (
       <div className="page">
         <div className="companiesHeader"><h1 className="pageTitle">Job Applications</h1></div>
-        <p className="pageText">Loading...</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
       </div>
     );
   }

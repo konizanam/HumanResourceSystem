@@ -12,6 +12,14 @@ import {
 } from "../api/client";
 import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
+import {
+  CALLING_CODE_OPTIONS,
+  DEFAULT_CALLING_CODE,
+  composeInternationalPhone,
+  sanitizePhoneLocalInput,
+  splitInternationalPhone,
+  validateInternationalPhone,
+} from "../utils/phoneCountryCodes";
 import { applyAppThemeColor } from "../utils/themeColor";
 
 const DEFAULT_APP_COLOR = "#6b7280";
@@ -88,6 +96,7 @@ type FormData = {
   firstName: string;
   lastName: string;
   email: string;
+  phone: string;
   password: string;
   confirmPassword: string;
 
@@ -117,6 +126,7 @@ const INITIAL: FormData = {
   firstName: "",
   lastName: "",
   email: "",
+  phone: "",
   password: "",
   confirmPassword: "",
 
@@ -146,6 +156,7 @@ const DEV_PREFILL: Partial<FormData> = {
   firstName: "Micheal",
   lastName: "Shilunga",
   email: "michealshilunga@gmail.com",
+  phone: "+264 811234567",
   password: "K0ndj@B0y",
   confirmPassword: "K0ndj@B0y",
 
@@ -434,6 +445,9 @@ export function SignupPage() {
       else if (emailAvailable === false)
         errs.email = "Email is already registered";
 
+      const phoneErr = validateInternationalPhone(form.phone, "Phone number is required");
+      if (phoneErr) errs.phone = phoneErr;
+
       if (form.password.length < 8)
         errs.password = "At least 8 characters";
       else if (
@@ -514,6 +528,7 @@ export function SignupPage() {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: userEmail,
+          phone: form.phone.trim(),
           password: form.password,
           confirmPassword: form.confirmPassword,
         });
@@ -646,6 +661,45 @@ export function SignupPage() {
               )}
               {fieldErrors.email && (
                 <span className="fieldError">{fieldErrors.email}</span>
+              )}
+            </label>
+
+            <label className="field">
+              <span className="fieldLabel">Phone Number</span>
+              {(() => {
+                const parts = splitInternationalPhone(form.phone, DEFAULT_CALLING_CODE);
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr)", gap: 8 }}>
+                    <select
+                      className="input"
+                      value={parts.code}
+                      onChange={(e) => {
+                        const nextCode = e.target.value;
+                        set("phone", composeInternationalPhone(nextCode, parts.local));
+                      }}
+                      aria-label="Country calling code"
+                    >
+                      {CALLING_CODE_OPTIONS.map((option) => (
+                        <option key={option.code} value={option.code}>{option.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      className="input"
+                      value={parts.local}
+                      onChange={(e) => {
+                        const nextLocal = sanitizePhoneLocalInput(e.target.value, 15);
+                        set("phone", composeInternationalPhone(parts.code, nextLocal));
+                      }}
+                      inputMode="tel"
+                      placeholder="81 123 4567"
+                      autoComplete="tel"
+                      required
+                    />
+                  </div>
+                );
+              })()}
+              {fieldErrors.phone && (
+                <span className="fieldError">{fieldErrors.phone}</span>
               )}
             </label>
 
@@ -1201,6 +1255,10 @@ export function SignupPage() {
               <div className="confirmItem">
                 <span className="confirmLabel">Email</span>
                 <span className="confirmValue">{form.email}</span>
+              </div>
+              <div className="confirmItem">
+                <span className="confirmLabel">Phone</span>
+                <span className="confirmValue">{form.phone || "-"}</span>
               </div>
               <div className="confirmItem">
                 <span className="confirmLabel">Gender</span>

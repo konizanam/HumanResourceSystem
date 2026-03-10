@@ -1225,6 +1225,49 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     try {
       setLoading(true);
 
+      if (forcedMode === "directory") {
+        setMode("directory");
+        setError(null);
+        setSuccess(null);
+        setPendingJob(null);
+        setData(null);
+        setJobSeekers([]);
+
+        // Resolve permissions in the background so the page can start
+        // loading directory data immediately.
+        void me(accessToken)
+          .then((session) => {
+            const permissions: string[] = Array.isArray((session as any)?.user?.permissions)
+              ? (session as any).user.permissions.map((p: unknown) => String(p))
+              : [];
+            const normalizedPerms = permissions.map((p) => p.toLowerCase());
+            const canViewJobSeekerProfiles = normalizedPerms.some((p) =>
+              [
+                "view_users",
+                "manage_users",
+                "view_applications",
+                "manage_applications",
+                "view_cv_database",
+              ].includes(p),
+            );
+
+            if (!canViewJobSeekerProfiles) {
+              setMode("forbidden");
+              setData(null);
+              setError("Access denied. Required permission: VIEW_CV_DATABASE (or admin/user-management permissions).");
+              return;
+            }
+
+            setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
+          })
+          .catch(() => {
+            setMode("forbidden");
+            setData(null);
+            setError("Access denied. Required permission: VIEW_CV_DATABASE (or admin/user-management permissions).");
+          });
+        return;
+      }
+
       let session: any = null;
       try {
         session = await me(accessToken);
@@ -1254,36 +1297,15 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       );
       setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
 
-      if (forcedMode === "directory") {
-        if (!canViewJobSeekerProfiles) {
-          setMode("forbidden");
-          setData(null);
-          setError("Access denied. Required permission: VIEW_CV_DATABASE (or admin/user-management permissions).");
-          return;
-        }
-
-        setMode("directory");
-        setError(null);
-        setSuccess(null);
-        setPendingJob(null);
-        setData(null);
-        setJobSeekers([]);
-        return;
-      }
-
       if (forcedMode === "self") {
-        if (!canApplyJob) {
-          setMode("forbidden");
-          setData(null);
-          setError("Access denied. Required permission: APPLY_JOB.");
-          return;
-        }
-
         setMode("self");
-        const profile = await getFullProfile(accessToken);
+        const [profile, selfSession] = await Promise.all([
+          getFullProfile(accessToken),
+          me(accessToken).catch(() => null),
+        ]);
         if (!profile.personalDetails) {
           try {
-            const user = (session as any)?.user ?? {};
+            const user = (selfSession as any)?.user ?? (session as any)?.user ?? {};
             profile.personalDetails = {
               first_name: user.first_name ?? "",
               last_name: user.last_name ?? "",
@@ -1340,7 +1362,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     } finally {
       setLoading(false);
     }
-  }, [accessToken, navigate]);
+  }, [accessToken, forcedMode]);
 
   useEffect(() => {
     load();
@@ -1682,19 +1704,39 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: undefined }));
     if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: undefined }));
 
-    try {
-      const [profile, docs, resumeResult] = await Promise.all([
-        hasProfile ? Promise.resolve(directoryProfileByUserId[id] as any) : getJobSeekerFullProfile(accessToken, id),
-        hasDocs ? Promise.resolve(directoryDocumentsByUserId[id] as any) : listUserDocuments(accessToken, id),
-        hasResumes ? Promise.resolve(directoryResumesByUserId[id] as any) : listUserResumes(accessToken, id).catch(() => ({ primary_resume: null, resumes: [] })),
-      ]);
-      if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: profile }));
-      if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: Array.isArray(docs) ? docs : [] }));
-      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: resumeResult }));
-    } catch {
-      if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
-      if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
-      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: { primary_resume: null, resumes: [] } }));
+    // Load each resource independently so profile details can render without
+    // waiting for documents/resumes to finish.
+    if (!hasProfile) {
+      void getJobSeekerFullProfile(accessToken, id)
+        .then((profile) => {
+          setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: profile }));
+        })
+        .catch(() => {
+          setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
+        });
+    }
+
+    if (!hasDocs) {
+      void listUserDocuments(accessToken, id)
+        .then((docs) => {
+          setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: Array.isArray(docs) ? docs : [] }));
+        })
+        .catch(() => {
+          setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
+        });
+    }
+
+    if (!hasResumes) {
+      void listUserResumes(accessToken, id)
+        .then((resumeResult) => {
+          setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: resumeResult }));
+        })
+        .catch(() => {
+          setDirectoryResumesByUserId((prev) => ({
+            ...prev,
+            [id]: { primary_resume: null, resumes: [] },
+          }));
+        });
     }
   }
 
@@ -1777,7 +1819,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       <div className="dropPanel">
         <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
-          <p className="pageText">Loading profile...</p>
+          <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
         ) : profile === null ? (
           <p className="pageText">Profile details are not available for this job seeker.</p>
         ) : (
@@ -1965,7 +2007,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   });
 
                   if (docs === undefined) {
-                    return <p className="pageText">Loading documents...</p>;
+                    return <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>;
                   }
 
                   if (docs === null) {
@@ -2074,7 +2116,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     return (
       <div className="page">
         <h1 className="pageTitle">{pageTitle}</h1>
-        <p className="pageText">Loading…</p>
+        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
+          <span className="placeholderSpinner" aria-hidden="true" />
+          <span className="srOnly">Loading</span>
+        </div>
       </div>
     );
   }
@@ -2843,6 +2888,8 @@ function PersonalDetailsSection({
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       errs.email = "Enter a valid email address";
     }
+    const phoneErr = validateInternationalPhone(form.phone, "Phone number is required");
+    if (phoneErr) errs.phone = phoneErr;
     if (!form.gender) errs.gender = "Gender is required";
     if (!form.dateOfBirth) errs.dateOfBirth = "Date of birth is required";
     if (!form.nationality.trim()) errs.nationality = "Nationality is required";
@@ -2905,7 +2952,7 @@ function PersonalDetailsSection({
 
       await updateMyAccount(token, {
         email: form.email,
-        phone: form.phone || null,
+        phone: form.phone.trim(),
       });
       setAccountContact({ email: form.email.trim(), phone: form.phone.trim() });
 
@@ -3122,6 +3169,8 @@ function PersonalDetailsSection({
           label="Phone Number"
           value={form.phone}
           onChange={(v) => set("phone", v)}
+          required
+          error={fieldErrors.phone}
         />
         <label className="field">
           <span className="fieldLabel">Gender</span>

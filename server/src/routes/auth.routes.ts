@@ -501,6 +501,13 @@ const registerSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(100),
   lastName: z.string().trim().min(1, "Last name is required").max(100),
   email: z.string().trim().email("Invalid email address"),
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Phone number is required")
+    .refine((value) => /^\+?[\d\s]+$/.test(value), "Invalid phone format")
+    .refine((value) => value.replace(/\D/g, "").length >= 6, "Phone number appears too short")
+    .refine((value) => value.replace(/\D/g, "").length <= 15, "Phone number must not exceed 15 digits"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -518,6 +525,7 @@ authRouter.post("/register", async (req, res, next) => {
   const client = await getClient();
   try {
     const data = registerSchema.parse(req.body);
+    const normalizedPhone = data.phone.trim();
 
     // Check if email already exists
     const existing = await findUserByEmail(data.email);
@@ -533,10 +541,10 @@ authRouter.post("/register", async (req, res, next) => {
 
     // Insert user
     const { rows: userRows } = await client.query<{ id: string }>(
-      `INSERT INTO users (first_name, last_name, email, password_hash, is_active)
-       VALUES ($1, $2, $3, $4, FALSE)
+      `INSERT INTO users (first_name, last_name, email, phone, password_hash, is_active)
+       VALUES ($1, $2, $3, $4, $5, FALSE)
        RETURNING id`,
-      [data.firstName, data.lastName, data.email, passwordHash]
+      [data.firstName, data.lastName, data.email, normalizedPhone, passwordHash]
     );
     const userId = userRows[0].id;
     res.locals.auditUserId = userId;
