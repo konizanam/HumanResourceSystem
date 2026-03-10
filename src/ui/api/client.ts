@@ -1493,12 +1493,6 @@ export async function listUserResumes(
   };
 }
 
-function hasLegacyUploadsReference(raw: unknown): boolean {
-  const value = String(raw ?? "").trim().toLowerCase();
-  if (!value) return false;
-  return value.includes("/upload/") || value.includes("/uploads/");
-}
-
 export async function getLegacyApplicationDocumentsNeedingReupload(token: string): Promise<string[]> {
   // Legacy upload-path apply blocking has been removed from apply flows.
   void token;

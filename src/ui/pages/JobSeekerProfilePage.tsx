@@ -44,6 +44,7 @@ import {
   type JobSeekerListItem,
   type JobSeekerFullProfile,
   type UserDocument,
+  type JobSeekerResume,
 } from "../api/client";
 
 /* ================================================================== */
@@ -136,10 +137,10 @@ function resolveFileUrl(raw: unknown): string {
   return `${base}/${value.replace(/^\.?\//, "")}`;
 }
 
-function hasLegacyUploadsReference(raw: unknown): boolean {
-  const value = String(raw ?? "").trim().toLowerCase();
-  return value.includes("/uploads/");
-}
+type DirectoryResumeBundle = {
+  primary_resume: JobSeekerResume | null;
+  resumes: JobSeekerResume[];
+};
 
 async function fetchProfilePictureObjectUrl(
   token: string,
@@ -1201,7 +1202,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   >({});
 
   const [directoryResumesByUserId, setDirectoryResumesByUserId] = useState<
-    Record<string, { primary_resume: { id: string; file_name?: string; download_url?: string; file_path?: string } | null } | undefined>
+    Record<string, DirectoryResumeBundle | undefined>
   >({});
 
   const [blockModalUser, setBlockModalUser] = useState<JobSeekerListItem | null>(null);
@@ -1481,15 +1482,11 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         setDirectoryDocumentsByUserId((prev) => ({ ...prev, [userId]: Array.isArray(docs) ? docs : [] }));
       }
 
-      type DirectoryResumeBundle = {
-        primary_resume: { id: string; file_name?: string; download_url?: string; file_path?: string } | null;
-        resumes?: Array<{ id: string; file_name?: string; download_url?: string; file_path?: string; is_primary?: boolean }>;
-      };
       let resumeResult: DirectoryResumeBundle | undefined = directoryResumesByUserId[userId] as DirectoryResumeBundle | undefined;
       if (!resumeResult) {
         const fetchedResumes = await listUserResumes(accessToken, userId).catch(() => ({ primary_resume: null, resumes: [] }));
         resumeResult = fetchedResumes as DirectoryResumeBundle;
-        setDirectoryResumesByUserId((prev) => ({ ...prev, [userId]: fetchedResumes as any }));
+        setDirectoryResumesByUserId((prev) => ({ ...prev, [userId]: fetchedResumes as DirectoryResumeBundle }));
       }
 
       const profilePicDataUrl = await fetchProfilePictureDataUrl(accessToken, { userId }).catch(() => null);
@@ -1697,7 +1694,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     } catch {
       if (!hasProfile) setDirectoryProfileByUserId((prev) => ({ ...prev, [id]: null }));
       if (!hasDocs) setDirectoryDocumentsByUserId((prev) => ({ ...prev, [id]: null }));
-      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: { primary_resume: null } }));
+      if (!hasResumes) setDirectoryResumesByUserId((prev) => ({ ...prev, [id]: { primary_resume: null, resumes: [] } }));
     }
   }
 
@@ -1749,9 +1746,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const docs = userId ? directoryDocumentsByUserId[userId] : null;
     const selectedPreview = userId ? (directoryDocPreviewByUserId[userId] ?? null) : null;
     const primaryResume = userId ? (directoryResumesByUserId[userId]?.primary_resume ?? null) : null;
-    const resumeRows = userId ? (Array.isArray(directoryResumesByUserId[userId]?.resumes) ? directoryResumesByUserId[userId]!.resumes! : []) : [];
+    const resumeRows = userId ? (Array.isArray(directoryResumesByUserId[userId]?.resumes) ? directoryResumesByUserId[userId]!.resumes : []) : [];
     const directoryResumeList = primaryResume
-      ? [primaryResume, ...resumeRows.filter((r) => String((r as any)?.id ?? "") !== String((primaryResume as any)?.id ?? ""))]
+      ? [primaryResume, ...resumeRows.filter((r: JobSeekerResume) => String((r as any)?.id ?? "") !== String((primaryResume as any)?.id ?? ""))]
       : resumeRows;
 
     if (!userId) {
