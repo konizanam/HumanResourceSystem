@@ -122,14 +122,13 @@ async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Pro
   }
 
   try {
-    // Match profile-view behavior: only effective (primary/latest) document per type
-    // from job_seeker_documents associations.
+    // Match Job Seeker profile behavior: latest associated document per type
+    // based on document timestamps.
     const latestDocuments = await dbQuery(
       `SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')))
               COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')) AS document_type,
               d.file_path,
               d.file_url,
-              jsd.is_primary,
               d.created_at,
               d.updated_at,
               d.id
@@ -137,7 +136,6 @@ async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Pro
          JOIN documents d ON d.id = jsd.document_id
         WHERE jsd.user_id = $1
         ORDER BY COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')),
-                 jsd.is_primary DESC,
                  d.created_at DESC NULLS LAST,
                  d.updated_at DESC NULLS LAST,
                  d.id DESC`,
@@ -196,8 +194,7 @@ async function getApplicantReadinessForApply(userId: string): Promise<{ ready: b
          JOIN documents d ON d.id = jsd.document_id
         WHERE jsd.user_id = $1
           AND LOWER(COALESCE(NULLIF(TRIM(jsd.document_type), ''), NULLIF(TRIM(d.document_type), ''), '')) = 'id_document'
-        ORDER BY jsd.is_primary DESC,
-                 d.created_at DESC NULLS LAST,
+        ORDER BY d.created_at DESC NULLS LAST,
                  d.updated_at DESC NULLS LAST,
                  d.id DESC
         LIMIT 1`,
