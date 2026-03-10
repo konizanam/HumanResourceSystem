@@ -122,18 +122,25 @@ async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Pro
   }
 
   try {
-    // Match profile-view behavior: only latest uploaded document for each type.
+    // Match profile-view behavior: only effective (primary/latest) document per type
+    // from job_seeker_documents associations.
     const latestDocuments = await dbQuery(
-      `SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(document_type), ''), 'Document'))
-              document_type,
-              file_path,
-              file_url
-         FROM documents
-        WHERE user_id = $1
-        ORDER BY COALESCE(NULLIF(TRIM(document_type), ''), 'Document'),
-                 created_at DESC NULLS LAST,
-                 updated_at DESC NULLS LAST,
-                 id DESC`,
+      `SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')))
+              COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')) AS document_type,
+              d.file_path,
+              d.file_url,
+              jsd.is_primary,
+              d.created_at,
+              d.updated_at,
+              d.id
+         FROM job_seeker_documents jsd
+         JOIN documents d ON d.id = jsd.document_id
+        WHERE jsd.user_id = $1
+        ORDER BY COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')),
+                 jsd.is_primary DESC,
+                 d.created_at DESC NULLS LAST,
+                 d.updated_at DESC NULLS LAST,
+                 d.id DESC`,
       [userId]
     );
 
@@ -184,13 +191,15 @@ async function getApplicantReadinessForApply(userId: string): Promise<{ ready: b
   let latestUploadedIdDocumentUrl = '';
   try {
     const latestIdDocumentResult = await dbQuery(
-      `SELECT COALESCE(NULLIF(TRIM(download_url), ''), NULLIF(TRIM(file_url), ''), NULLIF(TRIM(file_path), '')) AS url
-         FROM documents
-        WHERE user_id = $1
-          AND LOWER(COALESCE(NULLIF(TRIM(document_type), ''), '')) = 'id_document'
-        ORDER BY created_at DESC NULLS LAST,
-                 updated_at DESC NULLS LAST,
-                 id DESC
+      `SELECT COALESCE(NULLIF(TRIM(d.download_url), ''), NULLIF(TRIM(d.file_url), ''), NULLIF(TRIM(d.file_path), '')) AS url
+         FROM job_seeker_documents jsd
+         JOIN documents d ON d.id = jsd.document_id
+        WHERE jsd.user_id = $1
+          AND LOWER(COALESCE(NULLIF(TRIM(jsd.document_type), ''), NULLIF(TRIM(d.document_type), ''), '')) = 'id_document'
+        ORDER BY jsd.is_primary DESC,
+                 d.created_at DESC NULLS LAST,
+                 d.updated_at DESC NULLS LAST,
+                 d.id DESC
         LIMIT 1`,
       [userId]
     );
