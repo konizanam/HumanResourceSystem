@@ -1036,7 +1036,11 @@ export async function forgotPassword(email: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  return res.json();
+  return (await res.json()) as {
+    message?: string;
+    maskedEmail?: string;
+    resetToken?: string;
+  };
 }
 
 export async function resetPassword(

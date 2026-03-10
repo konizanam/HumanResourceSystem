@@ -627,9 +627,10 @@ export function LoginPage() {
                       setBusy(true);
                       setForgotMessage(null);
                       try {
-                        await forgotPassword(value);
+                        const response = await forgotPassword(value);
+                        const safeEmail = response?.maskedEmail || maskEmail(value);
                         setForgotMessage(
-                          `If an account exists for ${value}, a reset link has been sent.`
+                          `If an account exists for ${safeEmail}, a reset link has been sent.`
                         );
                       } catch (err) {
                         setForgotMessage(resolveAuthErrorMessage(err, "forgot"));

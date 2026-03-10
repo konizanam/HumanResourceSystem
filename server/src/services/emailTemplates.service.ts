@@ -189,6 +189,23 @@ const DEFAULT_TEMPLATES: Record<string, Omit<EmailTemplate, 'updated_at'>> = {
     body_html: '',
     placeholders: ['app_name', 'user_full_name', 'login_link', 'support_email'],
   },
+  password_reset: {
+    key: 'password_reset',
+    title: 'Password Reset',
+    description: 'Sent when a user requests a password reset link.',
+    subject: 'Reset your {{app_name}} password',
+    body_text:
+      'Dear {{user_full_name}},\n\n'
+      + 'A request was received to reset your {{app_name}} password.\n\n'
+      + 'Use the link below to create a new password:\n'
+      + '{{reset_link}}\n\n'
+      + 'This link expires in {{reset_expires_minutes}} minutes.\n\n'
+      + 'If you did not request this reset, you can safely ignore this email or contact support at {{support_email}}.\n\n'
+      + 'Regards,\n'
+      + '{{app_name}} Team',
+    body_html: '',
+    placeholders: ['app_name', 'user_full_name', 'reset_link', 'reset_expires_minutes', 'support_email'],
+  },
   admin_user_welcome: {
     key: 'admin_user_welcome',
     title: 'Admin User Welcome',

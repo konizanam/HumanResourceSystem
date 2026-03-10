@@ -61,6 +61,26 @@ async function isMainCompanyConfigured(): Promise<boolean> {
   return result.rows.length > 0;
 }
 
+function maskEmailAddress(rawEmail: string): string {
+  const value = String(rawEmail ?? "").trim();
+  const atIndex = value.indexOf("@");
+  if (atIndex <= 0 || atIndex === value.length - 1) return value;
+
+  const localPart = value.slice(0, atIndex);
+  const domainPart = value.slice(atIndex + 1);
+  const domainLabels = domainPart.split(".");
+  const domainName = domainLabels.shift() ?? "";
+  const tld = domainLabels.length ? `.${domainLabels.join(".")}` : "";
+
+  const maskSegment = (segment: string): string => {
+    if (segment.length <= 1) return "*";
+    if (segment.length === 2) return `${segment[0]}*`;
+    return `${segment[0]}${"*".repeat(Math.max(1, segment.length - 2))}${segment[segment.length - 1]}`;
+  };
+
+  return `${maskSegment(localPart)}@${maskSegment(domainName)}${tld}`;
+}
+
 function createTwoFactorChallenge(input: {
   userId: string;
   email: string;
@@ -1194,12 +1214,15 @@ const forgotSchema = z.object({
 authRouter.post("/forgot-password", async (req, res, next) => {
   try {
     const { email } = forgotSchema.parse(req.body);
-    const user = await findUserByEmail(email);
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const maskedEmail = maskEmailAddress(normalizedEmail);
+    const user = await findUserByEmail(normalizedEmail);
 
     // Always return success to avoid leaking whether email exists
     if (!user) {
       return res.json({
         message: "If the email exists, a reset link has been sent.",
+        maskedEmail,
       });
     }
 
@@ -1215,8 +1238,34 @@ authRouter.post("/forgot-password", async (req, res, next) => {
       [resetToken, expiresAt.toISOString(), user.id]
     );
 
+    const origin = webOrigin() || apiOrigin();
+    const resetPath = `/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const resetLink = origin ? `${origin}${resetPath}` : resetPath;
+
+    // Best-effort: keep generic response shape even if email transport fails.
+    try {
+      await sendTemplatedEmail({
+        templateKey: "password_reset",
+        to: user.email,
+        data: {
+          app_name: appName(),
+          user_full_name: publicUser(user).name || user.email,
+          reset_link: resetLink,
+          reset_expires_minutes: "60",
+          support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+        },
+        accent: "security",
+      });
+    } catch (e) {
+      console.error(
+        "[Email] Failed to send password reset email:",
+        e instanceof Error ? e.message : e
+      );
+    }
+
     return res.json({
       message: "If the email exists, a reset link has been sent.",
+      maskedEmail,
       // Include token in response for development only:
       ...(process.env.NODE_ENV !== "production" && { resetToken }),
     });
