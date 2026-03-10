@@ -112,6 +112,14 @@ function resolveFileUrl(raw: unknown): string {
   return `${base}/${value.replace(/^\.?\//, "")}`;
 }
 
+function extractFileName(raw: unknown): string {
+  const full = String(raw ?? "").trim();
+  if (!full) return "";
+  const clean = full.split("?")[0] ?? full;
+  const parts = clean.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : clean;
+}
+
 export function JobApplicationsPage() {
   const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
   const { accessToken } = useAuth();
@@ -516,67 +524,81 @@ export function JobApplicationsPage() {
               {docs.length === 0 ? (
                 <p className="pageText">No document links found.</p>
               ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: selectedDoc
-                      ? "repeat(auto-fit, minmax(320px, 1fr))"
-                      : "1fr",
-                    gap: 12,
-                    alignItems: "start",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {docs.map((doc) => (
-                      <button
-                        key={`${app.id}-${doc.label}-${doc.url}`}
-                        type="button"
-                        className="btn btnGhost btnSm"
-                        disabled={docLoadingByAppId[app.id]}
-                        onClick={() => {
-                          const resolvedUrl = resolveFileUrl(doc.url);
-                          if (!resolvedUrl || !accessToken) return;
-                          setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }));
-                          setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: true }));
-                          fetch(resolvedUrl, { headers: { authorization: `Bearer ${accessToken}` } })
-                            .then(async (res) => {
-                              if (!res.ok) return;
-                              const contentType = res.headers.get("content-type") ?? "";
-                              let mimeType = contentType.split(";")[0].trim();
-                              const arrayBuffer = await res.arrayBuffer();
-                              if (!mimeType || mimeType === "application/octet-stream") {
-                                const header = new Uint8Array(arrayBuffer.slice(0, 5));
-                                const magic = String.fromCharCode(...header);
-                                if (magic.startsWith("%PDF")) {
-                                  mimeType = "application/pdf";
-                                } else if (header[0] === 0x89 && header[1] === 0x50) {
-                                  mimeType = "image/png";
-                                } else if (header[0] === 0xFF && header[1] === 0xD8) {
-                                  mimeType = "image/jpeg";
-                                } else {
-                                  const urlPath = resolvedUrl.split("?")[0].toLowerCase();
-                                  if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
-                                    mimeType = "application/pdf";
-                                  }
-                                }
-                              }
-                              const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" }));
-                              setDocBlobByAppId((prev) => {
-                                if (prev[app.id]) URL.revokeObjectURL(prev[app.id]!);
-                                return { ...prev, [app.id]: objectUrl };
-                              });
-                            })
-                            .catch(() => { /* silently ignore */ })
-                            .finally(() => setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: false })));
-                        }}
-                      >
-                        {docLoadingByAppId[app.id] ? "Loading…" : `View Document (${doc.label})`}
-                      </button>
-                    ))}
+                <>
+                  <div className="uploadedDocsGrid" style={{ marginTop: 0 }}>
+                    {docs.map((doc, idx) => {
+                      const resolvedUrl = resolveFileUrl(doc.url);
+                      const fileName = extractFileName(doc.url) || doc.label;
+                      const isSelected = selectedDoc === doc.url;
+                      return (
+                        <div key={`${app.id}-${doc.label}-${doc.url}-${idx}`} className="uploadedDocCard">
+                          <div className="uploadedDocCardTitle">{doc.label}</div>
+                          <span className="uploadedDocCardLink" title={fileName}>{fileName}</span>
+                          <div className="uploadedDocCardActions">
+                            <button
+                              type="button"
+                              className="btn btnPrimary btnSm uploadedDocViewBtn"
+                              disabled={docLoadingByAppId[app.id] || !resolvedUrl}
+                              onClick={() => {
+                                if (!resolvedUrl || !accessToken) return;
+                                setDocumentUrlByAppId((prev) => ({ ...prev, [app.id]: doc.url }));
+                                setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: true }));
+                                fetch(resolvedUrl, { headers: { authorization: `Bearer ${accessToken}` } })
+                                  .then(async (res) => {
+                                    if (!res.ok) return;
+                                    const contentType = res.headers.get("content-type") ?? "";
+                                    let mimeType = contentType.split(";")[0].trim();
+                                    const arrayBuffer = await res.arrayBuffer();
+                                    if (!mimeType || mimeType === "application/octet-stream") {
+                                      const header = new Uint8Array(arrayBuffer.slice(0, 5));
+                                      const magic = String.fromCharCode(...header);
+                                      if (magic.startsWith("%PDF")) {
+                                        mimeType = "application/pdf";
+                                      } else if (header[0] === 0x89 && header[1] === 0x50) {
+                                        mimeType = "image/png";
+                                      } else if (header[0] === 0xFF && header[1] === 0xD8) {
+                                        mimeType = "image/jpeg";
+                                      } else {
+                                        const urlPath = resolvedUrl.split("?")[0].toLowerCase();
+                                        if (urlPath.endsWith(".pdf") || /\/(pdf|document|download|file)/i.test(urlPath)) {
+                                          mimeType = "application/pdf";
+                                        }
+                                      }
+                                    }
+                                    const objectUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: mimeType || "application/octet-stream" }));
+                                    setDocBlobByAppId((prev) => {
+                                      if (prev[app.id]) URL.revokeObjectURL(prev[app.id]!);
+                                      return { ...prev, [app.id]: objectUrl };
+                                    });
+                                  })
+                                  .catch(() => {
+                                    // Keep UI stable; preview area will show fallback text.
+                                  })
+                                  .finally(() => setDocLoadingByAppId((prev) => ({ ...prev, [app.id]: false })));
+                              }}
+                            >
+                              {docLoadingByAppId[app.id] && isSelected ? "Loading…" : isSelected ? "Refresh" : "View"}
+                            </button>
+                            <a
+                              href={resolvedUrl || undefined}
+                              className="btn btnGhost btnSm uploadedDocDownloadBtn"
+                              target="_blank"
+                              rel="noreferrer"
+                              download={fileName || "document"}
+                              onClick={(e) => {
+                                if (!resolvedUrl) e.preventDefault();
+                              }}
+                            >
+                              Download
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {selectedDoc && (
-                    <div>
+                    <div style={{ marginTop: 10 }}>
                       <div className="readLabel">Document Preview</div>
                       {docLoadingByAppId[app.id] ? (
                         <p className="pageText">Loading preview…</p>
@@ -597,7 +619,7 @@ export function JobApplicationsPage() {
                       )}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </Section>
 
