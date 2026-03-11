@@ -1,0 +1,178 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type Permission,
+  listPermissions,
+  createPermission,
+} from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { usePermissions } from "../auth/usePermissions";
+
+const MODULE_OPTIONS = ["Jobs", "Applications", "Candidates", "Company", "Users", "System", "Reports"];
+const ACTION_OPTIONS = ["CREATE", "VIEW", "UPDATE", "DELETE", "APPROVE", "MANAGE"];
+
+export function PermissionsPage() {
+  const { accessToken } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageUsers = hasPermission("MANAGE_USERS");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [grouped, setGrouped] = useState<Record<string, Permission[]>>({});
+  const [search, setSearch] = useState("");
+
+  // Add form
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addDesc, setAddDesc] = useState("");
+  const [addModule, setAddModule] = useState("");
+  const [addAction, setAddAction] = useState("");
+  const [addFieldErrors, setAddFieldErrors] = useState<Record<string, string>>({});
+
+  const filteredGrouped = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return grouped;
+    const filtered: Record<string, Permission[]> = {};
+    for (const [mod, perms] of Object.entries(grouped)) {
+      const matches = perms.filter(
+        (p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || p.module_name.toLowerCase().includes(q),
+      );
+      if (matches.length > 0) filtered[mod] = matches;
+    }
+    return filtered;
+  }, [grouped, search]);
+
+  const load = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true); setError(null);
+      const data = await listPermissions(accessToken);
+      setPermissions(data.permissions);
+      setGrouped(data.grouped);
+    } catch (e) { setError((e as any)?.message ?? "Failed to load permissions"); }
+    finally { setLoading(false); }
+  }, [accessToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function clearMessages() { setError(null); setSuccess(null); }
+
+  async function onAddPermission() {
+    if (!accessToken || !canManageUsers) return;
+    const errs: Record<string, string> = {};
+    if (!addName.trim()) errs.name = "Permission name is required";
+    if (!addModule.trim()) errs.module_name = "Module is required";
+    if (!addAction.trim()) errs.action_type = "Action type is required";
+    setAddFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    try {
+      clearMessages(); setSaving(true);
+      await createPermission(accessToken, {
+        name: addName.trim(),
+        description: addDesc.trim() || undefined,
+        module_name: addModule.trim(),
+        action_type: addAction.trim(),
+      });
+      // Refresh list to get proper grouping
+      const data = await listPermissions(accessToken);
+      setPermissions(data.permissions);
+      setGrouped(data.grouped);
+      setSuccess("Permission created successfully");
+      setAddOpen(false); setAddName(""); setAddDesc(""); setAddModule(""); setAddAction(""); setAddFieldErrors({});
+    } catch (e) { setError((e as any)?.message ?? "Failed to create permission"); }
+    finally { setSaving(false); }
+  }
+
+  if (loading) {
+    return (<div className="page"><div className="companiesHeader"><h1 className="pageTitle">Permissions</h1></div><p className="pageText">Loading…</p></div>);
+  }
+
+  const moduleKeys = Object.keys(filteredGrouped).sort();
+
+  return (
+    <div className="page">
+      <div className="companiesHeader">
+        <h1 className="pageTitle">Permissions ({permissions.length})</h1>
+        {canManageUsers && (
+          <button type="button" className="btn btnGhost btnSm stepperSaveBtn" onClick={() => { clearMessages(); setAddOpen((v) => !v); }} disabled={saving}>{addOpen ? "Cancel" : "Add Permission"}</button>
+        )}
+      </div>
+
+      {error && <div className="errorBox">{error}</div>}
+      {success && <div className="successBox">{success}</div>}
+
+      <div style={{ marginBottom: 16 }}>
+        <input className="input" placeholder="Search permissions…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 320 }} />
+      </div>
+
+      {/* Add form */}
+      {addOpen && canManageUsers && (
+        <div className="dropPanel" role="region" aria-label="Add permission">
+          <div className="editForm">
+            <h2 className="editFormTitle">Add Permission</h2>
+            <div className="editGrid">
+              <div className="field">
+                <label className="fieldLabel">Permission Name *</label>
+                <input className="input" value={addName} onChange={(e) => { setAddFieldErrors({}); setAddName(e.target.value); }} placeholder="e.g. CREATE_JOB" required />
+                {addFieldErrors.name && <span className="fieldError">{addFieldErrors.name}</span>}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Module *</label>
+                <select className="input" value={addModule} onChange={(e) => { setAddFieldErrors({}); setAddModule(e.target.value); }}>
+                  <option value="">Select module</option>
+                  {MODULE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+                {addFieldErrors.module_name && <span className="fieldError">{addFieldErrors.module_name}</span>}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Action Type *</label>
+                <select className="input" value={addAction} onChange={(e) => { setAddFieldErrors({}); setAddAction(e.target.value); }}>
+                  <option value="">Select action</option>
+                  {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+                {addFieldErrors.action_type && <span className="fieldError">{addFieldErrors.action_type}</span>}
+              </div>
+              <div className="field">
+                <label className="fieldLabel">Description</label>
+                <input className="input" value={addDesc} onChange={(e) => setAddDesc(e.target.value)} placeholder="Optional description" />
+              </div>
+            </div>
+            <div className="stepperActions">
+              <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onAddPermission} disabled={saving} type="button">{saving ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped cards */}
+      {moduleKeys.length === 0 ? (
+        <div className="emptyState">No permissions found.</div>
+      ) : (
+        moduleKeys.map((mod) => (
+          <div key={mod} style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "1rem", fontWeight: 600 }}>{mod}</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+              {filteredGrouped[mod].map((p) => (
+                <div key={p.id} className="dropPanel" style={{ padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+                    <div className="tdStrong" style={{ wordBreak: "break-word" }}>{p.name}</div>
+                    <span className="chipBadge">{p.action_type}</span>
+                  </div>
+                  <div className="readLabel" style={{ marginBottom: 4 }}>Description</div>
+                  <div className="pageText" style={{ margin: 0 }}>{p.description ?? "—"}</div>
+                  <div style={{ marginTop: 8 }}>
+                    <span className="chipBadge">{p.module_name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,176 @@
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { UnauthorizedError, ForbiddenError } from '../utils/errors';
+import { query } from '../config/database';
+
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedError('No token provided');
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+
+    // Support both legacy tokens (`userId`) and standard JWT subject (`sub`).
+    const userId: string | undefined =
+      typeof decoded?.userId === 'string'
+        ? decoded.userId
+        : typeof decoded?.sub === 'string'
+          ? decoded.sub
+          : undefined;
+
+    if (!userId) {
+      throw new UnauthorizedError('Invalid token');
+    }
+
+    const roles: string[] = (Array.isArray(decoded?.roles) ? decoded.roles : [])
+      .map((role: unknown) => String(role).trim().toUpperCase())
+      .filter((role: string) => role.length > 0);
+
+    const preActivation = Boolean(decoded?.preActivation);
+
+    // Check if user still exists and is active
+    const result = await query(
+      'SELECT id, email, is_active FROM users WHERE id = $1',
+      [userId]
+    );
+
+    const userRow = result.rows[0];
+    if (result.rows.length === 0) {
+      throw new UnauthorizedError('User not found or inactive');
+    }
+
+    const active = Boolean(userRow?.is_active);
+    if (!active) {
+      // Allow a limited pre-activation token to complete profile onboarding.
+      // This is used by the signup wizard before email activation.
+      const fullPath = `${req.baseUrl ?? ''}${req.path ?? ''}`;
+      const allowed =
+        preActivation &&
+        typeof fullPath === 'string' &&
+        fullPath.startsWith('/api/v1/profile');
+
+      if (!allowed) {
+        throw new UnauthorizedError('User not found or inactive');
+      }
+    }
+
+    // Get user permissions
+    let permissions: string[] = [];
+    try {
+      const permissionsResult = await query(
+        `SELECT DISTINCT p.name
+         FROM permissions p
+         JOIN role_permissions rp ON p.id = rp.permission_id
+         JOIN user_roles ur ON rp.role_id = ur.role_id
+         WHERE ur.user_id = $1`,
+        [userId]
+      );
+      permissions = permissionsResult.rows
+        .map((row) => String(row.name ?? '').trim().toUpperCase())
+        .filter((permission) => permission.length > 0);
+    } catch {
+      // Best-effort: if permissions schema isn't present or query fails,
+      // default to an empty permission set instead of failing auth.
+      permissions = [];
+    }
+
+    // Add permissions to the user object
+    req.user = {
+      userId,
+      email: typeof decoded?.email === 'string' ? decoded.email : '',
+      roles,
+      permissions
+    };
+
+    next();
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      next(new UnauthorizedError('Invalid token'));
+    } else if (error instanceof jwt.TokenExpiredError) {
+      next(new UnauthorizedError('Token expired'));
+    } else {
+      next(error);
+    }
+  }
+};
+
+export const authorize = (...allowedRoles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new UnauthorizedError('Authentication required'));
+    }
+
+    const normalizedAllowed = allowedRoles.map((r) => r.toUpperCase());
+    const hasRole = req.user.roles.some((role) => normalizedAllowed.includes(String(role).toUpperCase()));
+    if (!hasRole) {
+      return next(
+        new ForbiddenError(
+          `Insufficient permissions. Required role: ${allowedRoles.join(' or ')}`
+        )
+      );
+    }
+
+    next();
+  };
+};
+
+// New middleware for permission-based authorization
+export const authorizePermission = (...allowedPermissions: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new UnauthorizedError('Authentication required'));
+    }
+
+    // Admin always has all permissions
+    const normalizedRoles = req.user.roles.map((role) => String(role).trim().toUpperCase());
+    if (normalizedRoles.includes('ADMIN')) {
+      return next();
+    }
+
+    const normalizedAllowed = new Set(
+      allowedPermissions.map((p) => String(p).trim().toUpperCase()).filter((p) => p.length > 0)
+    );
+    const hasPermission = (req.user.permissions ?? []).some((permission) =>
+      normalizedAllowed.has(String(permission).trim().toUpperCase())
+    );
+
+    if (!hasPermission) {
+      return next(
+        new ForbiddenError(
+          `Insufficient permissions. Required permission: ${allowedPermissions.join(' or ')}`
+        )
+      );
+    }
+
+    next();
+  };
+};
+
+export const isJobSeeker = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    // Check if user has JOB_SEEKER role
+    const normalizedRoles = req.user.roles.map((role) => String(role).toUpperCase());
+    if (!normalizedRoles.includes('JOB_SEEKER')) {
+      throw new ForbiddenError('This endpoint is for job seekers only');
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};

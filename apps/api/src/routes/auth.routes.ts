@@ -1,0 +1,901 @@
+import { Router } from "express";
+import bcrypt from "bcrypt";
+import jwt, { type SignOptions } from "jsonwebtoken";
+import { createHash } from "node:crypto";
+import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
+import { query, getClient } from "../db";
+import { findUserByEmail, findUserById, publicUser } from "../users";
+import { sendTemplatedEmail, apiOrigin, appName, webOrigin, formatLoginDateTime, describeIpLocation } from "../services/emailSender.service";
+import { authenticate } from "../middleware/auth";
+
+export const authRouter = Router();
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/v1/auth/email-available                                   */
+/* ------------------------------------------------------------------ */
+
+const emailAvailableSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+authRouter.get("/email-available", async (req, res, next) => {
+  try {
+    const parsed = emailAvailableSchema.parse(req.query);
+    const existing = await findUserByEmail(parsed.email);
+
+    return res.json({
+      available: !existing,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+type TwoFactorChallenge = {
+  userId: string;
+  email: string;
+  name: string;
+  roles: string[];
+  code: string;
+  expiresAt: number;
+};
+
+const twoFactorChallenges = new Map<string, TwoFactorChallenge>();
+
+function createTwoFactorChallenge(input: {
+  userId: string;
+  email: string;
+  name: string;
+  roles: string[];
+}) {
+  const challengeId = uuidv4();
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expiresAt = Date.now() + 5 * 60 * 1000;
+
+  twoFactorChallenges.set(challengeId, {
+    userId: input.userId,
+    email: input.email,
+    name: input.name,
+    roles: input.roles,
+    code,
+    expiresAt,
+  });
+
+  console.log(`[2FA] Verification code for ${input.email}: ${code}`);
+
+  return {
+    challengeId,
+    code,
+    expiresInSeconds: 300,
+  };
+}
+
+async function sendTwoFactorCodeEmail(params: {
+  to: string;
+  userFullName: string;
+  code: string;
+  expiresInSeconds: number;
+}) {
+  const expiresMinutes = Math.max(1, Math.ceil(params.expiresInSeconds / 60));
+
+  try {
+    await sendTemplatedEmail({
+      templateKey: "auth_code",
+      to: params.to,
+      data: {
+        app_name: appName(),
+        user_full_name: params.userFullName,
+        otp_code: params.code,
+        otp_expires_minutes: String(expiresMinutes),
+        support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+      },
+    });
+  } catch (e) {
+    console.error(
+      "[Email] Failed to send 2FA code email:",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+async function sendLoginNotificationEmail(params: {
+  to: string;
+  userFullName: string;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  try {
+    const dateTime = formatLoginDateTime(new Date());
+    const location = describeIpLocation(params.ip);
+
+    await sendTemplatedEmail({
+      templateKey: "login_notification",
+      to: params.to,
+      accent: "security",
+      data: {
+        app_name: appName(),
+        user_full_name: params.userFullName,
+        login_info_block: "",          // sentinel — rendered specially by token engine
+        login_date_time: dateTime,
+        login_ip: params.ip ?? "Unknown",
+        login_location: location,
+        login_device: params.userAgent ?? "Unknown",
+        support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+      },
+    });
+  } catch (e) {
+    console.error(
+      "[Email] Failed to send login notification email:",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function jwtExpiresIn(): SignOptions["expiresIn"] {
+  const raw = process.env.JWT_EXPIRES_IN;
+  if (!raw) return "8h";
+  const trimmed = raw.trim();
+  if (!trimmed) return "8h";
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^\d+(ms|s|m|h|d|w|y)$/.test(trimmed))
+    return trimmed as SignOptions["expiresIn"];
+  return "8h";
+}
+
+function signToken(payload: object) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured");
+  return jwt.sign(payload, secret, { expiresIn: jwtExpiresIn() });
+}
+
+function getTokenExpiryDate(token: string): Date {
+  try {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    const exp = Number(decoded?.exp);
+    if (Number.isFinite(exp) && exp > 0) {
+      return new Date(exp * 1000);
+    }
+  } catch {
+    // Ignore decode errors and fallback below.
+  }
+  return new Date(Date.now() + 8 * 60 * 60 * 1000);
+}
+
+function tokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function persistUserSession(params: {
+  userId: string;
+  token: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  previousToken?: string | null;
+}) {
+  const expiresAt = getTokenExpiryDate(params.token);
+  const tokenKey = tokenFingerprint(params.token);
+  const previousToken = String(params.previousToken ?? "").trim();
+  const previousTokenKey = previousToken ? tokenFingerprint(previousToken) : "";
+
+  if (previousToken) {
+    const updated = await query(
+      `UPDATE user_sessions
+          SET token = $1,
+              ip_address = $2,
+              user_agent = $3,
+              expires_at = $4,
+              last_activity = NOW()
+        WHERE user_id = $5
+          AND (token = $6 OR token = $7)`,
+      [
+        tokenKey,
+        params.ipAddress,
+        params.userAgent,
+        expiresAt.toISOString(),
+        params.userId,
+        previousTokenKey,
+        previousToken,
+      ]
+    );
+
+    if (updated.rowCount && updated.rowCount > 0) {
+      return;
+    }
+  }
+
+  await query(
+    `INSERT INTO user_sessions (user_id, token, ip_address, user_agent, expires_at, created_at, last_activity)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+    [params.userId, tokenKey, params.ipAddress, params.userAgent, expiresAt.toISOString()]
+  );
+}
+
+function activationExpiresIn(): SignOptions["expiresIn"] {
+  const raw = process.env.ACTIVATION_TOKEN_EXPIRES_IN;
+  if (!raw) return "24h";
+  const trimmed = raw.trim();
+  if (!trimmed) return "24h";
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^\d+(ms|s|m|h|d|w|y)$/.test(trimmed))
+    return trimmed as SignOptions["expiresIn"];
+  return "24h";
+}
+
+function signActivationToken(payload: { sub: string; email: string }) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured");
+  return jwt.sign(
+    { sub: payload.sub, email: payload.email, type: "activation" },
+    secret,
+    { expiresIn: activationExpiresIn() }
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/register                                            */
+/* ------------------------------------------------------------------ */
+
+const registerSchema = z.object({
+  firstName: z.string().trim().min(1, "First name is required").max(100),
+  lastName: z.string().trim().min(1, "Last name is required").max(100),
+  email: z.string().trim().email("Invalid email address"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/,
+      "Password must include upper, lower, number and special character"
+    ),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+authRouter.post("/register", async (req, res, next) => {
+  const client = await getClient();
+  try {
+    const data = registerSchema.parse(req.body);
+
+    // Check if email already exists
+    const existing = await findUserByEmail(data.email);
+    if (existing) {
+      return res
+        .status(409)
+        .json({ error: { message: "Email is already registered" } });
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 12);
+
+    await client.query("BEGIN");
+
+    // Insert user
+    const { rows: userRows } = await client.query<{ id: string }>(
+      `INSERT INTO users (first_name, last_name, email, password_hash, is_active)
+       VALUES ($1, $2, $3, $4, FALSE)
+       RETURNING id`,
+      [data.firstName, data.lastName, data.email, passwordHash]
+    );
+    const userId = userRows[0].id;
+    res.locals.auditUserId = userId;
+    res.locals.auditAction = "AUTH_REGISTER";
+    res.locals.auditTargetType = "auth";
+    res.locals.auditTargetId = userId;
+
+    // Assign JOB_SEEKER role
+    await client.query(
+      `INSERT INTO user_roles (user_id, role_id)
+       SELECT $1, id FROM roles WHERE name = 'JOB_SEEKER'`,
+      [userId]
+    );
+
+    // Create empty job seeker profile
+    await client.query(
+      `INSERT INTO job_seeker_profiles (user_id) VALUES ($1)`,
+      [userId]
+    );
+
+    await client.query("COMMIT");
+
+    // Build JWT
+    const accessToken = signToken({
+      sub: userId,
+      email: data.email,
+      name: `${data.firstName} ${data.lastName}`,
+      roles: ["JOB_SEEKER"],
+      preActivation: true,
+    });
+
+    // Send activation email (best-effort). This does NOT block signup.
+    try {
+      const activationToken = signActivationToken({ sub: userId, email: data.email });
+      const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+        activationToken
+      )}`;
+
+      await sendTemplatedEmail({
+        templateKey: "registration_activation",
+        to: data.email,
+        data: {
+          app_name: appName(),
+          user_full_name: `${data.firstName} ${data.lastName}`.trim(),
+          activation_link: activationLink,
+        },
+      });
+    } catch (e) {
+      // Don't break registration if email fails; log for dev.
+      console.error("[Email] Failed to send activation email:",
+        e instanceof Error ? e.message : e
+      );
+    }
+
+    return res.status(201).json({
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: {
+        id: userId,
+        email: data.email,
+        name: `${data.firstName} ${data.lastName}`,
+        roles: ["JOB_SEEKER"],
+      },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    return next(err);
+  } finally {
+    client.release();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  GET /api/v1/auth/activate                                         */
+/* ------------------------------------------------------------------ */
+
+const activateSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+});
+
+authRouter.get("/activate", async (req, res, next) => {
+  try {
+    const { token } = activateSchema.parse(req.query);
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET is not configured");
+
+    const decoded = jwt.verify(token, secret) as any;
+    if (decoded?.type !== "activation" || typeof decoded?.sub !== "string") {
+      return res.status(400).json({ error: { message: "Invalid activation token" } });
+    }
+
+    const userId = decoded.sub as string;
+    await query(
+      "UPDATE users SET is_active = TRUE, email_verified = TRUE, updated_at = NOW() WHERE id = $1",
+      [userId]
+    );
+
+    const user = await findUserById(userId);
+    if (!user) {
+      return res.status(404).json({ error: { message: "User not found" } });
+    }
+
+    const pub = publicUser(user);
+    const accessToken = signToken({
+      sub: userId,
+      email: pub.email,
+      name: pub.name,
+      roles: user.roles,
+    });
+
+    await persistUserSession({
+      userId,
+      token: accessToken,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+
+    // Best-effort: send an activation confirmation email.
+    try {
+      await sendTemplatedEmail({
+        templateKey: "account_activated",
+        to: pub.email,
+        data: {
+          app_name: appName(),
+          user_full_name: pub.name || pub.email,
+          login_link: `${webOrigin()}/login`,
+          support_email: process.env.SUPPORT_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || "",
+        },
+      });
+    } catch (e) {
+      console.error(
+        "[Email] Failed to send account activated email:",
+        e instanceof Error ? e.message : e
+      );
+    }
+
+    const origin = webOrigin();
+    if (origin) {
+      // Put the access token in the URL hash so it is not sent to the server.
+      return res.redirect(
+        `${origin}/login#activated=1&accessToken=${encodeURIComponent(accessToken)}`
+      );
+    }
+
+    return res.json({
+      status: "success",
+      message: "Account activated successfully",
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: pub,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/login                                               */
+/* ------------------------------------------------------------------ */
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+authRouter.post("/login", async (req, res, next) => {
+  try {
+    const { email, password } = loginSchema.parse(req.body);
+    const user = await findUserByEmail(email);
+
+    if (!user) {
+      return res.status(401).json({ error: { message: "Invalid credentials" } });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res
+        .status(401)
+        .json({ error: { message: "Invalid credentials" } });
+    }
+
+    // Account not activated (email not verified)
+    if (!user.email_verified) {
+      // Best-effort: resend activation email (only after verifying credentials).
+      try {
+        const activationToken = signActivationToken({ sub: user.id, email: user.email });
+        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          activationToken
+        )}`;
+
+        await sendTemplatedEmail({
+          templateKey: "registration_activation",
+          to: user.email,
+          data: {
+            app_name: appName(),
+            user_full_name: publicUser(user).name || user.email,
+            activation_link: activationLink,
+          },
+        });
+      } catch (e) {
+        console.error(
+          "[Email] Failed to resend activation email:",
+          e instanceof Error ? e.message : e
+        );
+      }
+
+      return res.status(403).json({
+        error: {
+          message:
+            "Your account is not activated. Please check your email for the activation link.",
+        },
+      });
+    }
+
+    // Account deactivated
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is deactivated. Please contact support." },
+      });
+    }
+
+    const pub = publicUser(user);
+    const challenge = createTwoFactorChallenge({
+      userId: user.id,
+      email: user.email,
+      name: pub.name,
+      roles: user.roles,
+    });
+
+    res.locals.auditUserId = user.id;
+    res.locals.auditAction = "AUTH_LOGIN_CHALLENGE";
+    res.locals.auditTargetType = "auth";
+    res.locals.auditTargetId = user.id;
+
+    // Best-effort: send the OTP to the user's email.
+    void sendTwoFactorCodeEmail({
+      to: user.email,
+      userFullName: pub.name,
+      code: challenge.code,
+      expiresInSeconds: challenge.expiresInSeconds,
+    });
+
+    return res.status(202).json({
+      requiresTwoFactor: true,
+      challengeId: challenge.challengeId,
+      expiresInSeconds: challenge.expiresInSeconds,
+      message: "Authentication code sent to your email.",
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/2fa/challenge                                      */
+/* ------------------------------------------------------------------ */
+
+const twoFactorChallengeSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+authRouter.post("/2fa/challenge", async (req, res, next) => {
+  try {
+    const { email, password } = twoFactorChallengeSchema.parse(req.body);
+    const user = await findUserByEmail(email);
+
+    if (!user) {
+      return res.status(401).json({ error: { message: "Invalid credentials" } });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res
+        .status(401)
+        .json({ error: { message: "Invalid credentials" } });
+    }
+
+    if (!user.email_verified) {
+      // Best-effort: resend activation email (only after verifying credentials).
+      try {
+        const activationToken = signActivationToken({ sub: user.id, email: user.email });
+        const activationLink = `${apiOrigin()}/api/v1/auth/activate?token=${encodeURIComponent(
+          activationToken
+        )}`;
+
+        await sendTemplatedEmail({
+          templateKey: "registration_activation",
+          to: user.email,
+          data: {
+            app_name: appName(),
+            user_full_name: publicUser(user).name || user.email,
+            activation_link: activationLink,
+          },
+        });
+      } catch (e) {
+        console.error(
+          "[Email] Failed to resend activation email:",
+          e instanceof Error ? e.message : e
+        );
+      }
+
+      return res.status(403).json({
+        error: {
+          message:
+            "Your account is not activated. Please check your email for the activation link.",
+        },
+      });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        error: { message: "Your account is deactivated. Please contact support." },
+      });
+    }
+
+    const pub = publicUser(user);
+    const challenge = createTwoFactorChallenge({
+      userId: user.id,
+      email: user.email,
+      name: pub.name,
+      roles: user.roles,
+    });
+
+    res.locals.auditUserId = user.id;
+    res.locals.auditAction = "AUTH_2FA_CHALLENGE";
+    res.locals.auditTargetType = "auth";
+    res.locals.auditTargetId = user.id;
+
+    void sendTwoFactorCodeEmail({
+      to: user.email,
+      userFullName: pub.name,
+      code: challenge.code,
+      expiresInSeconds: challenge.expiresInSeconds,
+    });
+
+    return res.json({
+      message: "2FA challenge created",
+      challengeId: challenge.challengeId,
+      expiresInSeconds: challenge.expiresInSeconds,
+      ...(process.env.NODE_ENV !== "production" && { otpCode: challenge.code }),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/2fa/verify                                         */
+/* ------------------------------------------------------------------ */
+
+const twoFactorVerifySchema = z.object({
+  challengeId: z.string().uuid("Invalid challengeId"),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+
+authRouter.post("/2fa/verify", async (req, res, next) => {
+  try {
+    const { challengeId, code } = twoFactorVerifySchema.parse(req.body);
+    const challenge = twoFactorChallenges.get(challengeId);
+
+    if (!challenge) {
+      return res
+        .status(400)
+        .json({ error: { message: "Invalid or expired challenge" } });
+    }
+
+    if (Date.now() > challenge.expiresAt) {
+      twoFactorChallenges.delete(challengeId);
+      return res
+        .status(400)
+        .json({ error: { message: "Challenge expired" } });
+    }
+
+    if (challenge.code !== code) {
+      return res
+        .status(401)
+        .json({ error: { message: "Invalid verification code" } });
+    }
+
+    twoFactorChallenges.delete(challengeId);
+
+    const accessToken = signToken({
+      sub: challenge.userId,
+      email: challenge.email,
+      name: challenge.name,
+      roles: challenge.roles,
+    });
+
+    const ipAddress = req.ip ?? null;
+    const userAgent = req.get("user-agent") ?? null;
+
+    await persistUserSession({
+      userId: challenge.userId,
+      token: accessToken,
+      ipAddress,
+      userAgent,
+    });
+
+    res.locals.auditUserId = challenge.userId;
+    res.locals.auditAction = "AUTH_LOGIN_SUCCESS";
+    res.locals.auditTargetType = "auth";
+    res.locals.auditTargetId = challenge.userId;
+
+    // Best-effort: notify user of the new sign-in.
+    void sendLoginNotificationEmail({
+      to: challenge.email,
+      userFullName: challenge.name,
+      ip: ipAddress,
+      userAgent,
+    });
+
+    return res.json({
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: {
+        id: challenge.userId,
+        email: challenge.email,
+        name: challenge.name,
+        roles: challenge.roles,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/refresh                                            */
+/* ------------------------------------------------------------------ */
+
+authRouter.post("/refresh", authenticate, async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: { message: "Authentication required" } });
+    }
+
+    const { rows } = await query<{
+      id: string;
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+      role_name: string | null;
+    }>(
+      `SELECT u.id,
+              u.email,
+              u.first_name,
+              u.last_name,
+              r.name AS role_name
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles r ON r.id = ur.role_id
+       WHERE u.id = $1 AND u.is_active = TRUE`,
+      [userId]
+    );
+
+    if (!rows.length) {
+      return res.status(401).json({ error: { message: "User not found or inactive" } });
+    }
+
+    const email = String(rows[0].email ?? "");
+    const firstName = String(rows[0].first_name ?? "").trim();
+    const lastName = String(rows[0].last_name ?? "").trim();
+    const fullName = `${firstName} ${lastName}`.trim() || email;
+    const roles = Array.from(
+      new Set(
+        rows
+          .map((row) => String(row.role_name ?? "").trim())
+          .filter((role) => role.length > 0)
+      )
+    );
+
+    const accessToken = signToken({
+      sub: userId,
+      email,
+      name: fullName,
+      roles,
+    });
+
+    const authHeader = String(req.headers.authorization ?? "");
+    const previousToken = authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
+
+    await persistUserSession({
+      userId,
+      token: accessToken,
+      previousToken,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+
+    return res.json({
+      tokenType: "Bearer",
+      accessToken,
+      expiresIn: jwtExpiresIn(),
+      user: {
+        id: userId,
+        email,
+        name: fullName,
+        roles,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/forgot-password                                     */
+/* ------------------------------------------------------------------ */
+
+const forgotSchema = z.object({
+  email: z.string().email(),
+});
+
+authRouter.post("/forgot-password", async (req, res, next) => {
+  try {
+    const { email } = forgotSchema.parse(req.body);
+    const user = await findUserByEmail(email);
+
+    // Always return success to avoid leaking whether email exists
+    if (!user) {
+      return res.json({
+        message: "If the email exists, a reset link has been sent.",
+      });
+    }
+
+    const resetToken = uuidv4();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await query(
+      `UPDATE users
+       SET password_reset_token = $1,
+           password_reset_expires_at = $2,
+           password_reset_requested_at = NOW()
+       WHERE id = $3`,
+      [resetToken, expiresAt.toISOString(), user.id]
+    );
+
+    // In production, send an email with the reset link.
+    // For development, log the token.
+    console.log(
+      `[DEV] Password reset token for ${email}: ${resetToken}`
+    );
+
+    return res.json({
+      message: "If the email exists, a reset link has been sent.",
+      // Include token in response for development only:
+      ...(process.env.NODE_ENV !== "production" && { resetToken }),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/auth/reset-password                                      */
+/* ------------------------------------------------------------------ */
+
+const resetSchema = z.object({
+  token: z.string().uuid("Invalid reset token"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])/,
+      "Password must include upper, lower, number and special character"
+    ),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+authRouter.post("/reset-password", async (req, res, next) => {
+  try {
+    const { token, password } = resetSchema.parse(req.body);
+
+    const { rows } = await query<{ id: string }>(
+      `SELECT id FROM users
+       WHERE password_reset_token = $1
+         AND password_reset_expires_at > NOW()`,
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res
+        .status(400)
+        .json({ error: { message: "Invalid or expired reset token" } });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await query(
+      `UPDATE users
+       SET password_hash = $1,
+           password_reset_token = NULL,
+           password_reset_expires_at = NULL,
+           password_reset_requested_at = NULL,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [passwordHash, rows[0].id]
+    );
+
+    res.locals.auditUserId = rows[0].id;
+    res.locals.auditAction = "AUTH_PASSWORD_RESET";
+    res.locals.auditTargetType = "auth";
+    res.locals.auditTargetId = rows[0].id;
+
+    return res.json({ message: "Password has been reset successfully" });
+  } catch (err) {
+    return next(err);
+  }
+});
