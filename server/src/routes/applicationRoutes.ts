@@ -1,0 +1,1307 @@
+import express from 'express';
+import { body, param, query, validationResult } from 'express-validator';
+import { query as dbQuery } from '../config/database';
+import { authenticate, authorizePermission } from '../middleware/auth';
+import { Request, Response } from 'express';
+import { createNotification } from './notificationsRoutes';
+import { logAdminAction } from '../middleware/adminLogger';
+import { logAudit } from '../helpers/auditLogger';
+import {
+  getSystemSettings,
+  toCanonicalApplicationStatusNotificationKey,
+} from '../services/systemSettings.service';
+
+const router = express.Router();
+
+
+
+// Validation middleware
+const validateApplication = [
+  body('job_id').isUUID().withMessage('Valid job ID is required'),
+  body('cover_letter').optional().isString().trim(),
+  body('resume_url').optional().isURL().withMessage('Valid resume URL is required')
+];
+
+const validateStatusUpdate = [
+  body('status').isIn(['pending', 'reviewed', 'accepted', 'rejected']).withMessage('Invalid status'),
+  body('notes').optional().isString().trim()
+];
+
+function isAdmin(user: any): boolean {
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  return roles.some((r: any) => String(r).toUpperCase() === 'ADMIN');
+}
+
+function hasPermission(user: any, permission: string): boolean {
+  const perms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const normalized = new Set(perms.map((p: any) => String(p).trim().toUpperCase()));
+  return normalized.has(String(permission).trim().toUpperCase());
+}
+
+async function userHasCompanyAccess(userId: string, companyId: string): Promise<boolean> {
+  const result = await dbQuery(
+    `SELECT 1 FROM company_users WHERE user_id = $1 AND company_id = $2 LIMIT 1`,
+    [userId, companyId]
+  );
+  return result.rows.length > 0;
+}
+
+async function filterRecipientsByJobSeekerAlertPreference(
+  candidateUserIds: string[],
+  alertType: 'application_submitted' | 'application_withdrawn'
+): Promise<string[]> {
+  const uniqueIds = Array.from(
+    new Set(candidateUserIds.map((id) => String(id ?? '').trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return [];
+
+  const result = await dbQuery(
+    `SELECT u.id
+       FROM users u
+       LEFT JOIN notification_preferences np ON np.user_id = u.id
+      WHERE u.id = ANY($1::uuid[])
+        AND COALESCE(np.application_updates, true) = true
+        AND (
+          np.job_seeker_alert_types IS NULL
+          OR jsonb_typeof(np.job_seeker_alert_types) <> 'array'
+          OR EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements_text(np.job_seeker_alert_types) alert_type
+             WHERE LOWER(TRIM(alert_type)) = LOWER(TRIM($2))
+          )
+        )`,
+    [uniqueIds, alertType]
+  );
+
+  return result.rows.map((row: any) => String(row.id)).filter(Boolean);
+}
+
+function isLegacyUploadPath(value: unknown): boolean {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return false;
+  return raw.includes('/upload/') || raw.includes('/uploads/');
+}
+
+function toDisplayDocumentType(rawType: unknown): string {
+  const normalized = String(rawType ?? '').trim().toLowerCase();
+  if (!normalized) return 'Document';
+
+  const known: Record<string, string> = {
+    id_document: 'Identification Document',
+    certificate: 'Profile Certificate',
+    qualification_evidence: 'Qualification Evidence',
+    license_document: 'License Document',
+    conduct_certificate: 'Conduct Certificate',
+  };
+  if (known[normalized]) return known[normalized];
+
+  return normalized
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+async function getLegacyApplicationDocumentsNeedingReupload(userId: string): Promise<string[]> {
+  const flagged = new Set<string>();
+
+  // Match profile-view behavior: validate only the effective/latest resume.
+  const latestResumeResult = await dbQuery(
+    `SELECT file_path
+       FROM resumes
+      WHERE job_seeker_id = $1
+      ORDER BY is_primary DESC,
+               uploaded_at DESC NULLS LAST,
+               created_at DESC NULLS LAST,
+               id DESC
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (isLegacyUploadPath((latestResumeResult.rows[0] as any)?.file_path)) {
+    flagged.add('CV / Resume');
+  }
+
+  try {
+    // Match Job Seeker profile behavior: latest associated document per type
+    // based on document timestamps.
+    const latestDocuments = await dbQuery(
+      `SELECT DISTINCT ON (COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')))
+              COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')) AS document_type,
+              d.file_path,
+              d.file_url,
+              d.created_at,
+              d.updated_at,
+              d.id
+         FROM job_seeker_documents jsd
+         JOIN documents d ON d.id = jsd.document_id
+        WHERE jsd.user_id = $1
+        ORDER BY COALESCE(NULLIF(TRIM(jsd.document_type), ''), COALESCE(NULLIF(TRIM(d.document_type), ''), 'Document')),
+                 d.created_at DESC NULLS LAST,
+                 d.updated_at DESC NULLS LAST,
+                 d.id DESC`,
+      [userId]
+    );
+
+    for (const doc of latestDocuments.rows) {
+      if (isLegacyUploadPath((doc as any)?.file_path) || isLegacyUploadPath((doc as any)?.file_url)) {
+        flagged.add(toDisplayDocumentType((doc as any)?.document_type));
+      }
+    }
+  } catch (e: any) {
+    // Older deployments may not have the documents table/columns.
+    if (!['42P01', '42703'].includes(String(e?.code ?? ''))) {
+      throw e;
+    }
+  }
+
+  return Array.from(flagged.values());
+}
+
+async function getApplicantReadinessForApply(userId: string): Promise<{ ready: boolean; reasons: string[] }> {
+  const [latestResumeResult, qualificationCountResult, personalDetailsResult] = await Promise.all([
+    dbQuery(
+      `SELECT file_path
+         FROM resumes
+        WHERE job_seeker_id = $1
+        ORDER BY is_primary DESC,
+                 uploaded_at DESC NULLS LAST,
+                 created_at DESC NULLS LAST,
+                 id DESC
+        LIMIT 1`,
+      [userId]
+    ),
+    dbQuery(
+      `SELECT COUNT(*)::int AS total
+         FROM job_seeker_education
+        WHERE user_id = $1
+          AND NULLIF(TRIM(COALESCE(qualification, '')), '') IS NOT NULL`,
+      [userId]
+    ),
+    dbQuery(
+      `SELECT id_document_url
+         FROM job_seeker_personal_details
+        WHERE user_id = $1
+        LIMIT 1`,
+      [userId]
+    ),
+  ]);
+
+  let latestUploadedIdDocumentUrl = '';
+  try {
+    const latestIdDocumentResult = await dbQuery(
+      `SELECT COALESCE(NULLIF(TRIM(d.download_url), ''), NULLIF(TRIM(d.file_url), ''), NULLIF(TRIM(d.file_path), '')) AS url
+         FROM job_seeker_documents jsd
+         JOIN documents d ON d.id = jsd.document_id
+        WHERE jsd.user_id = $1
+          AND LOWER(COALESCE(NULLIF(TRIM(jsd.document_type), ''), NULLIF(TRIM(d.document_type), ''), '')) = 'id_document'
+        ORDER BY d.created_at DESC NULLS LAST,
+                 d.updated_at DESC NULLS LAST,
+                 d.id DESC
+        LIMIT 1`,
+      [userId]
+    );
+    latestUploadedIdDocumentUrl = String((latestIdDocumentResult.rows[0] as any)?.url ?? '').trim();
+  } catch (e: any) {
+    if (!['42P01', '42703'].includes(String(e?.code ?? ''))) {
+      throw e;
+    }
+  }
+
+  const reasons: string[] = [];
+  const resumePath = String((latestResumeResult.rows[0] as any)?.file_path ?? '').trim();
+  const qualificationCount = Number(qualificationCountResult.rows[0]?.total ?? 0);
+  const personalIdDocumentUrl = String((personalDetailsResult.rows[0] as any)?.id_document_url ?? '').trim();
+  const effectiveIdDocumentUrl = latestUploadedIdDocumentUrl || personalIdDocumentUrl;
+
+  if (!resumePath) {
+    reasons.push('Missing CV / resume upload.');
+  }
+
+  if (!Number.isFinite(qualificationCount) || qualificationCount < 1) {
+    reasons.push('At least one education qualification is required.');
+  }
+
+  if (!effectiveIdDocumentUrl) {
+    reasons.push('Missing identity document upload.');
+  }
+
+  return {
+    ready: reasons.length === 0,
+    reasons,
+  };
+}
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Application:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         job_id:
+ *           type: string
+ *           format: uuid
+ *         applicant_id:
+ *           type: string
+ *           format: uuid
+ *         cover_letter:
+ *           type: string
+ *         resume_url:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [pending, reviewed, accepted, rejected, withdrawn]
+ *         notes:
+ *           type: string
+ *         reviewed_at:
+ *           type: string
+ *           format: date-time
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         job_title:
+ *           type: string
+ *         company:
+ *           type: string
+ *         applicant_name:
+ *           type: string
+ *         applicant_email:
+ *           type: string
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   name: Applications
+ *   description: Job application management endpoints
+ */
+
+// ============================================================================
+// POST /api/applications - Apply for a job
+// ============================================================================
+/**
+ * @swagger
+ * /applications:
+ *   post:
+ *     summary: Apply for a job
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - job_id
+ *             properties:
+ *               job_id:
+ *                 type: string
+ *                 format: uuid
+ *               cover_letter:
+ *                 type: string
+ *               resume_url:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Application submitted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Application'
+ *       400:
+ *         description: Validation error or duplicate application
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Job not found
+ *       403:
+ *         description: Cannot apply to closed/draft job
+ */
+router.post('/',
+  authenticate,
+  authorizePermission('APPLY_JOB'),
+  validateApplication,
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { job_id } = req.body;
+      const applicant_id = req.user!.userId;
+
+      // Check if job exists and is active
+      const jobCheck = await dbQuery('SELECT * FROM jobs WHERE id = $1', [job_id]);
+
+      if (jobCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+
+      const job = jobCheck.rows[0] as any;
+      const jobPosterId = String(job?.created_by ?? job?.employer_id ?? '').trim();
+      const applicantResult = await dbQuery(
+        `SELECT
+           COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [applicant_id]
+      );
+      const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
+
+      // Public-facing jobs can be stored as either 'active' (legacy) or 'APPROVED' (schema).
+      // The job seeker UI only shows these, so applying must accept both.
+      if (job.status !== 'active' && job.status !== 'APPROVED') {
+        return res.status(403).json({ error: 'Cannot apply to a job that is not active' });
+      }
+
+      // Check if user already applied
+      const existingApplication = await dbQuery(
+        'SELECT id FROM applications WHERE job_id = $1 AND user_id = $2',
+        [job_id, applicant_id]
+      );
+
+      if (existingApplication.rows.length > 0) {
+        return res.status(400).json({ error: 'You have already applied to this job' });
+      }
+
+      const readiness = await getApplicantReadinessForApply(applicant_id);
+      if (!readiness.ready) {
+        return res.status(409).json({
+          error: {
+            code: 'APPLICATION_PROFILE_INCOMPLETE',
+            message:
+              'Complete your profile before applying. You must upload a CV / resume, add at least one education qualification, and upload an identity document.',
+            reasons: readiness.reasons,
+          },
+        });
+      }
+
+      // Check if user is trying to apply to their own job (employers can't apply to their own jobs)
+      if (jobPosterId && jobPosterId === applicant_id) {
+        return res.status(403).json({ error: 'Employers cannot apply to their own jobs' });
+      }
+
+      // Start a transaction
+      await dbQuery('BEGIN');
+
+      try {
+        // Create application
+        const result = await dbQuery(
+          `INSERT INTO applications (
+            job_id, user_id, status, applied_at
+          ) VALUES ($1, $2, 'APPLIED', NOW())
+          RETURNING *`,
+          [job_id, applicant_id]
+        );
+
+        // Increment applications count on job if the column exists in this environment.
+        // Some databases in this project history do not have jobs.applications_count.
+        try {
+          await dbQuery(
+            'UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1',
+            [job_id]
+          );
+        } catch (countError: any) {
+          if (countError?.code !== '42703') {
+            throw countError;
+          }
+          console.warn('jobs.applications_count missing; skipping increment');
+        }
+
+        await dbQuery('COMMIT');
+
+        // Get job details for response
+        const application = result.rows[0];
+        application.job_title = job.title;
+        await logAudit({
+          userId: applicant_id,
+          action: 'APPLICATION_CREATED',
+          targetType: 'application',
+          targetId: application.id,
+          details: { job_id, applicant_id },
+        });
+        await logAudit({
+          userId: applicant_id,
+          action: 'APPLICANT_APPLIED',
+          targetType: 'applicant',
+          targetId: applicant_id,
+          details: { job_id, application_id: application.id },
+        });
+
+        // Notify the employer that a new application was submitted.
+        if (jobPosterId) {
+          try {
+            const allowedEmployerRecipients = await filterRecipientsByJobSeekerAlertPreference(
+              [jobPosterId],
+              'application_submitted'
+            );
+            if (allowedEmployerRecipients.includes(jobPosterId)) {
+              await createNotification(
+                jobPosterId,
+                'application_received',
+                'New Application Received',
+                `${applicantName} has applied for ${job.title}`,
+                { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
+                `/app/jobs/${job_id}/applications`,
+                'high'
+              );
+            }
+          } catch (notificationError) {
+            console.error('Failed to create employer notification:', notificationError);
+          }
+        }
+
+        // Notify admins (users with MANAGE_USERS permission).
+        try {
+          const adminsResult = await dbQuery(
+            `SELECT DISTINCT u.id
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN role_permissions rp ON rp.role_id = ur.role_id
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE p.name = 'MANAGE_USERS'
+               AND u.is_active = TRUE`
+          );
+
+          const adminIds = adminsResult.rows
+            .map((row: any) => String(row.id))
+            .filter((id: string) => id && id !== applicant_id && id !== jobPosterId);
+
+          const allowedAdminIds = await filterRecipientsByJobSeekerAlertPreference(
+            adminIds,
+            'application_submitted'
+          );
+
+          await Promise.allSettled(
+            allowedAdminIds.map((adminId: string) =>
+              createNotification(
+                adminId,
+                'application_received',
+                'New Job Application',
+                `${applicantName} applied for ${job.title}`,
+                { job_id, application_id: application.id, applicant_id, applicant_name: applicantName, job_title: job.title },
+                `/app/jobs/${job_id}/applications`,
+                'normal'
+              )
+            )
+          );
+        } catch (notificationError) {
+          console.error('Failed to create admin notifications:', notificationError);
+        }
+
+        // Notify the applicant that submission succeeded.
+        try {
+          await createNotification(
+            applicant_id,
+            'application_success',
+            'Application Submitted',
+            `Your application for ${job.title} has been submitted successfully`,
+            { application_id: application.id, job_id, status: 'APPLIED', job_title: job.title },
+            '/app/job-applications',
+            'normal'
+          );
+        } catch (notificationError) {
+          console.error('Failed to create applicant submission notification:', notificationError);
+        }
+
+        res.status(201).json(application);
+      } catch (error) {
+        await dbQuery('ROLLBACK');
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error creating application:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// GET /api/applications - Get my applications (for job seekers)
+// ============================================================================
+/**
+ * @swagger
+ * /applications:
+ *   get:
+ *     summary: Get my applications
+ *     description: Get all applications for the logged-in job seeker
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, reviewed, accepted, rejected, withdrawn]
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [newest, oldest]
+ *           default: newest
+ *     responses:
+ *       200:
+ *         description: List of applications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 applications:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Application'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/',
+  authenticate,
+  [
+    query('page').optional().isInt({ min: 1 }).toInt(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('status').optional().isIn(['pending', 'reviewed', 'accepted', 'rejected', 'withdrawn']),
+    query('sort').optional().isIn(['newest', 'oldest'])
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const offset = (page - 1) * limit;
+      const applicant_id = req.user!.userId;
+
+      let whereConditions = ['a.user_id = $1'];
+      const queryParams: any[] = [applicant_id];
+      let paramIndex = 2;
+
+      if (req.query.status) {
+        whereConditions.push(`a.status = $${paramIndex}`);
+        queryParams.push(req.query.status);
+        paramIndex++;
+      }
+
+      const whereClause = 'WHERE ' + whereConditions.join(' AND ');
+      
+      // Determine sort order
+      const sortOrder = req.query.sort === 'oldest' ? 'ASC' : 'DESC';
+
+      // Get total count
+      const countResult = await dbQuery(
+        `SELECT COUNT(*) FROM applications a ${whereClause}`,
+        queryParams
+      );
+      const total = parseInt(countResult.rows[0].count);
+
+      // Get applications with job details
+      const applications = await dbQuery(
+        `SELECT
+          a.id,
+          a.job_id,
+          a.user_id as applicant_id,
+          NULL::text as cover_letter,
+          NULL::text as resume_url,
+          a.status,
+          a.applied_at as created_at,
+          NULL::timestamp as updated_at,
+          j.title as job_title,
+          c.name as company,
+          j.location,
+          j.salary_min,
+          j.salary_max,
+          j.employment_type,
+          j.remote,
+          j.application_deadline
+         FROM applications a
+         LEFT JOIN jobs j ON a.job_id = j.id
+         LEFT JOIN companies c ON j.company_id = c.id
+         ${whereClause}
+         ORDER BY a.applied_at ${sortOrder}
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...queryParams, limit, offset]
+      );
+
+      res.json({
+        applications: applications.rows,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching applications:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// GET /api/applications/:id - Get application details
+// ============================================================================
+/**
+ * @swagger
+ * /applications/{id}:
+ *   get:
+ *     summary: Get application details
+ *     description: Get detailed information about a specific application
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Application details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Application'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Not your application
+ *       404:
+ *         description: Application not found
+ */
+router.get('/:id',
+  authenticate,
+  param('id').isUUID().withMessage('Invalid application ID'),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const applicationId = String(req.params.id);
+      const userId = req.user!.userId;
+
+      // Get application with all related details
+      const result = await dbQuery(
+        `SELECT a.*,
+          a.user_id as applicant_id,
+          j.title as job_title,
+          j.description as job_description,
+          j.company,
+          j.location,
+          j.salary_min,
+          j.salary_max,
+          j.salary_currency,
+          j.experience_level,
+          j.employment_type,
+          j.remote,
+          j.status as job_status,
+          j.employer_id,
+          u.name as applicant_name,
+          u.email as applicant_email,
+          u.phone as applicant_phone,
+          emp.name as employer_name,
+          emp.email as employer_email
+         FROM applications a
+         LEFT JOIN jobs j ON a.job_id = j.id
+           LEFT JOIN users u ON a.user_id = u.id
+         LEFT JOIN users emp ON j.employer_id = emp.id
+         WHERE a.id = $1`,
+        [applicationId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const application = result.rows[0];
+
+      // Check authorization:
+      // - Applicant can view their own application
+      // - Employer who posted the job can view applications
+      // - Admin/HR can view any application
+      const isApplicant = application.applicant_id === userId;
+      const isEmployer = application.employer_id === userId;
+      const isPrivileged = isAdmin(req.user) || hasPermission(req.user, 'MANAGE_USERS') || hasPermission(req.user, 'VIEW_APPLICATIONS');
+
+      if (!isApplicant && !isEmployer && !isPrivileged) {
+        return res.status(403).json({ error: 'You do not have permission to view this application' });
+      }
+
+      // Remove sensitive information for applicants
+      if (isApplicant && !isEmployer && !isPrivileged) {
+        delete application.employer_email;
+        delete application.employer_name;
+        delete application.notes;
+      }
+
+      res.json(application);
+    } catch (error) {
+      console.error('Error fetching application:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// PUT /api/applications/:id/status - Update application status (HR/Employer only)
+// ============================================================================
+/**
+ * @swagger
+ * /applications/{id}/status:
+ *   put:
+ *     summary: Update application status
+ *     description: Update the status of an application (HR/Employer only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [pending, reviewed, accepted, rejected]
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Application'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Not authorized
+ *       404:
+ *         description: Application not found
+ */
+router.put('/:id/status',
+  authenticate,
+  logAdminAction('CHANGE_JOBSEEKER_APP_STATUS', 'application'),
+  param('id').isUUID().withMessage('Invalid application ID'),
+  validateStatusUpdate,
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const applicationId = String(req.params.id);
+      const { status, notes } = req.body;
+      const userId = req.user!.userId;
+
+      // Check if application exists and get job details
+      const appCheck = await dbQuery(
+        `SELECT a.*, a.user_id as applicant_id, j.employer_id, j.company_id, j.title as job_title
+         FROM applications a
+         LEFT JOIN jobs j ON a.job_id = j.id
+         WHERE a.id = $1`,
+        [applicationId]
+      );
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const application = appCheck.rows[0];
+
+      const isSystemManager = isAdmin(req.user) || hasPermission(req.user, 'MANAGE_USERS');
+
+      const normalizedRequestedStatus = String(status ?? '').trim().toUpperCase();
+      const normalizedCurrentStatus = String(application.status ?? '').trim().toUpperCase();
+      const movingBackToAllApplicants =
+        ['APPLIED', 'PENDING'].includes(normalizedRequestedStatus) &&
+        !['APPLIED', 'PENDING'].includes(normalizedCurrentStatus);
+
+      // Map legacy status values used by this endpoint to the canonical workflow statuses.
+      const legacyToCanonical: Record<string, string> = {
+        PENDING: 'APPLIED',
+        REVIEWED: 'SCREENING',
+        ACCEPTED: 'HIRED',
+        REJECTED: 'REJECTED',
+        APPLIED: 'APPLIED',
+      };
+      const canonicalRequestedStatus = legacyToCanonical[normalizedRequestedStatus] ?? normalizedRequestedStatus;
+
+      if (movingBackToAllApplicants) {
+        const canChangeAny = hasPermission(req.user, 'CHANGE_JOBSEEKER_APP_STATUS') || hasPermission(req.user, 'UPDATE_APPLICATION_STATUS');
+        const hasMoveBackPermission =
+          isSystemManager ||
+          canChangeAny ||
+          hasPermission(req.user, 'MOVE_BACK_TO_ALL_APPLICANTS') ||
+          hasPermission(req.user, 'SET_APPLICATION_STATUS_APPLIED');
+        if (!hasMoveBackPermission) {
+          return res.status(403).json({
+            error: 'Insufficient permissions. Required permission: SET_APPLICATION_STATUS_APPLIED',
+          });
+        }
+      }
+
+      // Job-specific scope: allow job owner, company members, or system managers.
+      if (!isSystemManager) {
+        const isOwner = String(application.employer_id ?? '').trim() === userId;
+        const companyId = String(application.company_id ?? '').trim();
+        const hasCompanyAccess = companyId ? await userHasCompanyAccess(userId, companyId) : false;
+        if (!isOwner && !hasCompanyAccess) {
+          return res.status(403).json({ error: 'Not authorized to update this application' });
+        }
+      }
+
+      // Permission: require the specific permission for the target status.
+      // For backward compatibility, CHANGE_JOBSEEKER_APP_STATUS/UPDATE_APPLICATION_STATUS also grants all transitions.
+      const statusSpecificPermission = `SET_APPLICATION_STATUS_${canonicalRequestedStatus}`;
+      const canChangeAny = hasPermission(req.user, 'CHANGE_JOBSEEKER_APP_STATUS') || hasPermission(req.user, 'UPDATE_APPLICATION_STATUS');
+      if (!isSystemManager && !canChangeAny && !hasPermission(req.user, statusSpecificPermission)) {
+        return res.status(403).json({
+          error: `Insufficient permissions. Required permission: ${statusSpecificPermission}`,
+        });
+      }
+
+      // Check if application is already withdrawn
+      if (application.status === 'WITHDRAWN') {
+        return res.status(400).json({ error: 'Cannot update a withdrawn application' });
+      }
+
+      // Update application
+      const result = await dbQuery(
+        `UPDATE applications 
+         SET status = $1
+         WHERE id = $2
+         RETURNING *`,
+        [status, applicationId]
+      );
+
+      try {
+        const settings = await getSystemSettings();
+        const key = toCanonicalApplicationStatusNotificationKey(status);
+        const enabled = key ? settings.application_status_notifications[key] !== false : true;
+        if (enabled) {
+          await createNotification(
+            application.applicant_id,
+            'application_update',
+            'Application Status Update',
+            `Your application for ${application.job_title} has been updated to ${status}`,
+            { application_id: applicationId, job_id: application.job_id, status },
+            '/app/dashboard',
+            String(status ?? '').trim().toLowerCase() === 'rejected' ? 'normal' : 'high'
+          );
+        }
+      } catch (notificationError) {
+        console.error('Failed to create applicant notification:', notificationError);
+      }
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating application status:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// DELETE /api/applications/:id - Withdraw application
+// ============================================================================
+/**
+ * @swagger
+ * /applications/{id}:
+ *   delete:
+ *     summary: Withdraw application
+ *     description: Withdraw your own application (Job Seeker only)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Application withdrawn successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 application:
+ *                   $ref: '#/components/schemas/Application'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Not your application
+ *       404:
+ *         description: Application not found
+ *       400:
+ *         description: Cannot withdraw application
+ */
+router.delete('/:id',
+  authenticate,
+  param('id').isUUID().withMessage('Invalid application ID'),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const applicationId = String(req.params.id);
+      const userId = req.user!.userId;
+
+      // Check if application exists and belongs to user
+      const appCheck = await dbQuery(
+        'SELECT *, user_id as applicant_id FROM applications WHERE id = $1',
+        [applicationId]
+      );
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const application = appCheck.rows[0];
+
+      // Check if user owns this application
+      if (application.user_id !== userId) {
+        return res.status(403).json({ error: 'You can only withdraw your own applications' });
+      }
+
+      // Check if application can be withdrawn (only pending or reviewed)
+      if (!['APPLIED', 'SCREENING'].includes(application.status)) {
+        return res.status(400).json({ 
+          error: `Cannot withdraw application with status '${application.status}'` 
+        });
+      }
+
+      // Disallow withdrawal if the job has expired (application deadline passed)
+      try {
+        const jobResult = await dbQuery(
+          'SELECT application_deadline FROM jobs WHERE id = $1',
+          [application.job_id]
+        );
+        const deadlineRaw = jobResult.rows[0]?.application_deadline;
+        if (deadlineRaw) {
+          const deadline = new Date(String(deadlineRaw));
+          if (!Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now()) {
+            return res.status(400).json({ error: 'Cannot withdraw an application for an expired job' });
+          }
+        }
+      } catch (deadlineError) {
+        console.error('Failed to validate job deadline for withdrawal:', deadlineError);
+        // Best-effort: do not block withdrawal on deadline lookup failure.
+      }
+
+      // Start transaction
+      await dbQuery('BEGIN');
+
+      try {
+        // Update application status to withdrawn instead of deleting
+        const result = await dbQuery(
+          `UPDATE applications 
+           SET status = 'WITHDRAWN'
+           WHERE id = $1
+           RETURNING *`,
+          [applicationId]
+        );
+
+        // Decrement applications count on job
+        await dbQuery(
+          'UPDATE jobs SET applications_count = applications_count - 1 WHERE id = $1',
+          [application.job_id]
+        );
+
+        await dbQuery('COMMIT');
+
+        await logAudit({
+          userId,
+          action: 'APPLICATION_WITHDRAWN',
+          targetType: 'application',
+          targetId: applicationId,
+          details: { job_id: application.job_id, applicant_id: application.user_id },
+        });
+        await logAudit({
+          userId,
+          action: 'APPLICANT_WITHDREW_APPLICATION',
+          targetType: 'applicant',
+          targetId: application.user_id,
+          details: { job_id: application.job_id, application_id: applicationId },
+        });
+
+        try {
+          const applicantResult = await dbQuery(
+            `SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+               FROM users
+              WHERE id = $1
+              LIMIT 1`,
+            [application.user_id]
+          );
+          const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
+
+          const jobResult = await dbQuery(
+            'SELECT id, title, created_by, employer_id FROM jobs WHERE id = $1 LIMIT 1',
+            [application.job_id]
+          );
+          const job = jobResult.rows[0] as any;
+          const jobTitle = String(job?.title ?? 'the selected job').trim() || 'the selected job';
+          const jobPosterId = String(job?.created_by ?? job?.employer_id ?? '').trim();
+
+          const adminsResult = await dbQuery(
+            `SELECT DISTINCT u.id
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN role_permissions rp ON rp.role_id = ur.role_id
+               JOIN permissions p ON p.id = rp.permission_id
+              WHERE p.name = 'MANAGE_USERS'
+                AND u.is_active = TRUE`
+          );
+
+          const adminIds = adminsResult.rows
+            .map((row: any) => String(row.id))
+            .filter((id: string) => id && id !== application.user_id && id !== jobPosterId);
+
+          const candidateIds = [jobPosterId, ...adminIds].filter(Boolean);
+          const allowedRecipientIds = await filterRecipientsByJobSeekerAlertPreference(
+            candidateIds,
+            'application_withdrawn'
+          );
+
+          await Promise.allSettled(
+            allowedRecipientIds.map((recipientId: string) =>
+              createNotification(
+                recipientId,
+                'application_update',
+                'Application Withdrawn',
+                `${applicantName} withdrew an application for ${jobTitle}`,
+                { application_id: applicationId, job_id: application.job_id, applicant_id: application.user_id, applicant_name: applicantName, status: 'WITHDRAWN' },
+                `/app/jobs/${application.job_id}/applications`,
+                'normal'
+              )
+            )
+          );
+        } catch (notificationError) {
+          console.error('Failed to create withdrawal notifications:', notificationError);
+        }
+
+        res.json({
+          message: 'Application withdrawn successfully',
+          application: result.rows[0]
+        });
+      } catch (error) {
+        await dbQuery('ROLLBACK');
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error withdrawing application:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+// ============================================================================
+// GET /api/applications/employer/jobs - Get applications for employer's jobs
+// ============================================================================
+/**
+ * @swagger
+ * /applications/employer/jobs:
+ *   get:
+ *     summary: Get applications for employer's jobs
+ *     description: Get all applications for jobs posted by the logged-in employer
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, reviewed, accepted, rejected, withdrawn]
+ *       - in: query
+ *         name: job_id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by specific job
+ *     responses:
+ *       200:
+ *         description: List of applications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 applications:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Application'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Employer access required
+ */
+router.get('/employer/jobs',
+  authenticate,
+  authorizePermission('VIEW_APPLICATIONS'),
+  [
+    query('page').optional().isInt({ min: 1 }).toInt(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('status').optional().isIn(['pending', 'reviewed', 'accepted', 'rejected', 'withdrawn']),
+    query('job_id').optional().isUUID()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const offset = (page - 1) * limit;
+      const employerId = req.user!.userId;
+
+      let whereConditions = ['j.employer_id = $1'];
+      const queryParams: any[] = [employerId];
+      let paramIndex = 2;
+
+      if (req.query.status) {
+        whereConditions.push(`a.status = $${paramIndex}`);
+        queryParams.push(req.query.status);
+        paramIndex++;
+      }
+
+      if (req.query.job_id) {
+        whereConditions.push(`a.job_id = $${paramIndex}`);
+        queryParams.push(req.query.job_id);
+        paramIndex++;
+      }
+
+      const whereClause = 'WHERE ' + whereConditions.join(' AND ');
+
+      // Get total count
+      const countResult = await dbQuery(
+        `SELECT COUNT(*) 
+         FROM applications a
+         LEFT JOIN jobs j ON a.job_id = j.id
+         ${whereClause}`,
+        queryParams
+      );
+      const total = parseInt(countResult.rows[0].count);
+
+      // Get applications with details
+      const applications = await dbQuery(
+        `SELECT a.*, 
+          j.title as job_title,
+          j.company,
+          j.location,
+          u.name as applicant_name,
+          u.email as applicant_email
+         FROM applications a
+         LEFT JOIN jobs j ON a.job_id = j.id
+           LEFT JOIN users u ON a.user_id = u.id
+         ${whereClause}
+           ORDER BY a.applied_at DESC
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...queryParams, limit, offset]
+      );
+
+      res.json({
+        applications: applications.rows,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching employer applications:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+);
+
+export default router;
