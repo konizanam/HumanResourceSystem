@@ -1931,7 +1931,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const resolvedFullName = computedFullName || String(seeker.email ?? "—").trim() || "—";
 
     return (
-      <div className="dropPanel">
+      <div className="dropPanel candidateProfilePanel">
         <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
           <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>

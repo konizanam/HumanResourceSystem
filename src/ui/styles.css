@@ -2525,6 +2525,10 @@ input[type="radio"][required] {
   letter-spacing: 0;
 }
 
+.candidateProfilePanel .profileSectionHeading {
+  font-size: 15px;
+}
+
 /* ── Read-only grid ────────────────────────────── */
 
 .profileReadGrid {

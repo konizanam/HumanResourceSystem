@@ -889,10 +889,16 @@ export function JobApplicationsPage() {
     const documentsState = documentsByAppId[app.id];
     const resumesState = resumesByAppId[app.id];
     const personal = profile?.personalDetails ?? null;
+    const mainProfile = profile?.profile ?? null;
+    const addresses = Array.isArray(profile?.addresses) ? profile.addresses : [];
+    const education = Array.isArray(profile?.education) ? profile.education : [];
+    const experience = Array.isArray(profile?.experience) ? profile.experience : [];
+    const references = Array.isArray(profile?.references) ? profile.references : [];
     const docs = profileDocuments(app);
 
     const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
     const lastName = String(readValue(personal, "last_name", "lastName") ?? "").trim();
+    const middleName = String(readValue(personal, "middle_name", "middleName") ?? "").trim();
     const computedFullName = `${firstName} ${lastName}`.trim();
     const resolvedFullName =
       computedFullName ||
@@ -902,88 +908,176 @@ export function JobApplicationsPage() {
       "—";
 
     return (
-      <div className="dropPanel">
-        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
+      <div className="dropPanel candidateProfilePanel">
+        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
           <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
         ) : profile === null ? (
           <p className="pageText">Profile details are not available for this applicant.</p>
         ) : (
           <>
-            <Section title="Personal Details">
-              <ReadField label="Full Name" value={resolvedFullName} />
-              <ReadField label="Email" value={app.applicant_email} />
-              <ReadField label="Phone" value={app.applicant_phone} />
-              <ReadField label="Gender" value={readValue(personal, "gender")} />
-              <ReadField label="Nationality" value={readValue(personal, "nationality")} />
-            </Section>
+            <div style={{ marginTop: 10 }}>
+              <div className="profileSectionHeading">Personal Details</div>
+              <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                <ReadField label="Full Name" value={resolvedFullName} />
+                <ReadField label="First Name" value={firstName || "—"} />
+                <ReadField label="Last Name" value={lastName || "—"} />
+                {middleName ? <ReadField label="Middle Name" value={middleName} /> : null}
+                <ReadField label="Email" value={app.applicant_email} />
+                <ReadField label="Phone" value={app.applicant_phone} />
+                <ReadField label="Gender" value={readValue(personal, "gender")} />
+                <ReadField label="Date of Birth" value={String(readValue(personal, "date_of_birth", "dateOfBirth") ?? "—").split("T")[0] || "—"} />
+                <ReadField label="Nationality" value={readValue(personal, "nationality")} />
+                <ReadField label="Marital Status" value={readValue(personal, "marital_status", "maritalStatus")} />
+                <ReadField label="ID Type" value={readValue(personal, "id_type", "idType")} />
+                <ReadField label="ID Number" value={readValue(personal, "id_number", "idNumber")} />
+                <ReadField label="Disability Status" value={readValue(personal, "disability_status", "disabilityStatus") ? "Yes" : "No"} />
+              </div>
+            </div>
 
-            <Section title="Address">
-              {(profile.addresses ?? []).length === 0 ? (
-                <p className="pageText">No address records.</p>
-              ) : (
-                (profile.addresses ?? []).map((address, idx) => (
-                  <div key={`${app.id}-addr-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    {[
-                      readValue(address, "address_line1", "addressLine1"),
-                      readValue(address, "address_line2", "addressLine2"),
-                      readValue(address, "city"),
-                      readValue(address, "state"),
-                      readValue(address, "country"),
-                    ]
-                      .filter(Boolean)
-                      .map(String)
-                      .join(", ") || "—"}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Professional Summary</div>
+              <div style={{ marginTop: 6 }}>
+                <div className="readValue" style={{ whiteSpace: "pre-wrap" }}>
+                  {String(readValue(mainProfile, "professional_summary", "professionalSummary") ?? "—")}
+                </div>
+                <div className="profileReadGrid" style={{ marginTop: 8 }}>
+                  <ReadField
+                    label="Field of Expertise"
+                    value={readValue(mainProfile, "field_of_expertise", "fieldOfExpertise")}
+                  />
+                  <ReadField
+                    label="Qualification Level"
+                    value={readValue(mainProfile, "qualification_level", "qualificationLevel")}
+                  />
+                  <ReadField
+                    label="Years Experience"
+                    value={readValue(mainProfile, "years_experience", "yearsExperience")}
+                  />
+                </div>
+              </div>
+            </div>
 
-            <Section title="Education">
-              {(profile.education ?? []).length === 0 ? (
-                <p className="pageText">No education records.</p>
-              ) : (
-                (profile.education ?? []).map((edu, idx) => (
-                  <div key={`${app.id}-edu-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    <strong>{String(readValue(edu, "qualification") ?? "Qualification")}</strong>
-                    {" - "}
-                    {String(readValue(edu, "institution_name", "institutionName") ?? "Institution")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Address</div>
+              <div style={{ marginTop: 6 }}>
+                {addresses.length === 0 ? (
+                  <p className="pageText">No address records.</p>
+                ) : (
+                  addresses.map((address, idx) => {
+                    const isPrimary = Boolean(readValue(address, "is_primary", "isPrimary"));
+                    const line1 = String(readValue(address, "address_line1", "addressLine1") ?? "");
+                    const line2 = String(readValue(address, "address_line2", "addressLine2") ?? "");
+                    const city = String(readValue(address, "city") ?? "");
+                    const state = String(readValue(address, "state") ?? "");
+                    const country = String(readValue(address, "country") ?? "");
+                    const postal = String(readValue(address, "postal_code", "postalCode") ?? "");
+                    return (
+                      <div key={`${app.id}-addr-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < addresses.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        {isPrimary ? <span className="chipBadge" style={{ marginBottom: 6, display: "inline-block" }}>Primary</span> : null}
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          {line1 ? <ReadField label="Address Line 1" value={line1} /> : null}
+                          {line2 ? <ReadField label="Address Line 2" value={line2} /> : null}
+                          {city ? <ReadField label="City" value={city} /> : null}
+                          {state ? <ReadField label="Region / State" value={state} /> : null}
+                          {country ? <ReadField label="Country" value={country} /> : null}
+                          {postal ? <ReadField label="Postal Code" value={postal} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="Experience">
-              {(profile.experience ?? []).length === 0 ? (
-                <p className="pageText">No experience records.</p>
-              ) : (
-                (profile.experience ?? []).map((exp, idx) => (
-                  <div key={`${app.id}-exp-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    <strong>{String(readValue(exp, "job_title", "jobTitle") ?? "Role")}</strong>
-                    {" at "}
-                    {String(readValue(exp, "company_name", "companyName") ?? "Company")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Education</div>
+              <div style={{ marginTop: 6 }}>
+                {education.length === 0 ? (
+                  <p className="pageText">No education records.</p>
+                ) : (
+                  education.map((edu, idx) => {
+                    const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
+                    const qualification = String(readValue(edu, "qualification") ?? "");
+                    const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
+                    const grade = String(readValue(edu, "grade") ?? "");
+                    const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(edu, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(edu, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    return (
+                      <div key={`${app.id}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Institution" value={institution} />
+                          <ReadField label="Qualification" value={qualification} />
+                          {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
+                          {grade ? <ReadField label="Grade" value={grade} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="References">
-              {(profile.references ?? []).length === 0 ? (
-                <p className="pageText">No references listed.</p>
-              ) : (
-                (profile.references ?? []).map((ref, idx) => (
-                  <div key={`${app.id}-ref-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    {String(readValue(ref, "full_name", "fullName") ?? "Reference")} - {String(readValue(ref, "relationship") ?? "—")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Experience</div>
+              <div style={{ marginTop: 6 }}>
+                {experience.length === 0 ? (
+                  <p className="pageText">No experience records.</p>
+                ) : (
+                  experience.map((exp, idx) => {
+                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "—");
+                    const companyName = String(readValue(exp, "company_name", "companyName", "company") ?? "—");
+                    const employmentType = String(readValue(exp, "employment_type", "employmentType") ?? "");
+                    const isCurrent = Boolean(readValue(exp, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(exp, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(exp, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
+                    return (
+                      <div key={`${app.id}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Job Title" value={jobTitle} />
+                          <ReadField label="Company" value={companyName} />
+                          {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                          {responsibilities ? (
+                            <div className="readFieldFull">
+                              <span className="readLabel">Responsibilities</span>
+                              <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="Professional Summary">
-              <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>
-                {String(readValue(profile.profile, "professional_summary", "professionalSummary") ?? "—")}
-              </p>
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">References</div>
+              <div style={{ marginTop: 6 }}>
+                {references.length === 0 ? (
+                  <p className="pageText">No references listed.</p>
+                ) : (
+                  references.map((ref, idx) => (
+                    <div key={`${app.id}-ref-${idx}`} className="profileReadGrid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                      <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
+                      <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                      <ReadField label="Email" value={readValue(ref, "email")} />
+                      <ReadField label="Phone" value={readValue(ref, "phone")} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
             <Section title="Documents">
               {documentsState === undefined || resumesState === undefined ? (
