@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "release": "semantic-release",
     "release:dry-run": "semantic-release --dry-run",
     "commitlint": "commitlint --edit",
