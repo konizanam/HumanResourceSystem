@@ -203,6 +203,113 @@ async function ensureSchema() {
       WHERE r.name = 'ADMIN'
      ON CONFLICT (role_id, permission_id) DO NOTHING`,
   );
+
+  // Upgrade jobs.application_deadline to store time-of-day so posts
+  // can be hidden at a precise moment (not just end-of-day).
+  // The v_active_jobs view depends on this column, so drop+recreate around the ALTER.
+  await query(
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'jobs'
+            AND column_name = 'application_deadline'
+            AND data_type = 'date'
+       ) THEN
+         DROP VIEW IF EXISTS v_active_jobs;
+         ALTER TABLE jobs
+           ALTER COLUMN application_deadline TYPE TIMESTAMP
+             USING application_deadline::timestamp;
+       END IF;
+     END $$;`,
+  );
+
+  // Always (re)create v_active_jobs so it reflects the current column type
+  // and the precise-time cutoff.
+  await query(
+    `CREATE OR REPLACE VIEW v_active_jobs AS
+       SELECT j.id,
+              j.title,
+              j.description,
+              j.salary_min,
+              j.salary_max,
+              j.is_urgent,
+              j.created_at,
+              j.location,
+              j.remote,
+              j.employment_type,
+              j.experience_level,
+              j.employer_id,
+              c.name AS company_name,
+              c.city AS company_city,
+              c.country AS company_country,
+              cat.name AS category_name,
+              subcat.name AS subcategory_name,
+              (u.first_name::text || ' '::text) || u.last_name::text AS created_by_name,
+              (emp.first_name::text || ' '::text) || emp.last_name::text AS employer_name
+         FROM jobs j
+         JOIN companies c ON j.company_id = c.id
+         LEFT JOIN job_categories cat ON j.category_id = cat.id
+         LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
+         LEFT JOIN users u ON j.created_by = u.id
+         LEFT JOIN users emp ON j.employer_id = emp.id
+        WHERE j.status::text = 'APPROVED'::text
+          AND (j.application_deadline IS NULL OR j.application_deadline > CURRENT_TIMESTAMP)`,
+  );
+
+  // Vacancy screening questions (auto-reject feature).
+  await query(
+    `CREATE TABLE IF NOT EXISTS job_screening_questions (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+       question_text TEXT NOT NULL,
+       sort_order INT NOT NULL DEFAULT 0,
+       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_job_screening_questions_job_id
+       ON job_screening_questions(job_id)`,
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS job_screening_options (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       question_id UUID NOT NULL REFERENCES job_screening_questions(id) ON DELETE CASCADE,
+       option_text TEXT NOT NULL,
+       is_correct BOOLEAN NOT NULL DEFAULT false,
+       sort_order INT NOT NULL DEFAULT 0,
+       created_at TIMESTAMP NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_job_screening_options_question_id
+       ON job_screening_options(question_id)`,
+  );
+  await query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_job_screening_options_one_correct
+       ON job_screening_options(question_id) WHERE is_correct`,
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS application_screening_answers (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+       question_id UUID NOT NULL REFERENCES job_screening_questions(id) ON DELETE CASCADE,
+       selected_option_id UUID REFERENCES job_screening_options(id) ON DELETE SET NULL,
+       is_correct BOOLEAN NOT NULL DEFAULT false,
+       answered_at TIMESTAMP NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_application_screening_answers_application_id
+       ON application_screening_answers(application_id)`,
+  );
+  await query(
+    `CREATE INDEX IF NOT EXISTS idx_application_screening_answers_question_id
+       ON application_screening_answers(question_id)`,
+  );
 }
 
 async function start() {

@@ -7,6 +7,8 @@ import {
   createJobSubcategory,
   deleteJob,
   getCompany,
+  getJob,
+  getPublicJob,
   getPublicCompany,
   getJobSeekerFullProfile,
   listJobSeekerResumes,
@@ -18,6 +20,8 @@ import {
   type JobCategory,
   type JobListItem,
   type JobUpsertPayload,
+  type ScreeningAnswerPayload,
+  type ScreeningQuestion,
   updateJob,
 } from "../api/client";
 import { RichTextEditor, RichTextView, normalizeRichTextForSave, richTextToPlainText } from "../components/RichText";
@@ -117,6 +121,16 @@ function ConfirmModal({
   );
 }
 
+type FormScreeningOption = {
+  option_text: string;
+  is_correct: boolean;
+};
+
+type FormScreeningQuestion = {
+  question_text: string;
+  options: FormScreeningOption[];
+};
+
 type JobFormState = {
   title: string;
   description: string;
@@ -131,6 +145,7 @@ type JobFormState = {
   salary_max: string;
   application_deadline: string;
   status: "active" | "closed" | "draft";
+  screening_questions: FormScreeningQuestion[];
 };
 
 const EMPTY_FORM: JobFormState = {
@@ -147,7 +162,40 @@ const EMPTY_FORM: JobFormState = {
   salary_max: "",
   application_deadline: "",
   status: "active",
+  screening_questions: [],
 };
+
+function blankScreeningQuestion(): FormScreeningQuestion {
+  return {
+    question_text: "",
+    options: [
+      { option_text: "", is_correct: true },
+      { option_text: "", is_correct: false },
+    ],
+  };
+}
+
+function validateScreeningFormQuestions(questions: FormScreeningQuestion[]): string | null {
+  for (let i = 0; i < questions.length; i += 1) {
+    const q = questions[i];
+    if (!q.question_text.trim()) {
+      return `Question ${i + 1}: question text is required.`;
+    }
+    if (!Array.isArray(q.options) || q.options.length < 2) {
+      return `Question ${i + 1}: at least 2 options are required.`;
+    }
+    for (let j = 0; j < q.options.length; j += 1) {
+      if (!q.options[j].option_text.trim()) {
+        return `Question ${i + 1}: option ${j + 1} is empty.`;
+      }
+    }
+    const correctCount = q.options.filter((o) => o.is_correct).length;
+    if (correctCount !== 1) {
+      return `Question ${i + 1}: select exactly one correct option.`;
+    }
+  }
+  return null;
+}
 
 function mapJobToForm(job: JobListItem): JobFormState {
   const rawWorkMode = String((job as any).work_mode ?? "").trim().toLowerCase();
@@ -192,9 +240,177 @@ function mapJobToForm(job: JobListItem): JobFormState {
     remote: normalizedWorkMode !== "onsite",
     salary_min: job.salary_min != null ? String(job.salary_min) : "",
     salary_max: job.salary_max != null ? String(job.salary_max) : "",
-    application_deadline: job.application_deadline ? String(job.application_deadline).slice(0, 10) : "",
+    application_deadline: (() => {
+      const raw = job.application_deadline ? String(job.application_deadline) : "";
+      if (!raw) return "";
+      // Accept either ISO datetime ("2026-04-28T22:00:00.000Z") or date-only ("2026-04-28").
+      // Return local "YYYY-MM-DDTHH:MM" for datetime-local input.
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw.slice(0, 16);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    })(),
     status: normalizedStatus,
+    screening_questions: Array.isArray(job.screening_questions)
+      ? job.screening_questions.map((q) => ({
+          question_text: String(q.question_text ?? ""),
+          options: (q.options ?? []).map((o) => ({
+            option_text: String(o.option_text ?? ""),
+            is_correct: Boolean(o.is_correct),
+          })),
+        }))
+      : [],
   };
+}
+
+function ScreeningQuestionsEditor({
+  questions,
+  onChange,
+  disabled,
+  errorSummary,
+}: {
+  questions: FormScreeningQuestion[];
+  onChange: (next: FormScreeningQuestion[]) => void;
+  disabled?: boolean;
+  errorSummary?: string;
+}) {
+  function updateQuestion(idx: number, patch: Partial<FormScreeningQuestion>) {
+    const next = questions.map((q, i) => (i === idx ? { ...q, ...patch } : q));
+    onChange(next);
+  }
+
+  function updateOption(qIdx: number, oIdx: number, patch: Partial<FormScreeningOption>) {
+    const question = questions[qIdx];
+    if (!question) return;
+    const nextOptions = question.options.map((o, i) => (i === oIdx ? { ...o, ...patch } : o));
+    updateQuestion(qIdx, { options: nextOptions });
+  }
+
+  function markCorrect(qIdx: number, oIdx: number) {
+    const question = questions[qIdx];
+    if (!question) return;
+    const nextOptions = question.options.map((o, i) => ({ ...o, is_correct: i === oIdx }));
+    updateQuestion(qIdx, { options: nextOptions });
+  }
+
+  function addOption(qIdx: number) {
+    const question = questions[qIdx];
+    if (!question) return;
+    updateQuestion(qIdx, {
+      options: [...question.options, { option_text: "", is_correct: false }],
+    });
+  }
+
+  function removeOption(qIdx: number, oIdx: number) {
+    const question = questions[qIdx];
+    if (!question || question.options.length <= 2) return;
+    const removing = question.options[oIdx];
+    const nextOptions = question.options.filter((_, i) => i !== oIdx);
+    // If we removed the correct option, mark the first remaining one correct.
+    if (removing?.is_correct && !nextOptions.some((o) => o.is_correct)) {
+      nextOptions[0] = { ...nextOptions[0], is_correct: true };
+    }
+    updateQuestion(qIdx, { options: nextOptions });
+  }
+
+  function addQuestion() {
+    onChange([...questions, blankScreeningQuestion()]);
+  }
+
+  function removeQuestion(qIdx: number) {
+    onChange(questions.filter((_, i) => i !== qIdx));
+  }
+
+  return (
+    <div className="screeningQuestions" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <h3 className="editFormTitle" style={{ fontSize: 15, margin: 0 }}>
+          Screening Questions (optional)
+        </h3>
+        <button
+          type="button"
+          className="btn btnPrimary"
+          onClick={addQuestion}
+          disabled={disabled}
+        >
+          + Add Screening Question(s)
+        </button>
+      </div>
+      {errorSummary ? <div className="fieldError" style={{ marginBottom: 8 }}>{errorSummary}</div> : null}
+      {questions.length === 0 ? (
+        <div className="emptyState" style={{ fontSize: 13 }}>
+          No screening questions. Add one to auto-reject applicants who answer incorrectly.
+        </div>
+      ) : null}
+      {questions.map((q, qIdx) => (
+        <div key={qIdx} className="dashCard" style={{ padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <strong>Question {qIdx + 1}</strong>
+            <button
+              type="button"
+              className="btn btnDanger btnSm"
+              onClick={() => removeQuestion(qIdx)}
+              disabled={disabled}
+            >
+              Remove Question
+            </button>
+          </div>
+          <div className="field fieldFull">
+            <label className="fieldLabel">Question</label>
+            <input
+              className="input"
+              value={q.question_text}
+              onChange={(e) => updateQuestion(qIdx, { question_text: e.target.value })}
+              placeholder="e.g. Minimum years of experience required?"
+              disabled={disabled}
+            />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <div className="fieldLabel" style={{ marginBottom: 4 }}>
+              Options (select the correct one)
+            </div>
+            {q.options.map((o, oIdx) => (
+              <div key={oIdx} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input
+                  type="radio"
+                  name={`screening-correct-${qIdx}`}
+                  checked={Boolean(o.is_correct)}
+                  onChange={() => markCorrect(qIdx, oIdx)}
+                  disabled={disabled}
+                  aria-label={`Mark option ${oIdx + 1} correct`}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={o.option_text}
+                  onChange={(e) => updateOption(qIdx, oIdx, { option_text: e.target.value })}
+                  placeholder={`Option ${oIdx + 1}`}
+                  disabled={disabled}
+                />
+                <button
+                  type="button"
+                  className="btn btnGhost btnSm"
+                  onClick={() => removeOption(qIdx, oIdx)}
+                  disabled={disabled || q.options.length <= 2}
+                  aria-label={`Remove option ${oIdx + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btnGhost btnSm"
+              onClick={() => addOption(qIdx)}
+              disabled={disabled}
+            >
+              + Add Option
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function mapFormToPayload(form: JobFormState): JobUpsertPayload {
@@ -216,6 +432,13 @@ function mapFormToPayload(form: JobFormState): JobUpsertPayload {
     benefits: [],
     application_deadline: form.application_deadline,
     status: form.status,
+    screening_questions: form.screening_questions.map((q) => ({
+      question_text: q.question_text.trim(),
+      options: q.options.map((o) => ({
+        option_text: o.option_text.trim(),
+        is_correct: Boolean(o.is_correct),
+      })),
+    })),
   };
 }
 
@@ -257,19 +480,33 @@ export function JobsPage() {
   const [pagination, setPagination] = useState(() => ({ page: 1, limit: isJobSeekerView ? 5 : 20, total: 0, pages: 0 }));
   const [openJobId, setOpenJobId] = useState<string | null>(null);
 
+  const [pendingScrollJobId, setPendingScrollJobId] = useState<string | null>(null);
+
   const toggleJobOpen = useCallback((id: string) => {
-    setOpenJobId((prev) => {
-      const next = prev === id ? null : id;
-      if (next) {
-        requestAnimationFrame(() => {
-          const el = document.getElementById(`job-card-${next}`);
-          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      }
-      return next;
-    });
+    setOpenJobId((prev) => (prev === id ? null : id));
+    // Defer the scroll until after the list (filtered vs. full) has re-rendered.
+    setPendingScrollJobId(id);
   }, []);
+
+  useEffect(() => {
+    if (!pendingScrollJobId) return;
+    const targetId = pendingScrollJobId;
+    // Two rAF passes give React and the browser time to commit the layout
+    // change (card moving from position 0 back into its list slot) before
+    // we scroll to its final position.
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`job-card-${targetId}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    setPendingScrollJobId(null);
+    return () => cancelAnimationFrame(raf1);
+  }, [pendingScrollJobId]);
   const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
+  const [applyScreeningQuestions, setApplyScreeningQuestions] = useState<ScreeningQuestion[]>([]);
+  const [applyScreeningAnswers, setApplyScreeningAnswers] = useState<Record<string, string>>({});
+  const [applyScreeningLoading, setApplyScreeningLoading] = useState(false);
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
   const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
@@ -278,6 +515,23 @@ export function JobsPage() {
   const [editJobId, setEditJobId] = useState<string | null>(null);
   const [form, setForm] = useState<JobFormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setFormErrors((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      if (next.title && form.title.trim()) delete next.title;
+      if (next.description && richTextToPlainText(form.description).trim()) delete next.description;
+      if (next.location && form.location.trim()) delete next.location;
+      if (next.salary_min && form.salary_min.trim()) delete next.salary_min;
+      if (next.salary_max && form.salary_max.trim()) delete next.salary_max;
+      if (next.application_deadline && form.application_deadline.trim()) delete next.application_deadline;
+      if (next.screening_questions && !validateScreeningFormQuestions(form.screening_questions)) {
+        delete next.screening_questions;
+      }
+      return next;
+    });
+  }, [form]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [addInlineOpen, setAddInlineOpen] = useState(false);
   const [jobCategories, setJobCategories] = useState<JobCategory[]>([]);
@@ -291,6 +545,18 @@ export function JobsPage() {
   const [addSubcategoryModalOpen, setAddSubcategoryModalOpen] = useState(false);
   const [addSubcategoryName, setAddSubcategoryName] = useState("");
   const [addSubcategoryError, setAddSubcategoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFormErrors((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      if (next.company && selectedCompany?.id) delete next.company;
+      if (next.category && selectedCategory?.id) delete next.category;
+      if (next.subcategory && selectedSubcategory.trim()) delete next.subcategory;
+      return next;
+    });
+  }, [selectedCompany, selectedCategory, selectedSubcategory]);
+
   const [showSeekerFilters, setShowSeekerFilters] = useState(searchParams.get("browse") !== "0");
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
@@ -752,6 +1018,8 @@ export function JobsPage() {
     if (!form.salary_min.trim()) next.salary_min = "Minimum salary is required";
     if (!form.salary_max.trim()) next.salary_max = "Maximum salary is required";
     if (!form.application_deadline.trim()) next.application_deadline = "Deadline is required";
+    const screeningError = validateScreeningFormQuestions(form.screening_questions);
+    if (screeningError) next.screening_questions = screeningError;
     setFormErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -769,7 +1037,18 @@ export function JobsPage() {
     setModalMode(null);
   }
 
-  function openEditModal(job: JobListItem) {
+  async function openEditModal(jobFromList: JobListItem) {
+    // Fetch the full job detail so we get the nested `screening_questions`
+    // (the list payload does not include them).
+    let job: JobListItem = jobFromList;
+    if (accessToken) {
+      try {
+        job = await getJob(accessToken, jobFromList.id);
+      } catch {
+        // Fall back to the list snapshot if the fetch fails.
+        job = jobFromList;
+      }
+    }
     const company = companies.find((item) => String(item.id ?? "") === String(job.company_id ?? ""))
       ?? companies.find((item) => String(item.name ?? "").trim().toLowerCase() === String((job as any).company ?? (job as any).company_name ?? "").trim().toLowerCase())
       ?? null;
@@ -842,6 +1121,7 @@ export function JobsPage() {
       setCompanyQuery("");
       setCategoryQuery("");
       await load(pagination.page);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to save job");
     } finally {
@@ -862,6 +1142,8 @@ export function JobsPage() {
     if (!form.salary_min.trim()) errs.salary_min = "Minimum salary is required";
     if (!form.salary_max.trim()) errs.salary_max = "Maximum salary is required";
     if (!form.application_deadline.trim()) errs.application_deadline = "Deadline is required";
+    const screeningError = validateScreeningFormQuestions(form.screening_questions);
+    if (screeningError) errs.screening_questions = screeningError;
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -893,6 +1175,13 @@ export function JobsPage() {
         benefits: [],
         application_deadline: form.application_deadline,
         status: form.status,
+        screening_questions: form.screening_questions.map((q) => ({
+          question_text: q.question_text.trim(),
+          options: q.options.map((o) => ({
+            option_text: o.option_text.trim(),
+            is_correct: Boolean(o.is_correct),
+          })),
+        })),
       });
       setSuccess("Job created successfully");
       setAddInlineOpen(false);
@@ -904,6 +1193,7 @@ export function JobsPage() {
       setCompanyQuery("");
       setCategoryQuery("");
       await load(1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to create job");
     } finally {
@@ -1006,7 +1296,7 @@ export function JobsPage() {
         <div className="editForm">
           <h2 className="editFormTitle">Edit Job</h2>
           <div className="editGrid">
-            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} />
+            <Field label="Title" value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} error={formErrors.title} required />
             <div className="field">
               <label className="fieldLabel">Company</label>
               <input className={`input${formErrors.company ? " inputError" : ""}`} value={companyQuery} onChange={(e) => { setCompanyQuery(e.target.value); setSelectedCompany(null); }} placeholder="Type company name to search..." />
@@ -1056,10 +1346,10 @@ export function JobsPage() {
               ) : null}
               {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
             </div>
-            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} />
-            <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
-            <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
-            <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} />
+            <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
+            <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} required />
+            <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} required />
+            <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
             <div className="field">
               <label className="fieldLabel">Employment Type</label>
               <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))}>
@@ -1106,6 +1396,12 @@ export function JobsPage() {
               {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
             </div>
           </div>
+          <ScreeningQuestionsEditor
+            questions={form.screening_questions}
+            onChange={(next) => setForm((p) => ({ ...p, screening_questions: next }))}
+            disabled={saving}
+            errorSummary={formErrors.screening_questions}
+          />
           <div className="stepperActions">
             <button className="btn btnGhost" type="button" onClick={() => {
               setModalMode(null);
@@ -1116,7 +1412,7 @@ export function JobsPage() {
               setCompanyQuery("");
               setCategoryQuery("");
             }} disabled={saving}>Cancel</button>
-            <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onSaveModal} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+            <button className="btn btnPrimary" type="button" onClick={onSaveModal} disabled={saving}>{saving ? "Updating..." : "Update Job"}</button>
           </div>
         </div>
       </div>
@@ -1187,11 +1483,28 @@ export function JobsPage() {
         setProfileIncompleteModalOpen(true);
         return;
       }
-      setApplyConfirmJob(job);
+      // Load latest job detail (includes screening questions) before confirming.
+      setApplyScreeningQuestions([]);
+      setApplyScreeningAnswers({});
+      setApplyScreeningLoading(true);
+      let jobDetail: JobListItem = job;
+      try {
+        jobDetail = await getJob(accessToken, job.id);
+      } catch {
+        try {
+          jobDetail = await getPublicJob(job.id);
+        } catch {
+          jobDetail = job;
+        }
+      }
+      setApplyScreeningQuestions(Array.isArray(jobDetail.screening_questions) ? jobDetail.screening_questions : []);
+      setApplyScreeningLoading(false);
+      setApplyConfirmJob(jobDetail);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to validate profile completeness");
     } finally {
       setSaving(false);
+      setApplyScreeningLoading(false);
     }
   }
 
@@ -1228,13 +1541,37 @@ export function JobsPage() {
 
   async function onConfirmApply() {
     if (!accessToken || !applyConfirmJob) return;
+    // Every screening question must have an answer chosen.
+    if (applyScreeningQuestions.length > 0) {
+      const missing = applyScreeningQuestions.find((q) => !applyScreeningAnswers[q.id]);
+      if (missing) {
+        setError("Please answer all screening questions before submitting.");
+        return;
+      }
+    }
+    const screeningAnswers: ScreeningAnswerPayload[] = applyScreeningQuestions.map((q) => ({
+      question_id: q.id,
+      selected_option_id: applyScreeningAnswers[q.id],
+    }));
     try {
       setSaving(true);
       setError(null);
-      await applyToJob(accessToken, { job_id: applyConfirmJob.id });
+      const result = await applyToJob(accessToken, {
+        job_id: applyConfirmJob.id,
+        ...(screeningAnswers.length > 0 ? { screening_answers: screeningAnswers } : {}),
+      });
       setAppliedJobIds((prev) => (prev.includes(applyConfirmJob.id) ? prev : [...prev, applyConfirmJob.id]));
-      setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
+      if (result.auto_rejected) {
+        setSuccess(null);
+        setError(
+          `Unfortunately you did not meet the minimum screening criteria for "${applyConfirmJob.title}".`,
+        );
+      } else {
+        setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
+      }
       setApplyConfirmJob(null);
+      setApplyScreeningQuestions([]);
+      setApplyScreeningAnswers({});
     } catch (e) {
       const message = String((e as Error)?.message ?? "").trim();
       setError(message || "Failed to apply for job");
@@ -1402,7 +1739,7 @@ export function JobsPage() {
               <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
               <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} required />
               <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} required />
-              <Field label="Application Deadline" type="date" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
+              <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
               <div className="field">
                 <label className="fieldLabel">Employment Type</label>
                 <select className="input" value={form.employment_type} onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value as JobUpsertPayload["employment_type"] }))} required>
@@ -1435,10 +1772,16 @@ export function JobsPage() {
                 {formErrors.description && <span className="fieldError">{formErrors.description}</span>}
               </div>
             </div>
+            <ScreeningQuestionsEditor
+              questions={form.screening_questions}
+              onChange={(next) => setForm((p) => ({ ...p, screening_questions: next }))}
+              disabled={saving}
+              errorSummary={formErrors.screening_questions}
+            />
             <div className="stepperActions">
               <button className="btn btnGhost" type="button" onClick={() => setAddInlineOpen(false)} disabled={saving}>Cancel</button>
-              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onCreateInlineJob} disabled={saving}>
-                {saving ? "Saving..." : "Save"}
+              <button className="btn btnPrimary" type="button" onClick={onCreateInlineJob} disabled={saving}>
+                {saving ? "Submitting..." : "Submit Job"}
               </button>
             </div>
           </div>
@@ -1604,10 +1947,19 @@ export function JobsPage() {
               {renderSeekerPager()}
             </div>
           <div className="jobCardsGrid" role="region" aria-label="Jobs cards" style={{ minWidth: 0 }}>
-            {seekerVisibleJobs.length === 0 ? (
-              <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No jobs found.</div></div>
-            ) : (
-              seekerVisibleJobs.map((job, idx) => {
+            {(() => {
+              // While viewing one job's details, hide the rest of the list.
+              const seekerListForRender = openJobId
+                ? seekerVisibleJobs.filter((j) => j.id === openJobId)
+                : seekerVisibleJobs;
+              if (seekerListForRender.length === 0) {
+                return (
+                  <div className="dashCard jobCardsGridItem jobCardToneA">
+                    <div className="emptyState">No jobs found.</div>
+                  </div>
+                );
+              }
+              return seekerListForRender.map((job, idx) => {
                 const alreadyApplied = appliedJobIds.includes(job.id);
                 const isOpen = openJobId === job.id;
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
@@ -1769,8 +2121,8 @@ export function JobsPage() {
                     )}
                   </div>
                 );
-              })
-            )}
+              });
+            })()}
           </div>
             <div style={{ marginTop: 16 }}>
               {renderSeekerPager()}
@@ -1780,10 +2132,22 @@ export function JobsPage() {
           </>
         ) : (
           <div className="jobCardsGrid" role="region" aria-label="Jobs cards">
-            {visibleJobs.length === 0 ? (
-              <div className="dashCard jobCardsGridItem jobCardToneA"><div className="emptyState">No jobs found.</div></div>
-            ) : (
-              visibleJobs.map((job, idx) => {
+            {(() => {
+              // While editing a job OR viewing its details, show only that job
+              // so the open card isn't surrounded by the rest of the listing.
+              const focusedJobId =
+                (modalMode === "edit" && editJobId) || openJobId || null;
+              const listForRender = focusedJobId
+                ? visibleJobs.filter((j) => j.id === focusedJobId)
+                : visibleJobs;
+              if (listForRender.length === 0) {
+                return (
+                  <div className="dashCard jobCardsGridItem jobCardToneA">
+                    <div className="emptyState">No jobs found.</div>
+                  </div>
+                );
+              }
+              return listForRender.map((job, idx) => {
                 const applications = applicationCounts[job.id] ?? Number(job.applications_count ?? 0);
                 const canManageThisJob = canCreate && (canManageAllJobs || isOwnJob(job));
                 const companyName = resolveJobCompanyName(job);
@@ -1838,7 +2202,7 @@ export function JobsPage() {
                         <button
                           type="button"
                           className="btn btnGhost btnSm"
-                          onClick={() => openEditModal(job)}
+                          onClick={() => void openEditModal(job)}
                           disabled={saving}
                         >
                           Edit
@@ -1928,8 +2292,8 @@ export function JobsPage() {
                     {modalMode === "edit" && editJobId === job.id ? renderEditDropForm() : null}
                   </article>
                 );
-              })
-            )}
+              });
+            })()}
           </div>
         )}
 
@@ -2075,14 +2439,58 @@ export function JobsPage() {
         <div className="modalOverlay" role="presentation" onMouseDown={() => !saving && setApplyConfirmJob(null)}>
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
             <div className="modalTitle">Confirm Application</div>
-            <div className="modalMessage">
-              Apply for <strong>{applyConfirmJob.title}</strong>?
-            </div>
+            {applyScreeningLoading ? (
+              <div className="modalMessage" style={{ fontStyle: "italic" }}>Loading screening questions…</div>
+            ) : null}
+            {!applyScreeningLoading && applyScreeningQuestions.length > 0 ? (
+              <div style={{ marginTop: 8, marginBottom: 8, textAlign: "left" }}>
+                {applyScreeningQuestions.map((q, qIdx) => (
+                  <div key={q.id} className="dashCard" style={{ padding: 10, marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                      {qIdx + 1}. {q.question_text}
+                    </div>
+                    {q.options.map((o) => (
+                      <label key={o.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
+                        <input
+                          type="radio"
+                          name={`apply-screening-${q.id}`}
+                          checked={applyScreeningAnswers[q.id] === o.id}
+                          onChange={() =>
+                            setApplyScreeningAnswers((prev) => ({ ...prev, [q.id]: o.id }))
+                          }
+                          disabled={saving}
+                        />
+                        <span>{o.option_text}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="modalActions">
-              <button className="btn btnGhost" type="button" onClick={() => setApplyConfirmJob(null)} disabled={saving}>
+              <button
+                className="btn btnGhost"
+                type="button"
+                onClick={() => {
+                  setApplyConfirmJob(null);
+                  setApplyScreeningQuestions([]);
+                  setApplyScreeningAnswers({});
+                }}
+                disabled={saving}
+              >
                 Cancel
               </button>
-              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" onClick={onConfirmApply} disabled={saving}>
+              <button
+                className="btn btnGhost btnSm stepperSaveBtn"
+                type="button"
+                onClick={onConfirmApply}
+                disabled={
+                  saving ||
+                  applyScreeningLoading ||
+                  (applyScreeningQuestions.length > 0 &&
+                    applyScreeningQuestions.some((q) => !applyScreeningAnswers[q.id]))
+                }
+              >
                 {saving ? "Applying..." : "Confirm Apply"}
               </button>
             </div>

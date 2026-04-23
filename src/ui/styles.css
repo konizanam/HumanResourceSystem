@@ -419,18 +419,27 @@ textarea.input[aria-required="true"]:invalid {
 /* Required fields that have a valid value get a green ring. */
 .input[required]:valid,
 select.input[required]:valid,
-textarea.input[required]:valid {
+textarea.input[required]:valid,
+.input[aria-required="true"][aria-invalid="false"],
+[role="textbox"][aria-required="true"][aria-invalid="false"].input {
   border-color: color-mix(in srgb, var(--success) 55%, var(--stroke));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 40%, transparent);
 }
 
 .input[required]:valid:focus,
 select.input[required]:valid:focus,
-textarea.input[required]:valid:focus {
+textarea.input[required]:valid:focus,
+.input[aria-required="true"][aria-invalid="false"]:focus,
+[role="textbox"][aria-required="true"][aria-invalid="false"].input:focus {
   border-color: var(--success);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--success) 55%, transparent),
     0 0 0 3px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+/* Contenteditable + other custom widgets flagged as required but empty get the red ring. */
+[role="textbox"][aria-required="true"][aria-invalid="true"].input {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 58%, transparent);
 }
 
 .input:focus {
@@ -2454,9 +2463,9 @@ input[type="radio"][required]:checked {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--stroke);
-  background: var(--card2);
-  color: var(--muted);
+  border: 1px solid var(--menu-icon-active);
+  background: var(--accent-soft);
+  color: var(--menu-icon-active);
   padding: 6px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -2464,6 +2473,13 @@ input[type="radio"][required]:checked {
   font-weight: 500;
   font-family: inherit;
   width: 100%;
+  white-space: nowrap;
+}
+
+.profileStepLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .profileStepIcon {
@@ -2477,9 +2493,9 @@ input[type="radio"][required]:checked {
 }
 
 .profileStepBtnActive {
-  border-color: var(--menu-icon-active);
-  background: var(--accent-soft);
-  color: var(--menu-icon-active);
+  border-color: var(--stroke);
+  background: var(--card2);
+  color: var(--muted);
 }
 
 .profileStepNum {
@@ -2491,13 +2507,13 @@ input[type="radio"][required]:checked {
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
-  background: var(--stroke);
-  color: var(--muted);
+  background: var(--primary);
+  color: #fff;
 }
 
 .profileStepBtnActive .profileStepNum {
-  background: var(--primary);
-  color: #fff;
+  background: var(--stroke);
+  color: var(--muted);
 }
 
 @media (max-width: 520px) {
@@ -2759,11 +2775,13 @@ input[type="radio"][required]:checked {
   grid-template-columns: 1fr;
   gap: 10px;
   margin-bottom: 12px;
+  align-items: start;
 }
 
 /* Allow grid children (e.g. inputs with long values) to shrink without forcing uneven columns. */
 .editGrid > * {
   min-width: 0;
+  align-self: start;
 }
 
 /* Global Settings: keep Main Company form controls visually aligned */
@@ -4110,6 +4128,10 @@ input[type="radio"][required]:checked {
 /* ── Typeahead lists (inline, not absolute) ───── */
 
 .typeaheadList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   margin-top: 6px;
   border: 1px solid var(--stroke);
   background: var(--card);
@@ -4119,6 +4141,8 @@ input[type="radio"][required]:checked {
   gap: 4px;
   max-height: 220px;
   overflow-y: auto;
+  box-shadow: var(--shadow-md);
+  z-index: 20;
 }
 
 /* ── Autocomplete / suggestion dropdowns ────────── */

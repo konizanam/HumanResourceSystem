@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import { query as dbQuery } from '../config/database';
+import { query as dbQuery, transaction } from '../config/database';
 import { authenticate, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
@@ -10,6 +10,12 @@ import {
   getSystemSettings,
   toCanonicalApplicationStatusNotificationKey,
 } from '../services/systemSettings.service';
+import {
+  scoreScreeningAnswers,
+  persistScreeningAnswers,
+  type ScreeningScoreResult,
+} from '../services/screening.service';
+import { sendApplicationAutoRejectionEmail } from '../services/emailSender.service';
 
 const router = express.Router();
 
@@ -336,7 +342,7 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { job_id } = req.body;
+      const { job_id, screening_answers } = req.body;
       const applicant_id = req.user!.userId;
 
       // Check if job exists and is active
@@ -350,13 +356,15 @@ router.post('/',
       const jobPosterId = String(job?.created_by ?? job?.employer_id ?? '').trim();
       const applicantResult = await dbQuery(
         `SELECT
-           COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name
+           COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email, 'A job seeker') AS applicant_name,
+           email AS applicant_email
          FROM users
          WHERE id = $1
          LIMIT 1`,
         [applicant_id]
       );
       const applicantName = String(applicantResult.rows[0]?.applicant_name ?? 'A job seeker');
+      const applicantEmail = String(applicantResult.rows[0]?.applicant_email ?? '').trim();
 
       // Public-facing jobs can be stored as either 'active' (legacy) or 'APPROVED' (schema).
       // The job seeker UI only shows these, so applying must accept both.
@@ -391,37 +399,50 @@ router.post('/',
         return res.status(403).json({ error: 'Employers cannot apply to their own jobs' });
       }
 
-      // Start a transaction
-      await dbQuery('BEGIN');
+      // Score screening answers (throws if questions exist and answers missing).
+      let scored: ScreeningScoreResult;
+      try {
+        scored = await transaction(async (client) => {
+          return await scoreScreeningAnswers(client, job_id, screening_answers);
+        });
+      } catch (scoreErr) {
+        return res.status(400).json({ error: (scoreErr as Error).message });
+      }
+
+      const autoRejected = scored.totalQuestions > 0 && scored.wrongQuestions.length > 0;
+      const initialStatus = autoRejected ? 'REJECTED' : 'APPLIED';
+
+      let application: any;
+      try {
+        application = await transaction(async (client) => {
+          const result = await client.query(
+            `INSERT INTO applications (
+              job_id, user_id, status, applied_at
+            ) VALUES ($1, $2, $3, NOW())
+            RETURNING *`,
+            [job_id, applicant_id, initialStatus]
+          );
+          const app = result.rows[0];
+          if (scored.answers.length > 0) {
+            await persistScreeningAnswers(client, app.id, scored.answers);
+          }
+          try {
+            await client.query(
+              'UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1',
+              [job_id]
+            );
+          } catch (countError: any) {
+            if (countError?.code !== '42703') throw countError;
+            console.warn('jobs.applications_count missing; skipping increment');
+          }
+          return app;
+        });
+      } catch (txError) {
+        console.error('Failed to create application:', txError);
+        return res.status(500).json({ error: 'Server error' });
+      }
 
       try {
-        // Create application
-        const result = await dbQuery(
-          `INSERT INTO applications (
-            job_id, user_id, status, applied_at
-          ) VALUES ($1, $2, 'APPLIED', NOW())
-          RETURNING *`,
-          [job_id, applicant_id]
-        );
-
-        // Increment applications count on job if the column exists in this environment.
-        // Some databases in this project history do not have jobs.applications_count.
-        try {
-          await dbQuery(
-            'UPDATE jobs SET applications_count = applications_count + 1 WHERE id = $1',
-            [job_id]
-          );
-        } catch (countError: any) {
-          if (countError?.code !== '42703') {
-            throw countError;
-          }
-          console.warn('jobs.applications_count missing; skipping increment');
-        }
-
-        await dbQuery('COMMIT');
-
-        // Get job details for response
-        const application = result.rows[0];
         application.job_title = job.title;
         await logAudit({
           userId: applicant_id,
@@ -499,25 +520,72 @@ router.post('/',
           console.error('Failed to create admin notifications:', notificationError);
         }
 
-        // Notify the applicant that submission succeeded.
-        try {
-          await createNotification(
-            applicant_id,
-            'application_success',
-            'Application Submitted',
-            `Your application for ${job.title} has been submitted successfully`,
-            { application_id: application.id, job_id, status: 'APPLIED', job_title: job.title },
-            '/app/job-applications',
-            'normal'
-          );
-        } catch (notificationError) {
-          console.error('Failed to create applicant submission notification:', notificationError);
+        // Notify the applicant.
+        if (autoRejected) {
+          await logAudit({
+            userId: applicant_id,
+            action: 'APPLICATION_AUTO_REJECTED',
+            targetType: 'application',
+            targetId: application.id,
+            details: {
+              job_id,
+              total_questions: scored.totalQuestions,
+              correct_count: scored.correctCount,
+              wrong_question_ids: scored.wrongQuestions.map((w) => w.question_id),
+            },
+          });
+          try {
+            await createNotification(
+              applicant_id,
+              'application_rejected',
+              'Application Update',
+              `Unfortunately you did not meet the minimum screening criteria for ${job.title}.`,
+              {
+                application_id: application.id,
+                job_id,
+                status: 'REJECTED',
+                job_title: job.title,
+                reason: 'screening_failed',
+              },
+              '/app/job-applications',
+              'normal'
+            );
+          } catch (notificationError) {
+            console.error('Failed to create auto-rejection notification:', notificationError);
+          }
+          if (applicantEmail) {
+            try {
+              await sendApplicationAutoRejectionEmail({
+                to: applicantEmail,
+                applicantName,
+                jobTitle: String(job.title ?? ''),
+                companyName: String(job.company_name ?? '').trim() || undefined,
+              });
+            } catch (emailError) {
+              console.error('Failed to send auto-rejection email:', emailError);
+            }
+          }
+        } else {
+          try {
+            await createNotification(
+              applicant_id,
+              'application_success',
+              'Application Submitted',
+              `Your application for ${job.title} has been submitted successfully`,
+              { application_id: application.id, job_id, status: 'APPLIED', job_title: job.title },
+              '/app/job-applications',
+              'normal'
+            );
+          } catch (notificationError) {
+            console.error('Failed to create applicant submission notification:', notificationError);
+          }
         }
 
-        res.status(201).json(application);
-      } catch (error) {
-        await dbQuery('ROLLBACK');
-        throw error;
+        res.status(201).json({ ...application, auto_rejected: autoRejected });
+      } catch (postTxError) {
+        console.error('Post-transaction work failed:', postTxError);
+        // The application row is already committed; surface success anyway.
+        res.status(201).json({ ...application, auto_rejected: autoRejected });
       }
     } catch (error) {
       console.error('Error creating application:', error);

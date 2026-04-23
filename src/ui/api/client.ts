@@ -2185,6 +2185,31 @@ export type JobListItem = {
   employer_name?: string | null;
   employer_email?: string | null;
   applications_count?: number | string | null;
+  screening_questions?: ScreeningQuestion[] | null;
+};
+
+export type ScreeningQuestionOptionPayload = {
+  option_text: string;
+  is_correct?: boolean;
+};
+
+export type ScreeningQuestionPayload = {
+  question_text: string;
+  options: ScreeningQuestionOptionPayload[];
+};
+
+export type ScreeningQuestionOption = {
+  id: string;
+  option_text: string;
+  sort_order: number;
+  is_correct?: boolean;
+};
+
+export type ScreeningQuestion = {
+  id: string;
+  question_text: string;
+  sort_order: number;
+  options: ScreeningQuestionOption[];
 };
 
 export type JobUpsertPayload = {
@@ -2208,6 +2233,7 @@ export type JobUpsertPayload = {
   benefits?: string[];
   application_deadline: string;
   status?: "active" | "closed" | "draft" | "pending";
+  screening_questions?: ScreeningQuestionPayload[];
 };
 
 export async function listAdminJobs(
@@ -2327,10 +2353,20 @@ export async function listMyApplications(
   return body as MyApplicationsResponse;
 }
 
+export type ScreeningAnswerPayload = {
+  question_id: string;
+  selected_option_id: string;
+};
+
 export async function applyToJob(
   token: string,
-  payload: { job_id: string; cover_letter?: string; resume_url?: string },
-): Promise<JobApplication> {
+  payload: {
+    job_id: string;
+    cover_letter?: string;
+    resume_url?: string;
+    screening_answers?: ScreeningAnswerPayload[];
+  },
+): Promise<JobApplication & { auto_rejected?: boolean }> {
   const res = await fetch(`${API_BASE}/applications`, {
     method: "POST",
     headers: authHeaders(token),
@@ -2338,7 +2374,7 @@ export async function applyToJob(
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to apply for this job");
-  return body as JobApplication;
+  return body as JobApplication & { auto_rejected?: boolean };
 }
 
 export async function withdrawMyApplication(token: string, applicationId: string): Promise<void> {

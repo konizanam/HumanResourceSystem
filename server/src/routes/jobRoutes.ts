@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import { query as dbQuery } from '../config/database';
+import { query as dbQuery, transaction } from '../config/database';
 import { authenticate, authorize, authorizePermission } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { createNotification } from './notificationsRoutes';
@@ -10,6 +10,12 @@ import {
   getSystemSettings,
   toCanonicalApplicationStatusNotificationKey,
 } from '../services/systemSettings.service';
+import {
+  validateScreeningQuestions,
+  replaceScreeningQuestions,
+  loadScreeningQuestionsAdmin,
+  loadScreeningQuestionsPublic,
+} from '../services/screening.service';
 
 const router = express.Router();
 
@@ -253,7 +259,7 @@ router.get('/', authenticateOptional, [
 
       // Public view should not include expired jobs.
       // application_deadline is a DATE, so compare using CURRENT_DATE.
-      whereConditions.push(`(j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE)`);
+      whereConditions.push(`(j.application_deadline IS NULL OR j.application_deadline > CURRENT_TIMESTAMP)`);
     }
 
     // Add status filter if provided and user is employer/admin
@@ -644,13 +650,8 @@ router.get('/:id([0-9a-fA-F-]{36})', [
     // Public (and non-employer/admin) views should not expose expired jobs.
     if (!canViewExpired && job.application_deadline) {
       const deadline = new Date(job.application_deadline);
-      if (!Number.isNaN(deadline.getTime())) {
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const deadlineDay = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
-        if (deadlineDay < today) {
-          return res.status(404).json({ error: 'Job not found' });
-        }
+      if (!Number.isNaN(deadline.getTime()) && deadline.getTime() <= Date.now()) {
+        return res.status(404).json({ error: 'Job not found' });
       }
     }
 
@@ -685,17 +686,30 @@ router.get('/:id([0-9a-fA-F-]{36})', [
     // Get application count (only for employers/admins)
     if (req.user && isEmployerOrAdmin(req.user)) {
       const appsResult = await dbQuery(
-        `SELECT 
+        `SELECT
           COUNT(*) as total,
           COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
           COUNT(CASE WHEN status = 'reviewed' THEN 1 END) as reviewed,
           COUNT(CASE WHEN status = 'accepted' THEN 1 END) as accepted,
           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected
-         FROM applications 
+         FROM applications
          WHERE job_id = $1`,
         [req.params.id]
       );
       job.applications = appsResult.rows[0];
+    }
+
+    // Attach screening questions.
+    // Employer/admin → full view (includes is_correct). Applicants → public view.
+    try {
+      if (req.user && isEmployerOrAdmin(req.user)) {
+        job.screening_questions = await loadScreeningQuestionsAdmin(String(req.params.id));
+      } else {
+        job.screening_questions = await loadScreeningQuestionsPublic(String(req.params.id));
+      }
+    } catch (sqErr) {
+      console.error('Failed to load screening questions for job detail:', sqErr);
+      job.screening_questions = [];
     }
 
     res.json(job);
@@ -723,8 +737,17 @@ router.post('/',
         salary_min, salary_max, salary_currency = 'USD',
         category, category_id, company_id, subcategory, experience_level, employment_type,
         work_mode, remote = false, requirements = [], responsibilities = [],
-        benefits = [], application_deadline, status = 'active'
+        benefits = [], application_deadline, status = 'active',
+        screening_questions,
       } = req.body;
+
+      // Validate screening questions up front so we don't create a job then 400.
+      let validatedScreeningQuestions;
+      try {
+        validatedScreeningQuestions = validateScreeningQuestions(screening_questions);
+      } catch (e) {
+        return res.status(400).json({ error: (e as Error).message });
+      }
 
       const jobsColumns = await getJobsColumns();
       const ownerColumn = jobsColumns.has('employer_id') ? 'employer_id' : jobsColumns.has('created_by') ? 'created_by' : null;
@@ -789,6 +812,24 @@ router.post('/',
       );
 
       const createdJob = result.rows[0];
+
+      // Persist screening questions (if any). Roll back the job on failure.
+      if (validatedScreeningQuestions.length > 0) {
+        try {
+          await transaction(async (client) => {
+            await replaceScreeningQuestions(client, createdJob.id, validatedScreeningQuestions);
+          });
+        } catch (screeningError) {
+          console.error('Failed to save screening questions; deleting job:', screeningError);
+          try {
+            await dbQuery('DELETE FROM jobs WHERE id = $1', [createdJob.id]);
+          } catch (cleanupErr) {
+            console.error('Failed to clean up job after screening save error:', cleanupErr);
+          }
+          return res.status(500).json({ error: 'Failed to save screening questions' });
+        }
+      }
+
       try {
         // Notify only job seekers who explicitly selected this job's category or company.
         if (resolvedCategoryId || resolvedCompanyId) {
@@ -840,6 +881,11 @@ router.post('/',
         targetId: createdJob.id,
         details: { title: createdJob.title },
       });
+      try {
+        createdJob.screening_questions = await loadScreeningQuestionsAdmin(createdJob.id);
+      } catch (loadErr) {
+        console.error('Failed to load screening questions after create:', loadErr);
+      }
       res.status(201).json(createdJob);
     } catch (error) {
       console.error('Error creating job:', error);
@@ -893,8 +939,19 @@ router.put('/:id',
         salary_min, salary_max, salary_currency,
         category, category_id, company_id, subcategory, experience_level, employment_type,
         work_mode, remote, requirements, responsibilities, benefits,
-        application_deadline, status
+        application_deadline, status,
+        screening_questions,
       } = req.body;
+
+      // Validate screening questions up front.
+      let validatedScreeningQuestions: ReturnType<typeof validateScreeningQuestions> | undefined;
+      if (screening_questions !== undefined) {
+        try {
+          validatedScreeningQuestions = validateScreeningQuestions(screening_questions);
+        } catch (e) {
+          return res.status(400).json({ error: (e as Error).message });
+        }
+      }
 
       const jobsColumns = await getJobsColumns();
       const statusValue = normalizeJobStatus(status);
@@ -953,6 +1010,18 @@ router.put('/:id',
         updateValues
       );
 
+      // Replace screening questions if the caller sent them.
+      if (validatedScreeningQuestions !== undefined) {
+        try {
+          await transaction(async (client) => {
+            await replaceScreeningQuestions(client, String(req.params.id), validatedScreeningQuestions!);
+          });
+        } catch (screeningError) {
+          console.error('Failed to update screening questions:', screeningError);
+          return res.status(500).json({ error: 'Failed to save screening questions' });
+        }
+      }
+
       await logAudit({
         userId: req.user!.userId,
         action: 'JOB_UPDATED',
@@ -963,7 +1032,13 @@ router.put('/:id',
           after: result.rows[0] ?? null,
         },
       });
-      res.json(result.rows[0]);
+      const updatedJob = result.rows[0];
+      try {
+        updatedJob.screening_questions = await loadScreeningQuestionsAdmin(String(req.params.id));
+      } catch (loadErr) {
+        console.error('Failed to load screening questions after update:', loadErr);
+      }
+      res.json(updatedJob);
     } catch (error) {
       console.error('Error updating job:', error);
       res.status(500).json({ error: 'Server error' });

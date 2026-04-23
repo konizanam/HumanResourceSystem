@@ -1211,6 +1211,20 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [directoryCanManageUsers, setDirectoryCanManageUsers] = useState(false);
 
   const [openDirectoryProfileId, setOpenDirectoryProfileId] = useState<string | null>(null);
+  const [pendingDirectoryScrollId, setPendingDirectoryScrollId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingDirectoryScrollId) return;
+    const targetId = pendingDirectoryScrollId;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`js-profile-card-${targetId}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    setPendingDirectoryScrollId(null);
+    return () => cancelAnimationFrame(raf1);
+  }, [pendingDirectoryScrollId]);
   const [directoryProfileByUserId, setDirectoryProfileByUserId] = useState<
     Record<string, JobSeekerFullProfile | null | undefined>
   >({});
@@ -1764,12 +1778,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const nextOpen = openDirectoryProfileId === id ? null : id;
     setOpenDirectoryProfileId(nextOpen);
     setDirectoryDocPreviewByUserId((prev) => ({ ...prev, [id]: null }));
-    if (nextOpen) {
-      requestAnimationFrame(() => {
-        const el = document.getElementById(`js-profile-card-${nextOpen}`);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
+    // Scroll after React commits: two rAF passes so the filter re-render
+    // has resolved the card's final DOM position before we scroll to it.
+    setPendingDirectoryScrollId(id);
     if (!nextOpen || !accessToken) return;
 
     const hasProfile = Object.prototype.hasOwnProperty.call(directoryProfileByUserId, id);
@@ -2360,7 +2371,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               </div>
             </div>
           ) : (
-            jobSeekers.map((seeker, idx) => {
+            // While a seeker's profile is open, hide the rest so the full
+            // profile isn't surrounded by unrelated cards.
+            (openDirectoryProfileId
+              ? jobSeekers.filter((s) => String(s.id) === openDirectoryProfileId)
+              : jobSeekers
+            ).map((seeker, idx) => {
               const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
               const fullName = `${String(seeker.first_name ?? "").trim()} ${String(seeker.last_name ?? "").trim()}`.trim();
               const title = fullName || String(seeker.email ?? "Job Seeker");
@@ -2630,7 +2646,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               clearMessages();
             }}
           >
-            {editingStep === activeStep ? "Cancel" : `Add ${PROFILE_STEPS[activeStep]}`}
+            {editingStep === activeStep
+              ? "Cancel"
+              : `${PROFILE_STEPS[activeStep] === "Professional Summary" ? "Edit" : "Add"} ${PROFILE_STEPS[activeStep]}`}
           </button>
         </div>
       )}

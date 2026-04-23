@@ -365,6 +365,7 @@ export function RichTextEditor({
         role="textbox"
         aria-multiline="true"
         aria-required={required ? "true" : undefined}
+        aria-invalid={required ? (richTextToPlainText(value).trim() ? "false" : "true") : undefined}
         aria-disabled={disabled ? "true" : "false"}
         onInput={() => {
           const html = editorRef.current?.innerHTML ?? "";
