@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import * as XLSX from "xlsx-js-style";
 import {
   getJobSeekerFullProfile,
   listUserDocuments,
@@ -466,12 +467,23 @@ export function JobApplicationsPage() {
   const { accessToken } = useAuth();
   const { jobId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
+
+  const VALID_STAGES: readonly StageKey[] = ["longlisted", "shortlisted", "rejected", "interview", "assessment", "hired"];
+  const rawStageParam = (searchParams.get("stage") ?? "").toLowerCase();
+  const stageFilter: StageKey | null = (VALID_STAGES as readonly string[]).includes(rawStageParam)
+    ? (rawStageParam as StageKey)
+    : null;
+  const stageFilterLabel = stageFilter
+    ? (STATUS_ACTIONS.find((s) => s.key === stageFilter)?.label ?? stageFilter)
+    : "";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
   const [applications, setApplications] = useState<JobApplication[]>([]);
@@ -549,6 +561,10 @@ export function JobApplicationsPage() {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [jobId]);
+
   const filteredApplications = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return applications;
@@ -592,18 +608,291 @@ export function JobApplicationsPage() {
   const statsCards = useMemo(() => {
     const total = applications.length;
     const unassigned = mainListApplications.length;
-    const cards = [
-      { label: "Total Applicants", value: total },
-      { label: "Unassigned", value: unassigned },
-      { label: "Longlisted", value: grouped.longlisted.length },
-      { label: "Shortlisted", value: grouped.shortlisted.length },
-      { label: "Interview", value: grouped.interview.length },
-      { label: "Assessment", value: grouped.assessment.length },
-      { label: "Hired", value: grouped.hired.length },
-      { label: "Rejected", value: grouped.rejected.length },
+    const cards: { label: string; value: number; stage: StageKey | "main" }[] = [
+      { label: "Total Applicants", value: total, stage: "main" },
+      { label: "Unassigned", value: unassigned, stage: "main" },
+      { label: "Longlisted", value: grouped.longlisted.length, stage: "longlisted" },
+      { label: "Shortlisted", value: grouped.shortlisted.length, stage: "shortlisted" },
+      { label: "Interview", value: grouped.interview.length, stage: "interview" },
+      { label: "Assessment", value: grouped.assessment.length, stage: "assessment" },
+      { label: "Hired", value: grouped.hired.length, stage: "hired" },
+      { label: "Rejected", value: grouped.rejected.length, stage: "rejected" },
     ];
     return cards;
   }, [applications.length, grouped, mainListApplications.length]);
+
+  function onStatsCardClick(stage: StageKey | "main") {
+    if (stage === "main") {
+      setSearchParams({});
+      requestAnimationFrame(() => {
+        const el = document.getElementById("applications-main-list");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+    setSearchParams({ stage });
+    setPage(1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function onExportStageToExcel(stage: StageKey) {
+    if (!accessToken) return;
+    const stageList = grouped[stage];
+    if (!stageList || stageList.length === 0) {
+      setError("No candidates to export for this stage.");
+      return;
+    }
+    setExporting(true);
+    setError(null);
+    try {
+      const entries = await Promise.all(
+        stageList.map(async (app) => {
+          let profile: JobSeekerFullProfile | null | undefined = profileByAppId[app.id];
+          if (profile === undefined && app.applicant_id) {
+            try {
+              profile = await getJobSeekerFullProfile(accessToken, app.applicant_id);
+            } catch {
+              profile = null;
+            }
+          }
+          return { app, profile: profile ?? null };
+        }),
+      );
+
+      const rows = entries.map(({ app, profile }) => {
+        const personal = profile?.personalDetails ?? null;
+        const mainProfile = profile?.profile ?? null;
+        const experience = (profile?.experience ?? []) as Record<string, unknown>[];
+        const education = (profile?.education ?? []) as Record<string, unknown>[];
+        const currentExp = experience.find((e) => Boolean(e.is_current ?? e.isCurrent));
+        const pastExp = experience
+          .filter((e) => !(e.is_current ?? e.isCurrent))
+          .sort((a, b) => {
+            const da = new Date(String(a.end_date ?? a.endDate ?? "")).getTime();
+            const db = new Date(String(b.end_date ?? b.endDate ?? "")).getTime();
+            return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+          });
+
+        const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
+        const lastName = String(readValue(personal, "last_name", "lastName") ?? "").trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() ||
+          String(app.applicant_name ?? "").trim() || "—";
+
+        const qualificationLines = education
+          .map((e) => {
+            const q = String(e.qualification ?? "").trim();
+            const field = String(e.field_of_study ?? e.fieldOfStudy ?? "").trim();
+            const inst = String(e.institution_name ?? e.institutionName ?? "").trim();
+            if (!q && !field && !inst) return "";
+            const head = [q, field].filter(Boolean).join(" in ");
+            return inst ? `• ${head || "—"} — ${inst}` : `• ${head || "—"}`;
+          })
+          .filter(Boolean);
+        const qualificationsCell = qualificationLines.length > 0 ? qualificationLines.join("\n") : "—";
+
+        const formatDate = (raw: unknown) => {
+          const s = String(raw ?? "").trim();
+          if (!s) return "";
+          const iso = s.split("T")[0];
+          const [y] = iso.split("-");
+          return y || iso;
+        };
+        const durationLength = (startRaw: unknown, endRaw: unknown, isCurrent: boolean) => {
+          const start = new Date(String(startRaw ?? "").split("T")[0]);
+          const end = isCurrent ? new Date() : new Date(String(endRaw ?? "").split("T")[0]);
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+          let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+          if (end.getDate() < start.getDate()) months -= 1;
+          if (months < 0) return "";
+          const years = Math.floor(months / 12);
+          const rem = months % 12;
+          if (years === 0 && rem === 0) return "< 1 month";
+          const parts: string[] = [];
+          if (years > 0) parts.push(`${years} year${years === 1 ? "" : "s"}`);
+          if (rem > 0) parts.push(`${rem} month${rem === 1 ? "" : "s"}`);
+          return parts.join(" ");
+        };
+        const formatDuration = (exp: Record<string, unknown>) => {
+          const start = formatDate(exp.start_date ?? exp.startDate);
+          const isCurrent = Boolean(exp.is_current ?? exp.isCurrent);
+          const end = isCurrent ? "Present" : formatDate(exp.end_date ?? exp.endDate);
+          if (!start && !end) return "—";
+          if (!start) return end || "—";
+          if (!end) return start;
+          const length = durationLength(exp.start_date ?? exp.startDate, exp.end_date ?? exp.endDate, isCurrent);
+          return length ? `${start} → ${end} (${length})` : `${start} → ${end}`;
+        };
+
+        const pastRows = pastExp.map((e) => ({
+          employer: String(e.company_name ?? e.companyName ?? e.company ?? "").trim(),
+          position: String(e.job_title ?? e.jobTitle ?? e.position ?? "").trim(),
+          duration: formatDuration(e),
+        }));
+
+        const previousEmployerCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.employer || "—"}`).join("\n")
+          : "—";
+        const positionCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.position || "—"}`).join("\n")
+          : "—";
+        const durationCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.duration || "—"}`).join("\n")
+          : "—";
+
+        return {
+          Name: fullName,
+          Nationality: String(readValue(personal, "nationality") ?? "—") || "—",
+          Qualification: qualificationsCell,
+          "Years of Experience":
+            String(readValue(mainProfile, "years_experience", "yearsExperience") ?? "—") || "—",
+          "Current Employer":
+            String(currentExp?.company_name ?? currentExp?.companyName ?? currentExp?.company ?? "—") || "—",
+          "Previous Employer": previousEmployerCell,
+          "Position Held": positionCell,
+          Duration: durationCell,
+        };
+      });
+
+      const stageLabel = STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage;
+      const stamp = new Date().toISOString().split("T")[0];
+      const safeJob = (jobTitle || "job").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "job";
+
+      const headers = [
+        "Name",
+        "Nationality",
+        "Qualification",
+        "Years of Experience",
+        "Current Employer",
+        "Previous Employer",
+        "Position Held",
+        "Duration",
+      ];
+
+      const description =
+        `This spreadsheet provides a high-level overview of ${stageLabel.toLowerCase()} ` +
+        `candidates for the role "${jobTitle || "—"}". Use it for quick review and ` +
+        `side-by-side comparison of candidate background, qualifications and work history.`;
+
+      const aoa: (string | number)[][] = [
+        [`${stageLabel} Spreadsheet Summary`],
+        [],
+        ["Job Title", jobTitle || "—"],
+        ["Stage", stageLabel],
+        ["Total Candidates", rows.length],
+        ["Exported", new Date().toLocaleString("en-GB")],
+        [],
+        [description],
+        [],
+        headers,
+        ...rows.map((r) => headers.map((h) => (r as Record<string, string | number>)[h] ?? "")),
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      // Column widths
+      ws["!cols"] = [
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 40 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 40 },
+        { wch: 32 },
+        { wch: 28 },
+      ];
+
+      // Merges: title row + description row span all 6 columns
+      ws["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        { s: { r: 7, c: 0 }, e: { r: 7, c: headers.length - 1 } },
+      ];
+
+      // Row heights for title + description
+      ws["!rows"] = [{ hpt: 32 }, {}, {}, {}, {}, {}, {}, { hpt: 36 }];
+
+      // Styles
+      const titleStyle = {
+        font: { name: "Calibri", sz: 18, bold: true, color: { rgb: "FFFFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FF1F2937" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+      const labelStyle = {
+        font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FF374151" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FFF3F4F6" } },
+        alignment: { vertical: "center" },
+      };
+      const valueStyle = {
+        font: { name: "Calibri", sz: 11, color: { rgb: "FF111827" } },
+        alignment: { vertical: "center" },
+      };
+      const descriptionStyle = {
+        font: { name: "Calibri", sz: 11, italic: true, color: { rgb: "FF4B5563" } },
+        alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      };
+      const headerStyle = {
+        font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FFFFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FF2563EB" } },
+        alignment: { horizontal: "left", vertical: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "FF1E40AF" } },
+          bottom: { style: "thin", color: { rgb: "FF1E40AF" } },
+          left: { style: "thin", color: { rgb: "FF1E40AF" } },
+          right: { style: "thin", color: { rgb: "FF1E40AF" } },
+        },
+      };
+      const dataCellStyle = {
+        font: { name: "Calibri", sz: 11, color: { rgb: "FF111827" } },
+        alignment: { vertical: "top", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          bottom: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          left: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          right: { style: "thin", color: { rgb: "FFE5E7EB" } },
+        },
+      };
+      const altDataCellStyle = {
+        ...dataCellStyle,
+        fill: { patternType: "solid", fgColor: { rgb: "FFF9FAFB" } },
+      };
+
+      function setCellStyle(addr: string, style: Record<string, unknown>) {
+        const cell = ws[addr];
+        if (!cell) return;
+        (cell as { s?: unknown }).s = style;
+      }
+
+      // Title row
+      setCellStyle("A1", titleStyle);
+      // Summary block: labels col A, values col B (rows 3-6, 1-indexed → indices 2-5)
+      for (let r = 2; r <= 5; r++) {
+        setCellStyle(XLSX.utils.encode_cell({ r, c: 0 }), labelStyle);
+        setCellStyle(XLSX.utils.encode_cell({ r, c: 1 }), valueStyle);
+      }
+      // Description row (row 8, index 7)
+      setCellStyle("A8", descriptionStyle);
+      // Header row (row 10, index 9)
+      for (let c = 0; c < headers.length; c++) {
+        setCellStyle(XLSX.utils.encode_cell({ r: 9, c }), headerStyle);
+      }
+      // Data rows start at index 10, up to 10 + rows.length - 1
+      for (let i = 0; i < rows.length; i++) {
+        const rIdx = 10 + i;
+        const style = i % 2 === 0 ? dataCellStyle : altDataCellStyle;
+        for (let c = 0; c < headers.length; c++) {
+          setCellStyle(XLSX.utils.encode_cell({ r: rIdx, c }), style);
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      const sheetName = `${stageLabel} Candidates`.slice(0, 31);
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+      XLSX.writeFile(workbook, `${safeJob}-${stage}-candidates-${stamp}.xlsx`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const pagination = useMemo(() => {
     const total = mainListApplications.length;
@@ -777,6 +1066,12 @@ export function JobApplicationsPage() {
     const nextOpen = openProfileId === app.id ? null : app.id;
     setOpenProfileId(nextOpen);
     setExternalDocPreviewByAppId((prev) => ({ ...prev, [app.id]: null }));
+    if (nextOpen) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`application-card-${nextOpen}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
     if (!nextOpen || !accessToken) return;
     const hasProfile = profileByAppId[app.id] !== undefined;
     const hasDocs = Object.prototype.hasOwnProperty.call(documentsByAppId, app.id);
@@ -1186,8 +1481,22 @@ export function JobApplicationsPage() {
   return (
     <div className="page">
       <div className="companiesHeader" style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <h1 className="pageTitle">Applications {jobTitle ? `- ${jobTitle}` : ""}</h1>
-        <button type="button" className="btn btnGhost btnSm" onClick={() => navigate("/app/jobs")}>Back to Jobs</button>
+        <h1 className="pageTitle">
+          Applications {jobTitle ? `- ${jobTitle}` : ""}
+          {stageFilter ? ` — ${stageFilterLabel}` : ""}
+        </h1>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {stageFilter ? (
+            <button
+              type="button"
+              className="btn btnGhost btnSm"
+              onClick={() => setSearchParams({})}
+            >
+              {"<-"} Back to All Applications
+            </button>
+          ) : null}
+          <button type="button" className="btn btnGhost btnSm" onClick={() => navigate("/app/jobs")}>Back to Jobs</button>
+        </div>
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -1197,14 +1506,22 @@ export function JobApplicationsPage() {
         {statsCards.map((c, idx) => {
           const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
           return (
-            <div key={c.label} className={`dashCard statsCard ${toneClass}`}>
+            <button
+              key={c.label}
+              type="button"
+              className={`dashCard statsCard statsCardBtn ${toneClass}`}
+              onClick={() => onStatsCardClick(c.stage)}
+              aria-label={`${c.label}: ${c.value}. Click to view list.`}
+            >
               <div className="readLabel">{c.label}</div>
               <div className="statsCardValue">{c.value}</div>
-            </div>
+            </button>
           );
         })}
       </div>
 
+      {!stageFilter && (
+      <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 340px" }}>
           <label className="fieldLabel">Search</label>
@@ -1262,7 +1579,7 @@ export function JobApplicationsPage() {
         </div>
       </div>
 
-      <div className="dashCardHeader" style={{ marginBottom: 10 }}>
+      <div id="applications-main-list" className="dashCardHeader" style={{ marginBottom: 10 }}>
         <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
           All Applicants
         </h2>
@@ -1284,7 +1601,7 @@ export function JobApplicationsPage() {
             const current = detectStage(app, stageOverrides);
             const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
             return (
-              <article key={app.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+              <article key={app.id} id={`application-card-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                 <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                   <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{app.applicant_name ?? "—"}</h2>
                 </div>
@@ -1380,9 +1697,13 @@ export function JobApplicationsPage() {
           Next {"->"}
         </button>
       </div>
+      </>
+      )}
 
-      {(Object.keys(grouped) as StageKey[]).map((stage) => (
-        <section key={stage} style={{ marginTop: 18 }}>
+      {(Object.keys(grouped) as StageKey[])
+        .filter((stage) => !stageFilter || stage === stageFilter)
+        .map((stage) => (
+        <section key={stage} id={`applications-stage-${stage}`} style={{ marginTop: 18 }}>
           <div
             className="dashCardHeader"
             style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
@@ -1390,14 +1711,24 @@ export function JobApplicationsPage() {
             <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
               {(STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage)} Applicants
             </h2>
-            <button
-              type="button"
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-              onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
-            >
-              {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
+              >
+                {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
+              </button>
+              <button
+                type="button"
+                className="btn btnGhost btnSm"
+                onClick={() => void onExportStageToExcel(stage)}
+                disabled={exporting || grouped[stage].length === 0}
+              >
+                {exporting ? "Exporting..." : "Export to Excel"}
+              </button>
+            </div>
           </div>
 
           {openGroups[stage] ? (
@@ -1411,7 +1742,7 @@ export function JobApplicationsPage() {
                   const current = detectStage(app, stageOverrides);
                   const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
                   return (
-                    <article key={`${stage}-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                    <article key={`${stage}-${app.id}`} id={`application-card-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                       <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                         <h3 className="dashCardTitle" style={{ fontSize: 15 }}>{app.applicant_name ?? "—"}</h3>
                       </div>

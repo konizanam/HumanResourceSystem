@@ -256,6 +256,19 @@ export function JobsPage() {
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [pagination, setPagination] = useState(() => ({ page: 1, limit: isJobSeekerView ? 5 : 20, total: 0, pages: 0 }));
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+
+  const toggleJobOpen = useCallback((id: string) => {
+    setOpenJobId((prev) => {
+      const next = prev === id ? null : id;
+      if (next) {
+        requestAnimationFrame(() => {
+          const el = document.getElementById(`job-card-${next}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      return next;
+    });
+  }, []);
   const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
@@ -1432,6 +1445,8 @@ export function JobsPage() {
         </div>
       )}
 
+      {!addInlineOpen && (
+      <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 480px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           {isJobSeekerView ? (
@@ -1610,7 +1625,7 @@ export function JobsPage() {
                 const emailShareHref = `mailto:?subject=${encodeURIComponent(`Job: ${shareText}`)}&body=${encodeURIComponent(`Check out this job: ${shareBaseUrl}`)}`;
 
                 return (
-                  <div key={job.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                  <div key={job.id} id={`job-card-${job.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                     <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                       <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{job.title}</h2>
                       {null}
@@ -1711,7 +1726,7 @@ export function JobsPage() {
                         <button
                           type="button"
                           className="btn btnSm jobActionBtn jobActionBtnDetails"
-                          onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                          onClick={() => toggleJobOpen(job.id)}
                           disabled={saving}
                         >
                           View Details
@@ -1744,7 +1759,7 @@ export function JobsPage() {
                           <button
                             type="button"
                             className="btn btnSm jobActionBtn jobActionBtnDetails"
-                            onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                            onClick={() => toggleJobOpen(job.id)}
                             disabled={saving}
                           >
                             Hide Details
@@ -1778,7 +1793,7 @@ export function JobsPage() {
                 const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
 
                 return (
-                  <article key={job.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                  <article key={job.id} id={`job-card-${job.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                     <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                       <div>
                         <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{job.title}</h2>
@@ -1813,7 +1828,7 @@ export function JobsPage() {
                         <button
                           type="button"
                           className="btn btnSm jobActionBtn jobActionBtnDetails"
-                          onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                          onClick={() => toggleJobOpen(job.id)}
                           disabled={saving}
                         >
                           View Details
@@ -1902,7 +1917,7 @@ export function JobsPage() {
                           <button
                             type="button"
                             className="btn btnSm jobActionBtn jobActionBtnDetails"
-                            onClick={() => setOpenJobId((prev) => (prev === job.id ? null : job.id))}
+                            onClick={() => toggleJobOpen(job.id)}
                             disabled={saving}
                           >
                             Hide Details
@@ -1923,6 +1938,8 @@ export function JobsPage() {
           {renderSeekerPager()}
         </div>
       ) : null}
+      </>
+      )}
 
       <ConfirmModal
         open={Boolean(confirmDeleteId)}

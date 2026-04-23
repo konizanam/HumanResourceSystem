@@ -22,6 +22,11 @@ pnpm-debug.log*
 Thumbs.db
 .vscode
 
+# Claude
+.claude/
+CLAUDE.md
+.mcp.json
+
 # Runtime uploads
 apps/api/uploads
 server/uploads

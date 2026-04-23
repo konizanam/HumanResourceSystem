@@ -11,6 +11,7 @@
   --primary: #4b5563;
   --accent-soft: #f1f5f9;
   --danger: #dc2626;
+  --success: #16a34a;
   --menu-icon: #6b7280;
   --menu-icon-active: #374151;
   --sidebar-bg: #f3f4f6;
@@ -41,6 +42,7 @@ html[data-theme="dark"] {
   --primary: #9ca3af;
   --accent-soft: rgba(156, 163, 175, 0.16);
   --danger: #f87171;
+  --success: #4ade80;
   --menu-icon: #9ca3af;
   --menu-icon-active: #e5e7eb;
   --sidebar-bg: #0d1117;
@@ -67,6 +69,7 @@ html[data-theme="dark"] {
     --primary: #9ca3af;
     --accent-soft: rgba(156, 163, 175, 0.16);
     --danger: #f87171;
+    --success: #4ade80;
     --menu-icon: #9ca3af;
     --menu-icon-active: #e5e7eb;
     --sidebar-bg: #0d1117;
@@ -413,6 +416,23 @@ textarea.input[aria-required="true"]:invalid {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 58%, transparent);
 }
 
+/* Required fields that have a valid value get a green ring. */
+.input[required]:valid,
+select.input[required]:valid,
+textarea.input[required]:valid {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--stroke));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+.input[required]:valid:focus,
+select.input[required]:valid:focus,
+textarea.input[required]:valid:focus {
+  border-color: var(--success);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--success) 55%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
 .input:focus {
   border-color: var(--menu-icon);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--menu-icon) 18%, transparent);
@@ -463,6 +483,7 @@ textarea.input[aria-required="true"]:invalid {
 .field {
   display: grid;
   gap: 6px;
+  position: relative;
 }
 
 .fieldLabel {
@@ -487,6 +508,11 @@ input[type="radio"][required] {
   outline: 1px solid color-mix(in srgb, var(--danger) 72%, transparent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+input[type="checkbox"][required]:checked,
+input[type="radio"][required]:checked {
+  outline-color: color-mix(in srgb, var(--success) 72%, transparent);
 }
 
 .inputWithIcon {
@@ -920,6 +946,26 @@ input[type="radio"][required] {
   padding: 12px 14px;
 }
 
+.statsCardBtn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.statsCardBtn:hover {
+  transform: translateY(-1px);
+  border-color: var(--menu-icon-active);
+  box-shadow: var(--shadow-md);
+}
+
+.statsCardBtn:focus-visible {
+  outline: 2px solid var(--menu-icon-active);
+  outline-offset: 2px;
+}
+
 .statsCardValue {
   font-size: 22px;
   font-weight: 900;
@@ -945,7 +991,7 @@ input[type="radio"][required] {
 .jobCardToneA {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--menu-icon) 35%, var(--accent-soft)) 0 10px,
+    var(--menu-icon-active) 0 10px,
     color-mix(in srgb, var(--card) 92%, var(--accent-soft)) 10px
   );
 }
@@ -953,7 +999,7 @@ input[type="radio"][required] {
 .jobCardToneB {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--menu-icon) 35%, var(--accent-soft)) 0 10px,
+    var(--menu-icon-active) 0 10px,
     color-mix(in srgb, var(--card2) 92%, var(--accent-soft)) 10px
   );
 }
@@ -2394,6 +2440,16 @@ input[type="radio"][required] {
   color: var(--menu-icon-active);
 }
 
+.profileStepAddBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.profileStepAddBtn {
+  justify-content: center;
+}
+
 .profileStepBtn {
   display: inline-flex;
   align-items: center;
@@ -2580,15 +2636,31 @@ input[type="radio"][required] {
   border: 1px solid var(--stroke);
   background: var(--card2);
   border-radius: 10px;
-  padding: 10px 12px;
-  display: grid;
-  gap: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
 }
 
 .uploadedDocsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 8px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.uploadedDocsGrid > .field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.uploadedDocsGrid .input[type="file"] {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
 }
 
 .uploadedDocCardTitle {
@@ -4052,6 +4124,10 @@ input[type="radio"][required] {
 /* ── Autocomplete / suggestion dropdowns ────────── */
 
 .autocompleteList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   margin-top: 4px;
   border: 1px solid var(--stroke);
   background: var(--card);
@@ -4062,7 +4138,7 @@ input[type="radio"][required] {
   max-height: 220px;
   overflow-y: auto;
   box-shadow: var(--shadow-md);
-  z-index: 10;
+  z-index: 20;
 }
 
 .autocompleteItem {
