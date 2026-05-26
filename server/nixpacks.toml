@@ -1,0 +1,7 @@
+# Force npm to install devDependencies during the Nixpacks build phase so
+# build-only tools (typescript / tsc, ts-node, @types/*) are available to
+# `npm run build`. Railway sets NODE_ENV=production by default, which causes
+# npm to skip devDependencies and the build step then fails with
+# "sh: 1: tsc: not found".
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
