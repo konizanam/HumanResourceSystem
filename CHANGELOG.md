@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.1.0...v1.2.0) (2026-05-26)
+
+
+### Features
+
+* **ui:** wire EDIT_JOBSEEKER_PROFILE and EDIT_USER edit flows ([b2e56b5](https://github.com/kondjaboytjie/HumanResourceSystem/commit/b2e56b5fceb2c8f4a3eac01e1ed8c5ee98ced283))
+
 # [1.1.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.0.0...v1.1.0) (2026-05-26)
 
 
