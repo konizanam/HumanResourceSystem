@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.2.0...v1.2.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* **server:** make tsc available during Nixpacks build ([26cdad1](https://github.com/kondjaboytjie/HumanResourceSystem/commit/26cdad191c18fcd7cfe5c7aa4537c5262edb0446))
+
 # [1.2.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.1.0...v1.2.0) (2026-05-26)
 
 
