@@ -1259,12 +1259,28 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [applyingPending, setApplyingPending] = useState(false);
   const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
   const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
+  // EDIT_JOBSEEKER_PROFILE: when set, the stepper edit forms target this user
+  // (HR/admin editing another job seeker). Cleared when the user exits edit-other mode.
+  const [editingSubjectUserId, setEditingSubjectUserId] = useState<string | null>(null);
+  const [directoryCanEditProfile, setDirectoryCanEditProfile] = useState(false);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
       setLoading(true);
 
       if (forcedMode === "directory") {
+        // HR/admin "Edit Profile" path: load the subject's profile and switch
+        // the page into the self stepper UI (which is now subject-aware).
+        if (editingSubjectUserId) {
+          setMode("self");
+          setError(null);
+          setSuccess(null);
+          setPendingJob(null);
+          const profile = await getFullProfile(accessToken, editingSubjectUserId);
+          setData(profile);
+          return;
+        }
+
         setMode("directory");
         setError(null);
         setSuccess(null);
@@ -1298,6 +1314,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             }
 
             setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
+            setDirectoryCanEditProfile(
+              normalizedPerms.includes("edit_jobseeker_profile") ||
+                normalizedPerms.includes("manage_users"),
+            );
           })
           .catch(() => {
             setMode("forbidden");
@@ -1335,11 +1355,15 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
         ].includes(p),
       );
       setDirectoryCanManageUsers(normalizedPerms.includes("manage_users"));
+      setDirectoryCanEditProfile(
+        normalizedPerms.includes("edit_jobseeker_profile") ||
+          normalizedPerms.includes("manage_users"),
+      );
 
       if (forcedMode === "self") {
         setMode("self");
         const [profile, selfSession] = await Promise.all([
-          getFullProfile(accessToken),
+          getFullProfile(accessToken, editingSubjectUserId ?? undefined),
           me(accessToken).catch(() => null),
         ]);
         if (!profile.personalDetails) {
@@ -1377,7 +1401,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
       }
 
       setMode("self");
-      const profile = await getFullProfile(accessToken);
+      const profile = await getFullProfile(accessToken, editingSubjectUserId ?? undefined);
       if (!profile.personalDetails) {
         try {
           const user = (session as any)?.user ?? {};
@@ -1401,7 +1425,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     } finally {
       setLoading(false);
     }
-  }, [accessToken, forcedMode]);
+  }, [accessToken, forcedMode, editingSubjectUserId]);
 
   useEffect(() => {
     load();
@@ -2421,6 +2445,21 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                         : "Download Full Profile"}
                     </button>
 
+                    {directoryCanEditProfile ? (
+                      <button
+                        type="button"
+                        className="btn btnPrimary btnSm"
+                        onClick={() => {
+                          setEditingSubjectUserId(String(seeker.id));
+                          setActiveStep(0);
+                          setEditingStep(0);
+                        }}
+                        disabled={blocking || directoryLoading}
+                      >
+                        Edit Profile
+                      </button>
+                    ) : null}
+
                     {canBlock ? (
                       <button
                         type="button"
@@ -2540,19 +2579,50 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     );
   }
 
+  const editingSubjectName = editingSubjectUserId
+    ? `${String(data.personalDetails?.first_name ?? "").trim()} ${String(data.personalDetails?.last_name ?? "").trim()}`.trim()
+    : "";
+
   return (
     <div className="page">
       <div className="profileHeader">
-        <h1 className="pageTitle">{pageTitle}</h1>
-        <button
-          type="button"
-          className="btn btnPrimary btnSm"
-          onClick={() => void onDownloadSelfFullProfile()}
-          disabled={downloadingSelfProfile || saving || loading}
-        >
-          {downloadingSelfProfile ? "Preparing PDF..." : "Download Full Profile"}
-        </button>
+        <h1 className="pageTitle">
+          {editingSubjectUserId
+            ? `Edit Job Seeker Profile${editingSubjectName ? ` — ${editingSubjectName}` : ""}`
+            : pageTitle}
+        </h1>
+        {editingSubjectUserId ? (
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            onClick={() => {
+              setEditingSubjectUserId(null);
+              setEditingStep(null);
+              setActiveStep(0);
+            }}
+            disabled={saving || loading}
+          >
+            {"<-"} Back to Directory
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btnPrimary btnSm"
+            onClick={() => void onDownloadSelfFullProfile()}
+            disabled={downloadingSelfProfile || saving || loading}
+          >
+            {downloadingSelfProfile ? "Preparing PDF..." : "Download Full Profile"}
+          </button>
+        )}
       </div>
+
+      {editingSubjectUserId ? (
+        <div className="dashCard" style={{ marginBottom: 12, padding: "10px 16px", borderLeft: "4px solid var(--menu-icon-active, #2563eb)" }}>
+          <span className="readValue">
+            You are editing this job seeker's profile on their behalf. Changes are saved against their account.
+          </span>
+        </div>
+      ) : null}
 
       {error && <div className="errorBox">{error}</div>}
       {success && <div className="successBox">{success}</div>}
@@ -2668,6 +2738,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2685,6 +2756,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2702,6 +2774,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2719,6 +2792,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2736,6 +2810,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2753,6 +2828,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            subjectUserId={editingSubjectUserId ?? undefined}
             onSaved={() => {
               setEditingStep(null);
               setEditResetToken((t) => t + 1);
@@ -2778,6 +2854,9 @@ type SectionProps = {
   setSuccess: (v: string | null) => void;
   reload: () => Promise<void>;
   onSaved?: () => void;
+  // When set, save/delete operations target this user (HR/admin editing another
+  // job seeker's profile). When undefined the request defaults to the caller.
+  subjectUserId?: string;
 };
 
 /* ================================================================== */
@@ -2796,6 +2875,7 @@ function PersonalDetailsSection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & {
   data: Record<string, unknown> | null;
   profilePictureUrl?: string;
@@ -3110,13 +3190,18 @@ function PersonalDetailsSection({
         setPendingCvLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
       }
 
-      await updateMyAccount(token, {
-        email: form.email,
-        phone: form.phone.trim(),
-      });
-      setAccountContact({ email: form.email.trim(), phone: form.phone.trim() });
+      // Skip updateMyAccount when editing on behalf of another user — that
+      // endpoint only updates the caller's own account. Email/phone changes for
+      // other users must go through the admin-gated EDIT_USER path.
+      if (!subjectUserId) {
+        await updateMyAccount(token, {
+          email: form.email,
+          phone: form.phone.trim(),
+        });
+        setAccountContact({ email: form.email.trim(), phone: form.phone.trim() });
+      }
 
-      await updatePersonalDetails(token, { ...form, idDocumentUrl: finalIdDocUrl });
+      await updatePersonalDetails(token, { ...form, idDocumentUrl: finalIdDocUrl }, subjectUserId);
       setSuccess("Personal details saved");
       setDocsRefreshKey((v) => v + 1);
       await reload();
@@ -3633,6 +3718,7 @@ function AddressSection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     addressLine1: "",
@@ -3737,7 +3823,7 @@ function AddressSection({
     setSaving(true);
     setError(null);
     try {
-      await saveAddress(token, form, editId ?? undefined);
+      await saveAddress(token, form, editId ?? undefined, subjectUserId);
       setSuccess(editId ? "Address updated" : "Address added");
       setForm(empty);
       setEditId(null);
@@ -3754,7 +3840,7 @@ function AddressSection({
   async function onDelete(id: string) {
     setSaving(true);
     try {
-      await deleteAddress(token, id);
+      await deleteAddress(token, id, subjectUserId);
       setSuccess("Address deleted");
       await reload();
     } catch (e) {
@@ -4004,6 +4090,7 @@ function EducationSection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     institutionName: "",
@@ -4120,7 +4207,7 @@ function EducationSection({
       await saveEducation(token, {
         ...form,
         certificateUrl: certUrl,
-      }, editId ?? undefined);
+      }, editId ?? undefined, subjectUserId);
       setSuccess(editId ? "Education updated" : "Education added");
       setForm(empty);
       setEditId(null);
@@ -4138,7 +4225,7 @@ function EducationSection({
   async function onDelete(id: string) {
     setSaving(true);
     try {
-      await deleteEducation(token, id);
+      await deleteEducation(token, id, subjectUserId);
       setSuccess("Education deleted");
       await reload();
     } catch (e) {
@@ -4463,6 +4550,7 @@ function ExperienceSection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     companyName: "",
@@ -4506,7 +4594,7 @@ function ExperienceSection({
     setSaving(true);
     setError(null);
     try {
-      await saveExperience(token, form, editId ?? undefined);
+      await saveExperience(token, form, editId ?? undefined, subjectUserId);
       setSuccess(editId ? "Experience updated" : "Experience added");
       setForm(empty);
       setEditId(null);
@@ -4523,7 +4611,7 @@ function ExperienceSection({
   async function onDelete(id: string) {
     setSaving(true);
     try {
-      await deleteExperience(token, id);
+      await deleteExperience(token, id, subjectUserId);
       setSuccess("Experience deleted");
       await reload();
     } catch (e) {
@@ -4725,6 +4813,7 @@ function ReferencesSection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     fullName: "",
@@ -4765,7 +4854,7 @@ function ReferencesSection({
     setSaving(true);
     setError(null);
     try {
-      await saveReference(token, form, editId ?? undefined);
+      await saveReference(token, form, editId ?? undefined, subjectUserId);
       setSuccess(editId ? "Reference updated" : "Reference added");
       setForm(empty);
       setEditId(null);
@@ -4782,7 +4871,7 @@ function ReferencesSection({
   async function onDelete(id: string) {
     setSaving(true);
     try {
-      await deleteReference(token, id);
+      await deleteReference(token, id, subjectUserId);
       setSuccess("Reference deleted");
       await reload();
     } catch (e) {
@@ -4946,6 +5035,7 @@ function ProfessionalSummarySection({
   setSuccess,
   reload,
   onSaved,
+  subjectUserId,
 }: SectionProps & { data: Record<string, unknown> | null }) {
   const d = data ?? {};
   const [form, setForm] = useState({
@@ -4994,7 +5084,7 @@ function ProfessionalSummarySection({
     setSaving(true);
     setError(null);
     try {
-      await updateProfile(token, form);
+      await updateProfile(token, form, subjectUserId);
       setSuccess("Professional summary saved");
       setFieldErrors({});
       await reload();

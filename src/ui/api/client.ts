@@ -1150,12 +1150,13 @@ export async function updateUserAccount(
 /* ------------------------------------------------------------------ */
 
 export async function getFullProfile(
-  token: string
+  token: string,
+  userId?: string
 ): Promise<FullProfile> {
   if (!token) {
     throw new Error("Missing access token");
   }
-  const res = await fetch(`${API_BASE}/profile/complete`, {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/complete`, userId), {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
