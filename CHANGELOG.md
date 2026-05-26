@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.2.1...v1.2.2) (2026-05-26)
+
+
+### Bug Fixes
+
+* **server:** include all build-time deps in dependencies for Nixpacks ([5400767](https://github.com/kondjaboytjie/HumanResourceSystem/commit/5400767c97f84996b8f8be8cd44f006d8f670ad7))
+
 ## [1.2.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.2.0...v1.2.1) (2026-05-26)
 
 
