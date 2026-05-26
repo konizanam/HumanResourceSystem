@@ -1120,6 +1120,31 @@ export async function updateMyAccount(
   return body;
 }
 
+// Admin path: update another user's email (and optionally phone).
+// Caller must hold EDIT_USER permission.
+export async function updateUserAccount(
+  accessToken: string,
+  userId: string,
+  payload: { email: string; phone?: string },
+) {
+  const body: Record<string, string> = {
+    email: String(payload.email ?? "").trim(),
+  };
+  if (payload.phone !== undefined) {
+    body.phone = String(payload.phone ?? "").trim();
+  }
+
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+
+  const responseBody = await safeJson(res);
+  if (!res.ok) throw apiError(res, responseBody, "Failed to update user account");
+  return responseBody;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Job Seeker Profile                                                 */
 /* ------------------------------------------------------------------ */
@@ -1176,9 +1201,16 @@ export async function uploadProfilePicture(
   };
 }
 
+function appendUserIdQuery(url: string, userId?: string): string {
+  const target = String(userId ?? "").trim();
+  if (!target) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}user_id=${encodeURIComponent(target)}`;
+}
+
 export async function updateProfile(
   token: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  userId?: string
 ) {
   // Backend expects snake_case keys. Accept either shape.
   const d: any = data ?? {};
@@ -1189,7 +1221,7 @@ export async function updateProfile(
     years_experience: d.years_experience ?? d.yearsExperience,
   };
 
-  const res = await fetch(`${API_BASE}/profile`, {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile`, userId), {
     method: "PATCH",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1203,7 +1235,8 @@ export async function updateProfile(
 
 export async function updatePersonalDetails(
   token: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  userId?: string
 ) {
   // Backend expects snake_case keys. Accept either shape.
   const d: any = data ?? {};
@@ -1221,7 +1254,7 @@ export async function updatePersonalDetails(
     disability_status: d.disability_status ?? d.disabilityStatus,
   };
 
-  const res = await fetch(`${API_BASE}/profile/personal-details`, {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/personal-details`, userId), {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1236,7 +1269,8 @@ export async function updatePersonalDetails(
 export async function saveAddress(
   token: string,
   data: Record<string, unknown>,
-  id?: string
+  id?: string,
+  userId?: string
 ) {
   // Backend expects snake_case keys. Accept either shape.
   const d: any = data ?? {};
@@ -1250,10 +1284,10 @@ export async function saveAddress(
     is_primary: d.is_primary ?? d.isPrimary,
   };
 
-  const url = id
+  const baseUrl = id
     ? `${API_BASE}/profile/addresses/${id}`
     : `${API_BASE}/profile/addresses`;
-  const res = await fetch(url, {
+  const res = await fetch(appendUserIdQuery(baseUrl, userId), {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1265,8 +1299,8 @@ export async function saveAddress(
   return res.json();
 }
 
-export async function deleteAddress(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/profile/addresses/${id}`, {
+export async function deleteAddress(token: string, id: string, userId?: string) {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/addresses/${id}`, userId), {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -1279,7 +1313,8 @@ export async function deleteAddress(token: string, id: string) {
 export async function saveEducation(
   token: string,
   data: Record<string, unknown>,
-  id?: string
+  id?: string,
+  userId?: string
 ) {
   const d: any = data ?? {};
   const payload = {
@@ -1296,10 +1331,10 @@ export async function saveEducation(
     certificate_url: (d.certificate_url ?? d.certificateUrl ?? "").toString() || undefined,
   };
 
-  const url = id
+  const baseUrl = id
     ? `${API_BASE}/profile/education/${id}`
     : `${API_BASE}/profile/education`;
-  const res = await fetch(url, {
+  const res = await fetch(appendUserIdQuery(baseUrl, userId), {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1311,8 +1346,8 @@ export async function saveEducation(
   return res.json();
 }
 
-export async function deleteEducation(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/profile/education/${id}`, {
+export async function deleteEducation(token: string, id: string, userId?: string) {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/education/${id}`, userId), {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -1325,7 +1360,8 @@ export async function deleteEducation(token: string, id: string) {
 export async function saveExperience(
   token: string,
   data: Record<string, unknown>,
-  id?: string
+  id?: string,
+  userId?: string
 ) {
   // Backend expects snake_case keys. Accept either shape.
   const d: any = data ?? {};
@@ -1347,10 +1383,10 @@ export async function saveExperience(
         : Number(d.salary),
   };
 
-  const url = id
+  const baseUrl = id
     ? `${API_BASE}/profile/experience/${id}`
     : `${API_BASE}/profile/experience`;
-  const res = await fetch(url, {
+  const res = await fetch(appendUserIdQuery(baseUrl, userId), {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1362,8 +1398,8 @@ export async function saveExperience(
   return res.json();
 }
 
-export async function deleteExperience(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/profile/experience/${id}`, {
+export async function deleteExperience(token: string, id: string, userId?: string) {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/experience/${id}`, userId), {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -1529,7 +1565,8 @@ export async function uploadJobSeekerResume(
 export async function saveReference(
   token: string,
   data: Record<string, unknown>,
-  id?: string
+  id?: string,
+  userId?: string
 ) {
   // Backend expects snake_case keys. Accept either shape.
   const d: any = data ?? {};
@@ -1541,10 +1578,10 @@ export async function saveReference(
     phone: (d.phone ?? "").toString(),
   };
 
-  const url = id
+  const baseUrl = id
     ? `${API_BASE}/profile/references/${id}`
     : `${API_BASE}/profile/references`;
-  const res = await fetch(url, {
+  const res = await fetch(appendUserIdQuery(baseUrl, userId), {
     method: id ? "PUT" : "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -1556,8 +1593,8 @@ export async function saveReference(
   return res.json();
 }
 
-export async function deleteReference(token: string, id: string) {
-  const res = await fetch(`${API_BASE}/profile/references/${id}`, {
+export async function deleteReference(token: string, id: string, userId?: string) {
+  const res = await fetch(appendUserIdQuery(`${API_BASE}/profile/references/${id}`, userId), {
     method: "DELETE",
     headers: authHeaders(token),
   });

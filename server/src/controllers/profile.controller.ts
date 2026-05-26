@@ -1,6 +1,27 @@
 // src/controllers/profile.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { ProfileService } from '../services/profile.service';
+import { ForbiddenError } from '../utils/errors';
+
+function hasEditJobseekerPermission(req: Request): boolean {
+  const perms = Array.isArray(req.user?.permissions) ? req.user!.permissions : [];
+  const roles = Array.isArray(req.user?.roles) ? req.user!.roles : [];
+  if (roles.map((r) => String(r).toUpperCase()).includes('ADMIN')) return true;
+  return perms.map((p) => String(p).toUpperCase()).includes('EDIT_JOBSEEKER_PROFILE');
+}
+
+// Resolves which user's profile is being acted on. If a `user_id` query param is provided
+// and refers to someone other than the authenticated user, the caller must hold
+// EDIT_JOBSEEKER_PROFILE (or be ADMIN). Otherwise the request targets the caller themselves.
+function resolveTargetUserId(req: Request): string {
+  const self = req.user!.userId;
+  const requested = String((req.query?.user_id ?? '') as string).trim();
+  if (!requested || requested === self) return self;
+  if (!hasEditJobseekerPermission(req)) {
+    throw new ForbiddenError('Insufficient permissions to edit another user\'s profile');
+  }
+  return requested;
+}
 
 export class ProfileController {
   private profileService: ProfileService;
@@ -12,9 +33,9 @@ export class ProfileController {
   // Main profile
   getProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const profile = await this.profileService.getProfile(userId);
-      
+
       res.json({
         status: 'success',
         data: profile
@@ -26,9 +47,9 @@ export class ProfileController {
 
   updateProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const profile = await this.profileService.updateProfile(userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: profile
@@ -41,9 +62,9 @@ export class ProfileController {
   // Personal details
   getPersonalDetails = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const details = await this.profileService.getPersonalDetails(userId);
-      
+
       res.json({
         status: 'success',
         data: details
@@ -55,9 +76,9 @@ export class ProfileController {
 
   upsertPersonalDetails = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const details = await this.profileService.upsertPersonalDetails(userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: details
@@ -69,7 +90,7 @@ export class ProfileController {
 
   uploadProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const file = req.file;
 
       if (!file || !file.buffer || !file.mimetype) {
@@ -95,7 +116,7 @@ export class ProfileController {
 
   getProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const picture = await this.profileService.getProfilePicture(userId);
       const raw = picture?.profile_picture_data as unknown;
       const mime = String(picture?.profile_picture_mime ?? '').trim();
@@ -118,9 +139,9 @@ export class ProfileController {
   // Addresses
   getAddresses = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const addresses = await this.profileService.getAddresses(userId);
-      
+
       res.json({
         status: 'success',
         data: addresses
@@ -132,9 +153,9 @@ export class ProfileController {
 
   createAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const address = await this.profileService.createAddress(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: address
@@ -146,10 +167,10 @@ export class ProfileController {
 
   updateAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const addressId = String((req.params as any).addressId);
       const address = await this.profileService.updateAddress(addressId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: address
@@ -161,10 +182,10 @@ export class ProfileController {
 
   deleteAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const addressId = String((req.params as any).addressId);
       await this.profileService.deleteAddress(addressId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -173,10 +194,10 @@ export class ProfileController {
 
   setPrimaryAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const addressId = String((req.params as any).addressId);
       await this.profileService.setPrimaryAddress(addressId, userId);
-      
+
       res.json({
         status: 'success',
         message: 'Primary address updated'
@@ -189,9 +210,9 @@ export class ProfileController {
   // Education
   getEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const education = await this.profileService.getEducation(userId);
-      
+
       res.json({
         status: 'success',
         data: education
@@ -203,9 +224,9 @@ export class ProfileController {
 
   createEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const education = await this.profileService.createEducation(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: education
@@ -217,10 +238,10 @@ export class ProfileController {
 
   updateEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const educationId = String((req.params as any).educationId);
       const education = await this.profileService.updateEducation(educationId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: education
@@ -232,10 +253,10 @@ export class ProfileController {
 
   deleteEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const educationId = String((req.params as any).educationId);
       await this.profileService.deleteEducation(educationId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -245,9 +266,9 @@ export class ProfileController {
   // Experience
   getExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const experience = await this.profileService.getExperience(userId);
-      
+
       res.json({
         status: 'success',
         data: experience
@@ -259,9 +280,9 @@ export class ProfileController {
 
   createExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const experience = await this.profileService.createExperience(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: experience
@@ -273,10 +294,10 @@ export class ProfileController {
 
   updateExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const experienceId = String((req.params as any).experienceId);
       const experience = await this.profileService.updateExperience(experienceId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: experience
@@ -288,10 +309,10 @@ export class ProfileController {
 
   deleteExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const experienceId = String((req.params as any).experienceId);
       await this.profileService.deleteExperience(experienceId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -301,9 +322,9 @@ export class ProfileController {
   // References
   getReferences = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const references = await this.profileService.getReferences(userId);
-      
+
       res.json({
         status: 'success',
         data: references
@@ -315,9 +336,9 @@ export class ProfileController {
 
   createReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const reference = await this.profileService.createReference(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: reference
@@ -329,10 +350,10 @@ export class ProfileController {
 
   updateReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const referenceId = String((req.params as any).referenceId);
       const reference = await this.profileService.updateReference(referenceId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: reference
@@ -344,10 +365,10 @@ export class ProfileController {
 
   deleteReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const referenceId = String((req.params as any).referenceId);
       await this.profileService.deleteReference(referenceId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -357,9 +378,9 @@ export class ProfileController {
   // Complete profile
   getCompleteProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.userId;
+      const userId = resolveTargetUserId(req);
       const profile = await this.profileService.getCompleteProfile(userId);
-      
+
       res.json({
         status: 'success',
         data: profile

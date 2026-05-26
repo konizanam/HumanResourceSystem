@@ -21,6 +21,9 @@
 ## Job Seekers
 - My Profile (job seeker self-service): APPLY_JOB
 - Job Seeker Profiles (CV database / directory): VIEW_CV_DATABASE (or user/application management permissions)
+- Edit any job seeker profile (HR/admin): `EDIT_JOBSEEKER_PROFILE`
+  - Allows updating personal details, address, education, experience, references, and
+    professional summary of another user via `/api/v1/profile/*` with `?user_id=<target>`.
 
 ## Page: Jobs
 - View page: authenticated user
@@ -69,6 +72,8 @@
 - View users list/details: authenticated user
 - Block / Unblock user: `MANAGE_USERS`
 - Assign Roles: `MANAGE_USERS`
+- Edit another user's email/phone: `EDIT_USER`
+  - Endpoint: `PATCH /api/v1/users/:id` with `{ email, phone? }`. Phone is optional on this admin path.
 
 ## Page: Job Categories
 - View categories/subcategories: authenticated user
@@ -121,3 +126,5 @@
 - `EMPLOYER_DASHBOARD` — Can access employer dashboard widgets
 - `JOB_SEEKER_DASHBOARD` — Can access job seeker dashboard widgets
 - `MANAGE_NOTIFICATIONS` — Can manage notification preferences
+- `EDIT_JOBSEEKER_PROFILE` — Can update another job seeker's profile (personal details, address, education, experience, references, professional summary) via `/api/v1/profile/*?user_id=<target>`
+- `EDIT_USER` — Can update another user's account email (and optional phone) via `PATCH /api/v1/users/:id`
