@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.0.0...v1.1.0) (2026-05-26)
+
+
+### Features
+
+* **permissions:** add EDIT_JOBSEEKER_PROFILE and EDIT_USER ([335e5fa](https://github.com/kondjaboytjie/HumanResourceSystem/commit/335e5fa0594a69a2bdb902e88a8e0384f5b38568))
+
 # 1.0.0 (2026-04-23)
 
 
