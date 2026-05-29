@@ -1,27 +1,6 @@
 // src/controllers/profile.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { ProfileService } from '../services/profile.service';
-import { ForbiddenError } from '../utils/errors';
-
-function hasEditJobseekerPermission(req: Request): boolean {
-  const perms = Array.isArray(req.user?.permissions) ? req.user!.permissions : [];
-  const roles = Array.isArray(req.user?.roles) ? req.user!.roles : [];
-  if (roles.map((r) => String(r).toUpperCase()).includes('ADMIN')) return true;
-  return perms.map((p) => String(p).toUpperCase()).includes('EDIT_JOBSEEKER_PROFILE');
-}
-
-// Resolves which user's profile is being acted on. If a `user_id` query param is provided
-// and refers to someone other than the authenticated user, the caller must hold
-// EDIT_JOBSEEKER_PROFILE (or be ADMIN). Otherwise the request targets the caller themselves.
-function resolveTargetUserId(req: Request): string {
-  const self = req.user!.userId;
-  const requested = String((req.query?.user_id ?? '') as string).trim();
-  if (!requested || requested === self) return self;
-  if (!hasEditJobseekerPermission(req)) {
-    throw new ForbiddenError('Insufficient permissions to edit another user\'s profile');
-  }
-  return requested;
-}
 
 export class ProfileController {
   private profileService: ProfileService;
@@ -33,7 +12,7 @@ export class ProfileController {
   // Main profile
   getProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const profile = await this.profileService.getProfile(userId);
 
       res.json({
@@ -47,7 +26,7 @@ export class ProfileController {
 
   updateProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const profile = await this.profileService.updateProfile(userId, req.body);
 
       res.json({
@@ -62,7 +41,7 @@ export class ProfileController {
   // Personal details
   getPersonalDetails = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const details = await this.profileService.getPersonalDetails(userId);
 
       res.json({
@@ -76,7 +55,7 @@ export class ProfileController {
 
   upsertPersonalDetails = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const details = await this.profileService.upsertPersonalDetails(userId, req.body);
 
       res.json({
@@ -90,7 +69,7 @@ export class ProfileController {
 
   uploadProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const file = req.file;
 
       if (!file || !file.buffer || !file.mimetype) {
@@ -116,7 +95,7 @@ export class ProfileController {
 
   getProfilePicture = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const picture = await this.profileService.getProfilePicture(userId);
       const raw = picture?.profile_picture_data as unknown;
       const mime = String(picture?.profile_picture_mime ?? '').trim();
@@ -139,7 +118,7 @@ export class ProfileController {
   // Addresses
   getAddresses = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const addresses = await this.profileService.getAddresses(userId);
 
       res.json({
@@ -153,7 +132,7 @@ export class ProfileController {
 
   createAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const address = await this.profileService.createAddress(userId, req.body);
 
       res.status(201).json({
@@ -167,7 +146,7 @@ export class ProfileController {
 
   updateAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       const address = await this.profileService.updateAddress(addressId, userId, req.body);
 
@@ -182,7 +161,7 @@ export class ProfileController {
 
   deleteAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       await this.profileService.deleteAddress(addressId, userId);
 
@@ -194,7 +173,7 @@ export class ProfileController {
 
   setPrimaryAddress = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       await this.profileService.setPrimaryAddress(addressId, userId);
 
@@ -210,7 +189,7 @@ export class ProfileController {
   // Education
   getEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const education = await this.profileService.getEducation(userId);
 
       res.json({
@@ -224,7 +203,7 @@ export class ProfileController {
 
   createEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const education = await this.profileService.createEducation(userId, req.body);
 
       res.status(201).json({
@@ -238,7 +217,7 @@ export class ProfileController {
 
   updateEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       const education = await this.profileService.updateEducation(educationId, userId, req.body);
 
@@ -253,7 +232,7 @@ export class ProfileController {
 
   deleteEducation = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       await this.profileService.deleteEducation(educationId, userId);
 
@@ -266,7 +245,7 @@ export class ProfileController {
   // Experience
   getExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const experience = await this.profileService.getExperience(userId);
 
       res.json({
@@ -280,7 +259,7 @@ export class ProfileController {
 
   createExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const experience = await this.profileService.createExperience(userId, req.body);
 
       res.status(201).json({
@@ -294,7 +273,7 @@ export class ProfileController {
 
   updateExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const experienceId = String((req.params as any).experienceId);
       const experience = await this.profileService.updateExperience(experienceId, userId, req.body);
 
@@ -309,7 +288,7 @@ export class ProfileController {
 
   deleteExperience = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const experienceId = String((req.params as any).experienceId);
       await this.profileService.deleteExperience(experienceId, userId);
 
@@ -322,7 +301,7 @@ export class ProfileController {
   // References
   getReferences = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const references = await this.profileService.getReferences(userId);
 
       res.json({
@@ -336,7 +315,7 @@ export class ProfileController {
 
   createReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const reference = await this.profileService.createReference(userId, req.body);
 
       res.status(201).json({
@@ -350,7 +329,7 @@ export class ProfileController {
 
   updateReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const referenceId = String((req.params as any).referenceId);
       const reference = await this.profileService.updateReference(referenceId, userId, req.body);
 
@@ -365,7 +344,7 @@ export class ProfileController {
 
   deleteReference = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const referenceId = String((req.params as any).referenceId);
       await this.profileService.deleteReference(referenceId, userId);
 
@@ -378,7 +357,7 @@ export class ProfileController {
   // Complete profile
   getCompleteProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = resolveTargetUserId(req);
+      const userId = req.user!.userId;
       const profile = await this.profileService.getCompleteProfile(userId);
 
       res.json({

@@ -56,10 +56,8 @@ function handleProfilePictureUpload(req: Request, res: Response, next: NextFunct
   });
 }
 
-// All profile routes require authentication.
-// Either APPLY_JOB (self-service) or EDIT_JOBSEEKER_PROFILE (HR/admin acting on another user)
-// gates access. Per-handler resolution of the target user id then enforces who can edit whom.
-router.use(authenticate, authorizePermission('APPLY_JOB', 'EDIT_JOBSEEKER_PROFILE'));
+// All profile routes require authentication and job seeker permissions
+router.use(authenticate, authorizePermission('APPLY_JOB'));
 
 // Main profile
 router.get('/', profileController.getProfile);

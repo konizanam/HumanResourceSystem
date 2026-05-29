@@ -16,7 +16,6 @@ INSERT INTO permissions (name, description, module_name, action_type) VALUES
   ('DELETE_COMPANY', 'Delete company records', 'Company', 'DELETE'),
   ('DELETE_JOB', 'Delete job postings', 'Jobs', 'DELETE'),
   ('EDIT_JOB', 'Edit existing jobs', 'Jobs', 'UPDATE'),
-  ('EDIT_JOBSEEKER_PROFILE', 'Edit any job seeker profile (HR/admin)', 'Candidates', 'UPDATE'),
   ('EDIT_USER', 'Edit another user (e.g. update email/phone)', 'Users', 'UPDATE'),
   ('EMPLOYER_DASHBOARD', 'Access employer dashboard widgets', 'Dashboard', 'VIEW'),
   ('JOB_SEEKER_DASHBOARD', 'Access job seeker dashboard widgets', 'Dashboard', 'VIEW'),
