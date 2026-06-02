@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.3.0...v1.3.1) (2026-06-02)
+
+
+### Performance Improvements
+
+* **server:** stop loading file_data in document/resume metadata reads ([d19292b](https://github.com/kondjaboytjie/HumanResourceSystem/commit/d19292b50b4b44efa3195c2dfa60c24350374bf6))
+
 # [1.3.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.2.2...v1.3.0) (2026-05-29)
 
 
