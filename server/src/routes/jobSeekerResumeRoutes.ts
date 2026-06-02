@@ -9,6 +9,14 @@ import crypto from 'crypto';
 
 const router = express.Router();
 
+// Every column on `resumes` EXCEPT the file_data BYTEA blob. SELECT * was
+// pulling the full PDF bytes into every metadata read, which made the
+// profile pages take minutes to load when several CVs were attached.
+const RESUME_METADATA_COLUMNS = `
+  id, job_seeker_id, file_name, file_path, file_size, mime_type,
+  is_primary, uploaded_at, updated_at, created_at
+`;
+
 // Configure multer for in-memory uploads (stored in DB later).
 const storage = multer.memoryStorage();
 
@@ -198,12 +206,13 @@ router.post('/',
 
         const storedFileName = `resume-${Date.now()}-${crypto.randomBytes(16).toString('hex')}${path.extname(req.file.originalname)}`;
 
-        // Insert new resume
+        // Insert new resume. RETURNING projects metadata only so the response
+        // doesn't echo back the file_data the client just uploaded.
         const result = await dbQuery(
           `INSERT INTO resumes (
             job_seeker_id, file_name, file_path, file_size, mime_type, file_data, is_primary, uploaded_at, created_at, updated_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), NOW())
-          RETURNING *`,
+          RETURNING ${RESUME_METADATA_COLUMNS}`,
           [
             jobSeekerId,
             storedFileName,
@@ -309,18 +318,19 @@ router.get('/',
       const jobSeekerId = requestedUserId || requesterId;
       const includeDownloadUrls = req.query.include_download_urls !== 'false';
 
-      // Get all resumes for the job seeker
+      // Get all resumes for the job seeker (metadata only — file bytes are
+      // streamed by the /:id/download endpoint).
       const resumesResult = await dbQuery(
-        `SELECT * FROM resumes 
-         WHERE job_seeker_id = $1 
+        `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes
+         WHERE job_seeker_id = $1
          ORDER BY is_primary DESC, created_at DESC`,
         [jobSeekerId]
       );
 
       // Get primary resume
       const primaryResult = await dbQuery(
-        `SELECT * FROM resumes 
-         WHERE job_seeker_id = $1 AND is_primary = TRUE 
+        `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes
+         WHERE job_seeker_id = $1 AND is_primary = TRUE
          LIMIT 1`,
         [jobSeekerId]
       );
@@ -398,9 +408,9 @@ router.get('/:id',
       const requesterId = req.user!.userId;
       const canViewCvDatabase = hasPermission(req, 'VIEW_CV_DATABASE');
 
-      // Get resume
+      // Get resume metadata (no file_data — that's only loaded by the download endpoint)
       const result = await dbQuery(
-        `SELECT * FROM resumes WHERE id = $1`,
+        `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes WHERE id = $1`,
         [resumeId]
       );
 
@@ -475,9 +485,10 @@ router.get('/:id/download',
       const requesterId = req.user!.userId;
       const canViewCvDatabase = hasPermission(req, 'VIEW_CV_DATABASE');
 
-      // Get resume
+      // Download path — pull file_data alongside metadata. This is the only
+      // resume query that should fetch the BYTEA blob.
       const result = await dbQuery(
-        `SELECT * FROM resumes WHERE id = $1`,
+        `SELECT ${RESUME_METADATA_COLUMNS}, file_data FROM resumes WHERE id = $1`,
         [resumeId]
       );
 
@@ -562,9 +573,9 @@ router.delete('/:id',
       const resumeId = req.params.id;
       const jobSeekerId = req.user!.userId;
 
-      // Get resume
+      // Get resume metadata for the ownership check
       const result = await dbQuery(
-        `SELECT * FROM resumes WHERE id = $1`,
+        `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes WHERE id = $1`,
         [resumeId]
       );
 
@@ -696,9 +707,9 @@ router.patch('/:id/primary',
       const resumeId = req.params.id;
       const jobSeekerId = req.user!.userId;
 
-      // Get resume
+      // Get resume metadata for ownership + state check
       const result = await dbQuery(
-        `SELECT * FROM resumes WHERE id = $1`,
+        `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes WHERE id = $1`,
         [resumeId]
       );
 
@@ -746,9 +757,9 @@ router.patch('/:id/primary',
 
         await dbQuery('COMMIT');
 
-        // Get updated resume
+        // Return updated metadata
         const updatedResult = await dbQuery(
-          'SELECT * FROM resumes WHERE id = $1',
+          `SELECT ${RESUME_METADATA_COLUMNS} FROM resumes WHERE id = $1`,
           [resumeId]
         );
 

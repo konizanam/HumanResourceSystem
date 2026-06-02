@@ -313,7 +313,8 @@ export class DocumentController {
         userPermissions.includes('VIEW_CV_DATABASE');
       const checkUserId = hasElevatedAccess ? undefined : userId;
 
-      const document = await documentService.getDocumentById(documentId, checkUserId);
+      // Use the download-specific getter so file_data is loaded only on this path.
+      const document = await documentService.getDocumentForDownload(documentId, checkUserId);
       const filePath = String(document?.file_path ?? '').trim();
       if (!filePath) {
         return res.status(404).json({ error: { message: 'Document file not found' } });
