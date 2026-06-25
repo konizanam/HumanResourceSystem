@@ -23,6 +23,7 @@ import { StatusPage } from "./pages/StatusPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { ApplicationsPage } from "./pages/ApplicationsPage";
+import { MyApplicationsPage } from "./pages/MyApplicationsPage";
 import { GlobalSettingsPage } from "./pages/GlobalSettingsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PublicJobsPage } from "./pages/PublicJobsPage";
@@ -37,6 +38,7 @@ const menu = [
   { path: "dashboard", title: "Dashboard", icon: "home" },
   { path: "global-settings", title: "Global Settings", icon: "settings" },
   { path: "my-profile", title: "My Profile", icon: "users" },
+  { path: "my-applications", title: "My Applications", icon: "list" },
   { path: "job-seeker-profiles", title: "Job Seeker Profiles", icon: "users" },
   { path: "jobs", title: "Jobs", icon: "briefcase" },
   { path: "applications", title: "Applications", icon: "list" },
@@ -384,6 +386,7 @@ export function App() {
         >
           <Route index element={<DashboardHomeRedirect />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="my-applications" element={<MyApplicationsPage />} />
 
         <Route
           path="global-settings"

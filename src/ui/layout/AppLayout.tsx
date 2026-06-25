@@ -352,13 +352,14 @@ export function AppLayout({
       } else if (isEmployerView) {
         allowedPaths = new Set(["dashboard", "jobs", "companies", "applications", "notifications", "my-permissions", "messages", "industries"]);
       } else if (isJobSeekerView) {
-        allowedPaths = new Set(["dashboard", "my-profile", "jobs", "notifications", "my-permissions", "messages"]);
+        allowedPaths = new Set(["dashboard", "my-profile", "my-applications", "jobs", "notifications", "my-permissions", "messages"]);
       } else {
         allowedPaths = new Set(["dashboard", "notifications", "my-permissions", "messages", "industries"]);
       }
 
       if (canApplyJob) {
         allowedPaths.add("my-profile");
+        allowedPaths.add("my-applications");
       }
 
       if (canViewCvDatabase) {
