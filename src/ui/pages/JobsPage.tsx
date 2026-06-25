@@ -424,8 +424,8 @@ function mapFormToPayload(form: JobFormState): JobUpsertPayload {
     work_mode: form.work_mode,
     location: form.location.trim(),
     remote: form.work_mode !== "onsite",
-    salary_min: Number(form.salary_min),
-    salary_max: Number(form.salary_max),
+    salary_min: form.salary_min.trim() ? Number(form.salary_min) : null,
+    salary_max: form.salary_max.trim() ? Number(form.salary_max) : null,
     salary_currency: "NAD",
     requirements: [],
     responsibilities: [],
@@ -1015,8 +1015,6 @@ export function JobsPage() {
     if (!selectedCategory?.id) next.category = "Category is required";
     if (!selectedSubcategory.trim()) next.subcategory = "Subcategory is required";
     if (!form.location.trim()) next.location = "Location is required";
-    if (!form.salary_min.trim()) next.salary_min = "Minimum salary is required";
-    if (!form.salary_max.trim()) next.salary_max = "Maximum salary is required";
     if (!form.application_deadline.trim()) next.application_deadline = "Deadline is required";
     const screeningError = validateScreeningFormQuestions(form.screening_questions);
     if (screeningError) next.screening_questions = screeningError;
@@ -1139,8 +1137,6 @@ export function JobsPage() {
     if (!selectedSubcategory.trim()) errs.subcategory = "Subcategory is required";
     if (!plainDescription) errs.description = "Description is required";
     if (!form.location.trim()) errs.location = "Location is required";
-    if (!form.salary_min.trim()) errs.salary_min = "Minimum salary is required";
-    if (!form.salary_max.trim()) errs.salary_max = "Maximum salary is required";
     if (!form.application_deadline.trim()) errs.application_deadline = "Deadline is required";
     const screeningError = validateScreeningFormQuestions(form.screening_questions);
     if (screeningError) errs.screening_questions = screeningError;
@@ -1167,8 +1163,8 @@ export function JobsPage() {
         work_mode: form.work_mode,
         location: form.location.trim(),
         remote: form.work_mode !== "onsite",
-        salary_min: Number(form.salary_min),
-        salary_max: Number(form.salary_max),
+        salary_min: form.salary_min.trim() ? Number(form.salary_min) : null,
+        salary_max: form.salary_max.trim() ? Number(form.salary_max) : null,
         salary_currency: "NAD",
         requirements: [],
         responsibilities: [],
@@ -1347,8 +1343,8 @@ export function JobsPage() {
               {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
             </div>
             <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
-            <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} required />
-            <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} required />
+            <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
+            <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
             <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
             <div className="field">
               <label className="fieldLabel">Employment Type</label>
@@ -1737,8 +1733,8 @@ export function JobsPage() {
                 {formErrors.subcategory && <span className="fieldError">{formErrors.subcategory}</span>}
               </div>
               <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
-              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} required />
-              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} required />
+              <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
+              <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
               <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
               <div className="field">
                 <label className="fieldLabel">Employment Type</label>

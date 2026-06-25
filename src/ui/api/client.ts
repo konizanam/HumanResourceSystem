@@ -2245,8 +2245,8 @@ export type JobUpsertPayload = {
   category_id?: string;
   subcategory?: string;
   location: string;
-  salary_min: number;
-  salary_max: number;
+  salary_min?: number | null;
+  salary_max?: number | null;
   salary_currency?: string;
   category: string;
   experience_level: "Entry" | "Intermediate" | "Senior" | "Lead";
