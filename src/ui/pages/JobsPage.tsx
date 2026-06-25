@@ -143,6 +143,7 @@ type JobFormState = {
   remote: boolean;
   salary_min: string;
   salary_max: string;
+  expected_salary_required: "" | "yes" | "no";
   application_deadline: string;
   status: "active" | "closed" | "draft";
   screening_questions: FormScreeningQuestion[];
@@ -160,6 +161,7 @@ const EMPTY_FORM: JobFormState = {
   remote: false,
   salary_min: "",
   salary_max: "",
+  expected_salary_required: "",
   application_deadline: "",
   status: "active",
   screening_questions: [],
@@ -240,6 +242,7 @@ function mapJobToForm(job: JobListItem): JobFormState {
     remote: normalizedWorkMode !== "onsite",
     salary_min: job.salary_min != null ? String(job.salary_min) : "",
     salary_max: job.salary_max != null ? String(job.salary_max) : "",
+    expected_salary_required: "",
     application_deadline: (() => {
       const raw = job.application_deadline ? String(job.application_deadline) : "";
       if (!raw) return "";
@@ -426,6 +429,7 @@ function mapFormToPayload(form: JobFormState): JobUpsertPayload {
     remote: form.work_mode !== "onsite",
     salary_min: form.salary_min.trim() ? Number(form.salary_min) : null,
     salary_max: form.salary_max.trim() ? Number(form.salary_max) : null,
+    expected_salary_required: form.expected_salary_required === "yes",
     salary_currency: "NAD",
     requirements: [],
     responsibilities: [],
@@ -507,6 +511,8 @@ export function JobsPage() {
   const [applyScreeningQuestions, setApplyScreeningQuestions] = useState<ScreeningQuestion[]>([]);
   const [applyScreeningAnswers, setApplyScreeningAnswers] = useState<Record<string, string>>({});
   const [applyScreeningLoading, setApplyScreeningLoading] = useState(false);
+  const [applyExpectedSalary, setApplyExpectedSalary] = useState("");
+  const [applySalaryError, setApplySalaryError] = useState("");
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
   const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
@@ -1015,6 +1021,7 @@ export function JobsPage() {
     if (!selectedCategory?.id) next.category = "Category is required";
     if (!selectedSubcategory.trim()) next.subcategory = "Subcategory is required";
     if (!form.location.trim()) next.location = "Location is required";
+    if (!form.expected_salary_required) next.expected_salary_required = "Please select Yes or No";
     if (!form.application_deadline.trim()) next.application_deadline = "Deadline is required";
     const screeningError = validateScreeningFormQuestions(form.screening_questions);
     if (screeningError) next.screening_questions = screeningError;
@@ -1137,6 +1144,7 @@ export function JobsPage() {
     if (!selectedSubcategory.trim()) errs.subcategory = "Subcategory is required";
     if (!plainDescription) errs.description = "Description is required";
     if (!form.location.trim()) errs.location = "Location is required";
+    if (!form.expected_salary_required) errs.expected_salary_required = "Please select Yes or No";
     if (!form.application_deadline.trim()) errs.application_deadline = "Deadline is required";
     const screeningError = validateScreeningFormQuestions(form.screening_questions);
     if (screeningError) errs.screening_questions = screeningError;
@@ -1165,6 +1173,7 @@ export function JobsPage() {
         remote: form.work_mode !== "onsite",
         salary_min: form.salary_min.trim() ? Number(form.salary_min) : null,
         salary_max: form.salary_max.trim() ? Number(form.salary_max) : null,
+        expected_salary_required: form.expected_salary_required === "yes",
         salary_currency: "NAD",
         requirements: [],
         responsibilities: [],
@@ -1345,6 +1354,20 @@ export function JobsPage() {
             <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
             <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
             <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
+            <div className="field">
+              <label className="fieldLabel">Require applicants to provide their expected salary</label>
+              <select
+                className={`input${formErrors.expected_salary_required ? " inputError" : ""}`}
+                value={form.expected_salary_required}
+                onChange={(e) => setForm((p) => ({ ...p, expected_salary_required: e.target.value as "" | "yes" | "no" }))}
+                required
+              >
+                <option value="" disabled>Select</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+              {formErrors.expected_salary_required ? <span className="fieldError">{formErrors.expected_salary_required}</span> : null}
+            </div>
             <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
             <div className="field">
               <label className="fieldLabel">Employment Type</label>
@@ -1495,6 +1518,8 @@ export function JobsPage() {
       }
       setApplyScreeningQuestions(Array.isArray(jobDetail.screening_questions) ? jobDetail.screening_questions : []);
       setApplyScreeningLoading(false);
+      setApplyExpectedSalary("");
+      setApplySalaryError("");
       setApplyConfirmJob(jobDetail);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to validate profile completeness");
@@ -1537,6 +1562,11 @@ export function JobsPage() {
 
   async function onConfirmApply() {
     if (!accessToken || !applyConfirmJob) return;
+    // Jobs that require an expected salary must have it captured first.
+    if (applyConfirmJob.expected_salary_required && !applyExpectedSalary.trim()) {
+      setApplySalaryError("Expected salary is required for this job.");
+      return;
+    }
     // Every screening question must have an answer chosen.
     if (applyScreeningQuestions.length > 0) {
       const missing = applyScreeningQuestions.find((q) => !applyScreeningAnswers[q.id]);
@@ -1554,6 +1584,7 @@ export function JobsPage() {
       setError(null);
       const result = await applyToJob(accessToken, {
         job_id: applyConfirmJob.id,
+        expected_salary: applyExpectedSalary.trim() ? Number(applyExpectedSalary) : null,
         ...(screeningAnswers.length > 0 ? { screening_answers: screeningAnswers } : {}),
       });
       setAppliedJobIds((prev) => (prev.includes(applyConfirmJob.id) ? prev : [...prev, applyConfirmJob.id]));
@@ -1568,6 +1599,8 @@ export function JobsPage() {
       setApplyConfirmJob(null);
       setApplyScreeningQuestions([]);
       setApplyScreeningAnswers({});
+      setApplyExpectedSalary("");
+      setApplySalaryError("");
     } catch (e) {
       const message = String((e as Error)?.message ?? "").trim();
       setError(message || "Failed to apply for job");
@@ -1735,6 +1768,20 @@ export function JobsPage() {
               <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} error={formErrors.location} required />
               <Field label="Salary Min" type="number" value={form.salary_min} onChange={(v) => setForm((p) => ({ ...p, salary_min: v }))} error={formErrors.salary_min} />
               <Field label="Salary Max" type="number" value={form.salary_max} onChange={(v) => setForm((p) => ({ ...p, salary_max: v }))} error={formErrors.salary_max} />
+              <div className="field">
+                <label className="fieldLabel">Require applicants to provide their expected salary</label>
+                <select
+                  className={`input${formErrors.expected_salary_required ? " inputError" : ""}`}
+                  value={form.expected_salary_required}
+                  onChange={(e) => setForm((p) => ({ ...p, expected_salary_required: e.target.value as "" | "yes" | "no" }))}
+                  required
+                >
+                  <option value="" disabled>Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+                {formErrors.expected_salary_required ? <span className="fieldError">{formErrors.expected_salary_required}</span> : null}
+              </div>
               <Field label="Application Deadline" type="datetime-local" value={form.application_deadline} onChange={(v) => setForm((p) => ({ ...p, application_deadline: v }))} error={formErrors.application_deadline} required />
               <div className="field">
                 <label className="fieldLabel">Employment Type</label>
@@ -2463,6 +2510,22 @@ export function JobsPage() {
                 ))}
               </div>
             ) : null}
+            <div className="field" style={{ textAlign: "left", marginTop: 8, marginBottom: 12 }}>
+              <label className="fieldLabel">
+                Expected Salary {applyConfirmJob.expected_salary_required ? "(required)" : "(optional)"}
+              </label>
+              <input
+                className={`input${applySalaryError ? " inputError" : ""}`}
+                type="number"
+                min={0}
+                value={applyExpectedSalary}
+                onChange={(e) => { setApplyExpectedSalary(e.target.value); if (applySalaryError) setApplySalaryError(""); }}
+                placeholder="e.g. 25000"
+                required={Boolean(applyConfirmJob.expected_salary_required)}
+                disabled={saving}
+              />
+              {applySalaryError ? <span className="fieldError">{applySalaryError}</span> : null}
+            </div>
             <div className="modalActions">
               <button
                 className="btn btnGhost"
@@ -2471,6 +2534,8 @@ export function JobsPage() {
                   setApplyConfirmJob(null);
                   setApplyScreeningQuestions([]);
                   setApplyScreeningAnswers({});
+                  setApplyExpectedSalary("");
+                  setApplySalaryError("");
                 }}
                 disabled={saving}
               >

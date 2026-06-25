@@ -1257,6 +1257,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [success, setSuccess] = useState<string | null>(null);
   const [pendingJob, setPendingJob] = useState<JobListItem | null>(null);
   const [applyingPending, setApplyingPending] = useState(false);
+  const [expectedSalary, setExpectedSalary] = useState("");
   const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
   const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -1420,21 +1421,29 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     if (!accessToken || !pendingJob) return;
     const jobId = String(pendingJob.id ?? "").trim();
     if (!jobId) return;
+    if (pendingJob.expected_salary_required && !expectedSalary.trim()) {
+      setError("Expected salary is required for this job.");
+      return;
+    }
 
     try {
       setApplyingPending(true);
       setError(null);
       setSuccess(null);
 
-      await applyToJob(accessToken, { job_id: jobId });
+      await applyToJob(accessToken, {
+        job_id: jobId,
+        expected_salary: expectedSalary.trim() ? Number(expectedSalary) : null,
+      });
       setSuccess(`Application submitted for "${pendingJob.title}".`);
       setPendingJob(null);
+      setExpectedSalary("");
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to apply for job");
     } finally {
       setApplyingPending(false);
     }
-  }, [accessToken, pendingJob]);
+  }, [accessToken, pendingJob, expectedSalary]);
 
   const pendingJobCompanyName = useMemo(() => {
     if (!pendingJob) return "—";
@@ -2588,6 +2597,22 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             <ReadField
               label="Due Date"
               value={pendingJob.application_deadline ? new Date(pendingJob.application_deadline).toLocaleDateString("en-GB") : "—"}
+            />
+          </div>
+
+          <div className="field" style={{ marginTop: 8, marginBottom: 4 }}>
+            <label className="fieldLabel">
+              Expected Salary {pendingJob.expected_salary_required ? "(required)" : "(optional)"}
+            </label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={expectedSalary}
+              onChange={(e) => setExpectedSalary(e.target.value)}
+              placeholder="e.g. 25000"
+              required={Boolean(pendingJob.expected_salary_required)}
+              disabled={applyingPending || saving}
             />
           </div>
 

@@ -735,6 +735,7 @@ router.post('/',
       const {
         title, description, company, location,
         salary_min, salary_max, salary_currency = 'USD',
+        expected_salary_required = false,
         category, category_id, company_id, subcategory, experience_level, employment_type,
         work_mode, remote = false, requirements = [], responsibilities = [],
         benefits = [], application_deadline, status = 'active',
@@ -782,6 +783,7 @@ router.post('/',
       if (jobsColumns.has('salary_min')) pushParam('salary_min', salary_min);
       if (jobsColumns.has('salary_max')) pushParam('salary_max', salary_max);
       if (jobsColumns.has('salary_currency')) pushParam('salary_currency', salary_currency);
+      if (jobsColumns.has('expected_salary_required')) pushParam('expected_salary_required', Boolean(expected_salary_required));
       if (jobsColumns.has('category_id')) pushParam('category_id', resolvedCategoryId);
       if (jobsColumns.has('subcategory_id')) pushParam('subcategory_id', resolvedSubcategoryId);
       if (jobsColumns.has('experience_level')) pushParam('experience_level', experience_level);
@@ -937,6 +939,7 @@ router.put('/:id',
       const {
         title, description, company, location,
         salary_min, salary_max, salary_currency,
+        expected_salary_required,
         category, category_id, company_id, subcategory, experience_level, employment_type,
         work_mode, remote, requirements, responsibilities, benefits,
         application_deadline, status,
@@ -983,6 +986,9 @@ router.put('/:id',
       if (jobsColumns.has('salary_min')) pushSet('salary_min', salary_min);
       if (jobsColumns.has('salary_max')) pushSet('salary_max', salary_max);
       if (jobsColumns.has('salary_currency')) pushSet('salary_currency', salary_currency);
+      if (jobsColumns.has('expected_salary_required') && expected_salary_required !== undefined) {
+        pushSet('expected_salary_required', Boolean(expected_salary_required));
+      }
       if (jobsColumns.has('category_id')) pushSet('category_id', resolvedCategoryId);
       if (jobsColumns.has('subcategory_id')) {
         updateValues.push(resolvedSubcategoryId);
@@ -1200,6 +1206,7 @@ router.get('/:id/applications',
           NULL::text as cover_letter,
           NULL::text as resume_url,
           a.status,
+          a.expected_salary,
           a.applied_at as created_at,
           NULL::timestamp as updated_at,
           (u.first_name || ' ' || u.last_name) as applicant_name,

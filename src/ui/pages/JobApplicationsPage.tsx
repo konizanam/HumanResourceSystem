@@ -635,18 +635,17 @@ export function JobApplicationsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function onExportStageToExcel(stage: StageKey) {
+  async function exportApplicantsToExcel(list: JobApplication[], exportLabel: string, fileKey: string) {
     if (!accessToken) return;
-    const stageList = grouped[stage];
-    if (!stageList || stageList.length === 0) {
-      setError("No candidates to export for this stage.");
+    if (!list || list.length === 0) {
+      setError("No candidates to export.");
       return;
     }
     setExporting(true);
     setError(null);
     try {
       const entries = await Promise.all(
-        stageList.map(async (app) => {
+        list.map(async (app) => {
           let profile: JobSeekerFullProfile | null | undefined = profileByAppId[app.id];
           if (profile === undefined && app.applicant_id) {
             try {
@@ -739,8 +738,17 @@ export function JobApplicationsPage() {
           ? pastRows.map((r) => `• ${r.duration || "—"}`).join("\n")
           : "—";
 
+        const statusLabel =
+          STATUS_ACTIONS.find((s) => s.key === detectStage(app, stageOverrides))?.label ??
+          detectStage(app, stageOverrides);
+
         return {
           Name: fullName,
+          Status: statusLabel,
+          "Expected Salary":
+            app.expected_salary != null
+              ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}`
+              : "—",
           Nationality: String(readValue(personal, "nationality") ?? "—") || "—",
           Qualification: qualificationsCell,
           "Years of Experience":
@@ -753,12 +761,14 @@ export function JobApplicationsPage() {
         };
       });
 
-      const stageLabel = STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage;
+      const stageLabel = exportLabel;
       const stamp = new Date().toISOString().split("T")[0];
       const safeJob = (jobTitle || "job").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "job";
 
       const headers = [
         "Name",
+        "Status",
+        "Expected Salary",
         "Nationality",
         "Qualification",
         "Years of Experience",
@@ -792,6 +802,8 @@ export function JobApplicationsPage() {
       // Column widths
       ws["!cols"] = [
         { wch: 28 },
+        { wch: 16 },
+        { wch: 18 },
         { wch: 18 },
         { wch: 40 },
         { wch: 20 },
@@ -886,12 +898,21 @@ export function JobApplicationsPage() {
       const workbook = XLSX.utils.book_new();
       const sheetName = `${stageLabel} Candidates`.slice(0, 31);
       XLSX.utils.book_append_sheet(workbook, ws, sheetName);
-      XLSX.writeFile(workbook, `${safeJob}-${stage}-candidates-${stamp}.xlsx`);
+      XLSX.writeFile(workbook, `${safeJob}-${fileKey}-candidates-${stamp}.xlsx`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
     } finally {
       setExporting(false);
     }
+  }
+
+  async function onExportStageToExcel(stage: StageKey) {
+    const stageLabel = STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage;
+    await exportApplicantsToExcel(grouped[stage], stageLabel, stage);
+  }
+
+  async function onExportAllToExcel() {
+    await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
   }
 
   const pagination = useMemo(() => {
@@ -1579,10 +1600,22 @@ export function JobApplicationsPage() {
         </div>
       </div>
 
-      <div id="applications-main-list" className="dashCardHeader" style={{ marginBottom: 10 }}>
+      <div
+        id="applications-main-list"
+        className="dashCardHeader"
+        style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+      >
         <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
           All Applicants
         </h2>
+        <button
+          type="button"
+          className="btn btnGhost btnSm"
+          onClick={() => void onExportAllToExcel()}
+          disabled={exporting || filteredApplications.length === 0}
+        >
+          {exporting ? "Exporting..." : "Export to Excel"}
+        </button>
       </div>
 
       <div className="jobCardsGrid" role="region" aria-label="Job applicants list">
@@ -1614,6 +1647,10 @@ export function JobApplicationsPage() {
                     value={app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}
                   />
                   <ReadField label="Current Status" value={current} />
+                  <ReadField
+                    label="Expected Salary"
+                    value={app.expected_salary != null ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}` : "—"}
+                  />
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
@@ -1754,6 +1791,10 @@ export function JobApplicationsPage() {
                           value={app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}
                         />
                         <ReadField label="Current Status" value={current} />
+                        <ReadField
+                          label="Expected Salary"
+                          value={app.expected_salary != null ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}` : "—"}
+                        />
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>

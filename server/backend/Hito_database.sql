@@ -278,6 +278,7 @@ CREATE TABLE jobs (
     subcategory_id UUID REFERENCES job_subcategories(id),
     salary_min NUMERIC(12,2),
     salary_max NUMERIC(12,2),
+    expected_salary_required BOOLEAN DEFAULT FALSE,
     is_urgent BOOLEAN DEFAULT FALSE,
     status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PENDING', 'APPROVED', 'CLOSED')),
     application_deadline TIMESTAMP,
@@ -335,6 +336,7 @@ CREATE TABLE applications (
         'ORAL_INTERVIEW', 'PRACTICAL_INTERVIEW', 'FINAL_INTERVIEW',
         'OFFER_MADE', 'HIRED', 'REJECTED', 'WITHDRAWN'
     )),
+    expected_salary NUMERIC(12,2),
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(job_id, user_id)
 );

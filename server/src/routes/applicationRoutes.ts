@@ -25,7 +25,8 @@ const router = express.Router();
 const validateApplication = [
   body('job_id').isUUID().withMessage('Valid job ID is required'),
   body('cover_letter').optional().isString().trim(),
-  body('resume_url').optional().isURL().withMessage('Valid resume URL is required')
+  body('resume_url').optional().isURL().withMessage('Valid resume URL is required'),
+  body('expected_salary').optional({ nullable: true, checkFalsy: true }).isNumeric().withMessage('Expected salary must be a number')
 ];
 
 const validateStatusUpdate = [
@@ -342,8 +343,12 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { job_id, screening_answers } = req.body;
+      const { job_id, screening_answers, expected_salary } = req.body;
       const applicant_id = req.user!.userId;
+      const expectedSalaryValue =
+        expected_salary === undefined || expected_salary === null || expected_salary === ''
+          ? null
+          : Number(expected_salary);
 
       // Check if job exists and is active
       const jobCheck = await dbQuery('SELECT * FROM jobs WHERE id = $1', [job_id]);
@@ -370,6 +375,11 @@ router.post('/',
       // The job seeker UI only shows these, so applying must accept both.
       if (job.status !== 'active' && job.status !== 'APPROVED') {
         return res.status(403).json({ error: 'Cannot apply to a job that is not active' });
+      }
+
+      // Some jobs require applicants to state their expected salary.
+      if (job.expected_salary_required && expectedSalaryValue === null) {
+        return res.status(400).json({ error: 'Expected salary is required for this job' });
       }
 
       // Check if user already applied
@@ -417,10 +427,10 @@ router.post('/',
         application = await transaction(async (client) => {
           const result = await client.query(
             `INSERT INTO applications (
-              job_id, user_id, status, applied_at
-            ) VALUES ($1, $2, $3, NOW())
+              job_id, user_id, status, expected_salary, applied_at
+            ) VALUES ($1, $2, $3, $4, NOW())
             RETURNING *`,
-            [job_id, applicant_id, initialStatus]
+            [job_id, applicant_id, initialStatus, expectedSalaryValue]
           );
           const app = result.rows[0];
           if (scored.answers.length > 0) {

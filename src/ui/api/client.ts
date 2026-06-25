@@ -2155,6 +2155,7 @@ export type JobApplication = {
   cover_letter?: string | null;
   resume_url?: string | null;
   status: JobApplicationStatus;
+  expected_salary?: number | null;
   created_at?: string;
   updated_at?: string;
   applicant_name?: string | null;
@@ -2192,6 +2193,7 @@ export type JobListItem = {
   salary_min?: number | null;
   salary_max?: number | null;
   salary_currency?: string | null;
+  expected_salary_required?: boolean | null;
   category?: string | null;
   category_name?: string | null;
   subcategory?: string | null;
@@ -2248,6 +2250,7 @@ export type JobUpsertPayload = {
   salary_min?: number | null;
   salary_max?: number | null;
   salary_currency?: string;
+  expected_salary_required?: boolean;
   category: string;
   experience_level: "Entry" | "Intermediate" | "Senior" | "Lead";
   employment_type: "Full-time" | "Part-time" | "Contract" | "Internship";
@@ -2389,6 +2392,7 @@ export async function applyToJob(
     job_id: string;
     cover_letter?: string;
     resume_url?: string;
+    expected_salary?: number | null;
     screening_answers?: ScreeningAnswerPayload[];
   },
 ): Promise<JobApplication & { auto_rejected?: boolean }> {
