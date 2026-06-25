@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.5.0...v1.6.0) (2026-06-25)
+
+
+### Features
+
+* **settings:** audit system settings changes, show app version, ignore runtime settings file ([b5d8110](https://github.com/kondjaboytjie/HumanResourceSystem/commit/b5d81102c5d6b75f37d7fdc4158a16d20abaf20b))
+
 # [1.5.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.4.0...v1.5.0) (2026-06-25)
 
 
