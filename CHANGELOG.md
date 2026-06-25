@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.6.0...v1.7.0) (2026-06-25)
+
+
+### Features
+
+* **applications:** add My Applications page for job seekers ([8eb4d2a](https://github.com/kondjaboytjie/HumanResourceSystem/commit/8eb4d2ab439cbdcfef22bfd352556c6bfcaf4bd1))
+
 # [1.6.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.5.0...v1.6.0) (2026-06-25)
 
 
