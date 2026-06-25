@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.3.1...v1.4.0) (2026-06-25)
+
+
+### Features
+
+* **jobs:** make salary min/max optional on create and update ([6567b99](https://github.com/kondjaboytjie/HumanResourceSystem/commit/6567b99148dc948505f782bb20ccdd3fd7fb565a))
+
 ## [1.3.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.3.0...v1.3.1) (2026-06-02)
 
 
