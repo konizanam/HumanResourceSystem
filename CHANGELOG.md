@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.4.0...v1.5.0) (2026-06-25)
+
+
+### Features
+
+* **applications:** capture and report applicant expected salary ([d23c927](https://github.com/kondjaboytjie/HumanResourceSystem/commit/d23c927ae71d3455dd0f8a173f3a8762591db8c6))
+
 # [1.4.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.3.1...v1.4.0) (2026-06-25)
 
 
