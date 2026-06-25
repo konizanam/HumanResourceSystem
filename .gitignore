@@ -30,3 +30,6 @@ CLAUDE.md
 # Runtime uploads
 apps/api/uploads
 server/uploads
+
+# Runtime-generated settings (must never be committed)
+server/data/system-settings.json

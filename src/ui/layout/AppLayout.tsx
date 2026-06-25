@@ -666,6 +666,9 @@ export function AppLayout({
 
       <main className="content">
         <div className="appTopUserBar" role="region" aria-label="User controls">
+          <span className="appVersionBadge" title={`App version ${__APP_VERSION__}`}>
+            v{__APP_VERSION__}
+          </span>
           {displayName ? (
             <div className="appTopUserName" title={displayName}>
               {profilePictureObjectUrl ? (

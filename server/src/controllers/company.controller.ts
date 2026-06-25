@@ -437,6 +437,9 @@ export class CompanyController {
         }
       }
 
+      // Snapshot current settings before the change so we can audit what was updated.
+      const before = await getSystemSettings();
+
       const settings = await updateSystemSettings({
         system_name: systemName,
         branding_logo_url: brandingLogo,
@@ -446,6 +449,30 @@ export class CompanyController {
         login_welcome_title: loginWelcomeTitle,
         login_welcome_subtitle: loginWelcomeSubtitle,
       });
+
+      // Audit the change, recording before/after and exactly which fields changed.
+      const beforeRecord = before as unknown as Record<string, unknown>;
+      const afterRecord = settings as unknown as Record<string, unknown>;
+      const changedFields = Object.keys(afterRecord).filter(
+        (key) => JSON.stringify(beforeRecord?.[key]) !== JSON.stringify(afterRecord[key]),
+      );
+      const auditUserId = req.user?.userId;
+      if (auditUserId && changedFields.length > 0) {
+        await logAudit({
+          userId: auditUserId,
+          action: 'SYSTEM_SETTINGS_UPDATE',
+          targetType: 'system_settings',
+          details: {
+            method: req.method,
+            path: (req.originalUrl || req.url || '').split('?')[0],
+            ip: req.ip,
+            changedFields,
+            before,
+            after: settings,
+          },
+        });
+      }
+
       res.json({
         status: 'success',
         data: settings,

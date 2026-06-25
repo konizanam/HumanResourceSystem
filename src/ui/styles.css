@@ -802,6 +802,17 @@ input[type="radio"][required]:checked {
   background: linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 88%, var(--card)), transparent);
 }
 
+.appVersionBadge {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--card2);
+  white-space: nowrap;
+}
+
 .appTopUserName {
   color: var(--heading);
   font-weight: 700;
