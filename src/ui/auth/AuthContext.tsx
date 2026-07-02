@@ -38,6 +38,17 @@ function clearStoredSession() {
   localStorage.removeItem(STORAGE_NAME_KEY);
 }
 
+// Difference between this device's clock and the server's (client - server),
+// learned from the `iat` of freshly issued tokens. Without this, a client
+// clock running ahead makes every fresh token look near-expiry: the session
+// refresh then fires every check interval, and each new token remounts
+// token-dependent pages — users see their page "refresh" repeatedly.
+let clientClockSkewMs = 0;
+
+function estimatedServerNowMs(): number {
+  return Date.now() - clientClockSkewMs;
+}
+
 function isJwtExpired(token: string): boolean {
   try {
     const [, payload] = token.split(".");
@@ -47,7 +58,7 @@ function isJwtExpired(token: string): boolean {
     const parsed = JSON.parse(atob(padded)) as { exp?: unknown };
     const exp = typeof parsed.exp === "number" ? parsed.exp : Number(parsed.exp);
     if (!Number.isFinite(exp)) return false;
-    return Date.now() >= exp * 1000;
+    return estimatedServerNowMs() >= exp * 1000;
   } catch {
     return false;
   }
@@ -63,6 +74,21 @@ function getJwtExpiryMs(token: string): number | null {
     const exp = typeof parsed.exp === "number" ? parsed.exp : Number(parsed.exp);
     if (!Number.isFinite(exp)) return null;
     return exp * 1000;
+  } catch {
+    return null;
+  }
+}
+
+function getJwtIssuedAtMs(token: string): number | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const parsed = JSON.parse(atob(padded)) as { iat?: unknown };
+    const iat = typeof parsed.iat === "number" ? parsed.iat : Number(parsed.iat);
+    if (!Number.isFinite(iat)) return null;
+    return iat * 1000;
   } catch {
     return null;
   }
@@ -86,6 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userName: state.userName,
       authenticate: async (email, password) => loginApi(email, password),
       setSession: (accessToken, userEmail, userName) => {
+        const issuedAtMs = getJwtIssuedAtMs(accessToken);
+        if (issuedAtMs) {
+          clientClockSkewMs = Date.now() - issuedAtMs;
+        }
         localStorage.setItem(STORAGE_KEY, accessToken);
         localStorage.setItem(STORAGE_EMAIL_KEY, userEmail);
         localStorage.setItem(STORAGE_NAME_KEY, userName);
@@ -171,12 +201,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const expiryMs = getJwtExpiryMs(activeToken);
       if (!expiryMs) return;
 
-      const remainingMs = expiryMs - now;
+      const remainingMs = expiryMs - estimatedServerNowMs();
       if (remainingMs > SESSION_REFRESH_WINDOW_MS) return;
 
       refreshInFlightRef.current = true;
       try {
         const refreshed = await refreshAccessToken(activeToken);
+        const issuedAtMs = getJwtIssuedAtMs(refreshed.accessToken);
+        if (issuedAtMs) {
+          clientClockSkewMs = Date.now() - issuedAtMs;
+        }
         const nextEmail = refreshed.user?.email ?? state.userEmail ?? "";
         const nextName = refreshed.user?.name ?? state.userName ?? "";
 

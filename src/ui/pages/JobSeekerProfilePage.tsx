@@ -1404,9 +1404,18 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     }
   }, [accessToken, forcedMode]);
 
+  // Load once per mode. `load` identity also changes when the access token is
+  // silently refreshed (AuthContext), and reloading then would unmount the
+  // edit forms mid-typing and wipe unsaved input — so only reload when the
+  // mode actually changes; saves still trigger explicit reload() calls.
+  const loadedForModeRef = useRef<string | null>(null);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!accessToken) return;
+    const modeKey = String(forcedMode ?? "auto");
+    if (loadedForModeRef.current === modeKey) return;
+    loadedForModeRef.current = modeKey;
+    void load();
+  }, [accessToken, forcedMode, load]);
 
   useEffect(() => {
     const state = (location as any)?.state as { pendingJob?: JobListItem } | undefined;
