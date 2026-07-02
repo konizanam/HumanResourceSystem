@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.0...v1.7.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* **profile:** stop My Profile resetting during silent session refresh ([23e82e5](https://github.com/kondjaboytjie/HumanResourceSystem/commit/23e82e50d974ec39a10e02d42723a7fe7f48fcad))
+
 # [1.7.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.6.0...v1.7.0) (2026-06-25)
 
 
