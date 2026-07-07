@@ -1253,7 +1253,11 @@ export async function updatePersonalDetails(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to update personal details");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your personal details. Please check the form and try again."
+    );
   }
   return res.json();
 }
@@ -1285,7 +1289,11 @@ export async function saveAddress(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save address");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your address. Please check the form and try again."
+    );
   }
   return res.json();
 }
@@ -1331,7 +1339,11 @@ export async function saveEducation(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save education");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your education details. Please check the form and try again."
+    );
   }
   return res.json();
 }
