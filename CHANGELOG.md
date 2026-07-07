@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.1...v1.7.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* **profile:** allow saving education marked as currently studying ([b89ab0b](https://github.com/kondjaboytjie/HumanResourceSystem/commit/b89ab0bc995e5d6324bd089046e8b1fdd5a80803))
+
 ## [1.7.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.0...v1.7.1) (2026-07-02)
 
 
