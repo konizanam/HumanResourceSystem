@@ -78,16 +78,23 @@ export const educationValidation = [
     .notEmpty()
     .withMessage('Start date is required')
     .isISO8601()
+    .withMessage('Please enter a valid start date')
     .toDate(),
   body('is_current').optional().isBoolean(),
+  // end_date must be validated inside a single custom check: a chained
+  // .isISO8601() would still run when is_current is true and the field is
+  // omitted, rejecting every "currently studying" record.
   body('end_date').custom((value, { req }) => {
     const isCurrent = Boolean(req.body?.is_current);
     if (isCurrent) return true;
     if (!value) {
-      throw new Error('End date is required');
+      throw new Error('Please enter an end date, or mark this as your current studies');
+    }
+    if (Number.isNaN(Date.parse(String(value)))) {
+      throw new Error('Please enter a valid end date');
     }
     return true;
-  }).isISO8601().toDate(),
+  }),
   body('grade').optional().trim(),
 ];
 

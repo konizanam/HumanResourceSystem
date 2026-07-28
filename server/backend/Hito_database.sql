@@ -278,9 +278,10 @@ CREATE TABLE jobs (
     subcategory_id UUID REFERENCES job_subcategories(id),
     salary_min NUMERIC(12,2),
     salary_max NUMERIC(12,2),
+    expected_salary_required BOOLEAN DEFAULT FALSE,
     is_urgent BOOLEAN DEFAULT FALSE,
     status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PENDING', 'APPROVED', 'CLOSED')),
-    application_deadline DATE,
+    application_deadline TIMESTAMP,
     created_by UUID REFERENCES users(id),
     views INTEGER DEFAULT 0,
     applications_count INTEGER DEFAULT 0,
@@ -335,6 +336,7 @@ CREATE TABLE applications (
         'ORAL_INTERVIEW', 'PRACTICAL_INTERVIEW', 'FINAL_INTERVIEW',
         'OFFER_MADE', 'HIRED', 'REJECTED', 'WITHDRAWN'
     )),
+    expected_salary NUMERIC(12,2),
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(job_id, user_id)
 );
@@ -674,7 +676,7 @@ LEFT JOIN job_categories cat ON j.category_id = cat.id
 LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
 LEFT JOIN users u ON j.created_by = u.id
 WHERE j.status = 'APPROVED'
-AND (j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE);
+AND (j.application_deadline IS NULL OR j.application_deadline > CURRENT_TIMESTAMP);
 
 -- View for application statistics by job
 CREATE VIEW v_job_application_stats AS
@@ -1082,4 +1084,51 @@ LEFT JOIN job_subcategories subcat ON j.subcategory_id = subcat.id
 LEFT JOIN users u ON j.created_by = u.id
 LEFT JOIN users emp ON j.employer_id = emp.id
 WHERE j.status = 'APPROVED'
-AND (j.application_deadline IS NULL OR j.application_deadline >= CURRENT_DATE);
+AND (j.application_deadline IS NULL OR j.application_deadline > CURRENT_TIMESTAMP);
+
+-- =====================================================
+-- Vacancy screening questions (auto-reject feature)
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS job_screening_questions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_screening_questions_job_id
+    ON job_screening_questions(job_id);
+
+CREATE TABLE IF NOT EXISTS job_screening_options (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question_id UUID NOT NULL REFERENCES job_screening_questions(id) ON DELETE CASCADE,
+    option_text TEXT NOT NULL,
+    is_correct BOOLEAN NOT NULL DEFAULT false,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_screening_options_question_id
+    ON job_screening_options(question_id);
+
+-- Enforce exactly one correct option per question.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_job_screening_options_one_correct
+    ON job_screening_options(question_id) WHERE is_correct;
+
+CREATE TABLE IF NOT EXISTS application_screening_answers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    question_id UUID NOT NULL REFERENCES job_screening_questions(id) ON DELETE CASCADE,
+    selected_option_id UUID REFERENCES job_screening_options(id) ON DELETE SET NULL,
+    is_correct BOOLEAN NOT NULL DEFAULT false,
+    answered_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_screening_answers_application_id
+    ON application_screening_answers(application_id);
+
+CREATE INDEX IF NOT EXISTS idx_application_screening_answers_question_id
+    ON application_screening_answers(question_id);

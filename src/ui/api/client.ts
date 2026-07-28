@@ -1120,6 +1120,31 @@ export async function updateMyAccount(
   return body;
 }
 
+// Admin path: update another user's email (and optionally phone).
+// Caller must hold EDIT_USER permission.
+export async function updateUserAccount(
+  accessToken: string,
+  userId: string,
+  payload: { email: string; phone?: string },
+) {
+  const body: Record<string, string> = {
+    email: String(payload.email ?? "").trim(),
+  };
+  if (payload.phone !== undefined) {
+    body.phone = String(payload.phone ?? "").trim();
+  }
+
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+
+  const responseBody = await safeJson(res);
+  if (!res.ok) throw apiError(res, responseBody, "Failed to update user account");
+  return responseBody;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Job Seeker Profile                                                 */
 /* ------------------------------------------------------------------ */
@@ -1228,7 +1253,11 @@ export async function updatePersonalDetails(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to update personal details");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your personal details. Please check the form and try again."
+    );
   }
   return res.json();
 }
@@ -1260,7 +1289,11 @@ export async function saveAddress(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save address");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your address. Please check the form and try again."
+    );
   }
   return res.json();
 }
@@ -1306,7 +1339,11 @@ export async function saveEducation(
   });
   if (!res.ok) {
     const body = await safeJson(res);
-    throw new Error(body?.error?.message ?? "Failed to save education");
+    throw apiError(
+      res,
+      body,
+      "We couldn't save your education details. Please check the form and try again."
+    );
   }
   return res.json();
 }
@@ -2130,6 +2167,7 @@ export type JobApplication = {
   cover_letter?: string | null;
   resume_url?: string | null;
   status: JobApplicationStatus;
+  expected_salary?: number | null;
   created_at?: string;
   updated_at?: string;
   applicant_name?: string | null;
@@ -2167,6 +2205,7 @@ export type JobListItem = {
   salary_min?: number | null;
   salary_max?: number | null;
   salary_currency?: string | null;
+  expected_salary_required?: boolean | null;
   category?: string | null;
   category_name?: string | null;
   subcategory?: string | null;
@@ -2185,6 +2224,31 @@ export type JobListItem = {
   employer_name?: string | null;
   employer_email?: string | null;
   applications_count?: number | string | null;
+  screening_questions?: ScreeningQuestion[] | null;
+};
+
+export type ScreeningQuestionOptionPayload = {
+  option_text: string;
+  is_correct?: boolean;
+};
+
+export type ScreeningQuestionPayload = {
+  question_text: string;
+  options: ScreeningQuestionOptionPayload[];
+};
+
+export type ScreeningQuestionOption = {
+  id: string;
+  option_text: string;
+  sort_order: number;
+  is_correct?: boolean;
+};
+
+export type ScreeningQuestion = {
+  id: string;
+  question_text: string;
+  sort_order: number;
+  options: ScreeningQuestionOption[];
 };
 
 export type JobUpsertPayload = {
@@ -2195,9 +2259,10 @@ export type JobUpsertPayload = {
   category_id?: string;
   subcategory?: string;
   location: string;
-  salary_min: number;
-  salary_max: number;
+  salary_min?: number | null;
+  salary_max?: number | null;
   salary_currency?: string;
+  expected_salary_required?: boolean;
   category: string;
   experience_level: "Entry" | "Intermediate" | "Senior" | "Lead";
   employment_type: "Full-time" | "Part-time" | "Contract" | "Internship";
@@ -2208,6 +2273,7 @@ export type JobUpsertPayload = {
   benefits?: string[];
   application_deadline: string;
   status?: "active" | "closed" | "draft" | "pending";
+  screening_questions?: ScreeningQuestionPayload[];
 };
 
 export async function listAdminJobs(
@@ -2327,10 +2393,21 @@ export async function listMyApplications(
   return body as MyApplicationsResponse;
 }
 
+export type ScreeningAnswerPayload = {
+  question_id: string;
+  selected_option_id: string;
+};
+
 export async function applyToJob(
   token: string,
-  payload: { job_id: string; cover_letter?: string; resume_url?: string },
-): Promise<JobApplication> {
+  payload: {
+    job_id: string;
+    cover_letter?: string;
+    resume_url?: string;
+    expected_salary?: number | null;
+    screening_answers?: ScreeningAnswerPayload[];
+  },
+): Promise<JobApplication & { auto_rejected?: boolean }> {
   const res = await fetch(`${API_BASE}/applications`, {
     method: "POST",
     headers: authHeaders(token),
@@ -2338,7 +2415,7 @@ export async function applyToJob(
   });
   const body = await safeJson(res);
   if (!res.ok) throw apiError(res, body, "Failed to apply for this job");
-  return body as JobApplication;
+  return body as JobApplication & { auto_rejected?: boolean };
 }
 
 export async function withdrawMyApplication(token: string, applicationId: string): Promise<void> {

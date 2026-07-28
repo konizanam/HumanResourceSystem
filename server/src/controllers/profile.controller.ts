@@ -14,7 +14,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const profile = await this.profileService.getProfile(userId);
-      
+
       res.json({
         status: 'success',
         data: profile
@@ -28,7 +28,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const profile = await this.profileService.updateProfile(userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: profile
@@ -43,7 +43,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const details = await this.profileService.getPersonalDetails(userId);
-      
+
       res.json({
         status: 'success',
         data: details
@@ -57,7 +57,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const details = await this.profileService.upsertPersonalDetails(userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: details
@@ -120,7 +120,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const addresses = await this.profileService.getAddresses(userId);
-      
+
       res.json({
         status: 'success',
         data: addresses
@@ -134,7 +134,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const address = await this.profileService.createAddress(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: address
@@ -149,7 +149,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       const address = await this.profileService.updateAddress(addressId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: address
@@ -164,7 +164,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       await this.profileService.deleteAddress(addressId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -176,7 +176,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const addressId = String((req.params as any).addressId);
       await this.profileService.setPrimaryAddress(addressId, userId);
-      
+
       res.json({
         status: 'success',
         message: 'Primary address updated'
@@ -191,7 +191,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const education = await this.profileService.getEducation(userId);
-      
+
       res.json({
         status: 'success',
         data: education
@@ -205,7 +205,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const education = await this.profileService.createEducation(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: education
@@ -220,7 +220,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       const education = await this.profileService.updateEducation(educationId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: education
@@ -235,7 +235,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       await this.profileService.deleteEducation(educationId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -247,7 +247,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const experience = await this.profileService.getExperience(userId);
-      
+
       res.json({
         status: 'success',
         data: experience
@@ -261,7 +261,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const experience = await this.profileService.createExperience(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: experience
@@ -276,7 +276,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const experienceId = String((req.params as any).experienceId);
       const experience = await this.profileService.updateExperience(experienceId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: experience
@@ -291,7 +291,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const experienceId = String((req.params as any).experienceId);
       await this.profileService.deleteExperience(experienceId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -303,7 +303,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const references = await this.profileService.getReferences(userId);
-      
+
       res.json({
         status: 'success',
         data: references
@@ -317,7 +317,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const reference = await this.profileService.createReference(userId, req.body);
-      
+
       res.status(201).json({
         status: 'success',
         data: reference
@@ -332,7 +332,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const referenceId = String((req.params as any).referenceId);
       const reference = await this.profileService.updateReference(referenceId, userId, req.body);
-      
+
       res.json({
         status: 'success',
         data: reference
@@ -347,7 +347,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const referenceId = String((req.params as any).referenceId);
       await this.profileService.deleteReference(referenceId, userId);
-      
+
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -359,7 +359,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const profile = await this.profileService.getCompleteProfile(userId);
-      
+
       res.json({
         status: 'success',
         data: profile

@@ -834,6 +834,10 @@ export function ReportsPage() {
         Applicant: row.app.applicant_name ?? "—",
         Email: row.app.applicant_email ?? "—",
         Phone: row.app.applicant_phone ?? "—",
+        "Expected Salary":
+          row.app.expected_salary != null
+            ? `N$ ${Number(row.app.expected_salary).toLocaleString("en-US")}`
+            : "—",
         Status: titleStatus(normalizeApplicationStatus(row.app.workflow_status ?? row.app.status)),
         "Applied Date": formatDate(row.app.created_at),
         "Date of Birth": formatDateOnly(String((row.personalDetails as any)?.date_of_birth ?? "")),
@@ -967,6 +971,10 @@ export function ReportsPage() {
         Applicant: app.applicant_name ?? "—",
         Email: app.applicant_email ?? "—",
         Phone: app.applicant_phone ?? "—",
+        "Expected Salary":
+          app.expected_salary != null
+            ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}`
+            : "—",
         Job: jobName,
         Status: titleStatus(normalizeApplicationStatus(app.workflow_status ?? app.status)),
         "Date Applied": formatDate(app.created_at),
@@ -987,6 +995,10 @@ export function ReportsPage() {
         Applicant: app.applicant_name ?? "—",
         Email: app.applicant_email ?? "—",
         Phone: app.applicant_phone ?? "—",
+        "Expected Salary":
+          app.expected_salary != null
+            ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}`
+            : "—",
         Job: jobName,
         Status: titleStatus(normalizeApplicationStatus(app.workflow_status ?? app.status)),
         "Date Applied": formatDate(app.created_at),

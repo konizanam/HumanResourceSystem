@@ -69,6 +69,8 @@
 - View users list/details: authenticated user
 - Block / Unblock user: `MANAGE_USERS`
 - Assign Roles: `MANAGE_USERS`
+- Edit another user's email/phone: `EDIT_USER`
+  - Endpoint: `PATCH /api/v1/users/:id` with `{ email, phone? }`. Phone is optional on this admin path.
 
 ## Page: Job Categories
 - View categories/subcategories: authenticated user
@@ -121,3 +123,4 @@
 - `EMPLOYER_DASHBOARD` — Can access employer dashboard widgets
 - `JOB_SEEKER_DASHBOARD` — Can access job seeker dashboard widgets
 - `MANAGE_NOTIFICATIONS` — Can manage notification preferences
+- `EDIT_USER` — Can update another user's account email (and optional phone) via `PATCH /api/v1/users/:id`

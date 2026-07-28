@@ -10,6 +10,7 @@ import {
   getUserRoles,
   type Role,
   setUserRoles,
+  updateUserAccount,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
@@ -80,6 +81,7 @@ export function UsersPage() {
   const { hasPermission } = usePermissions();
   const canManageUsers = hasPermission("MANAGE_USERS");
   const canAddUser = hasPermission("ADD_USER");
+  const canEditUser = hasPermission("EDIT_USER") || canManageUsers;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -117,6 +119,11 @@ export function UsersPage() {
   const [allRoles, setAllRoles] = useState<{ id: string; name: string }[]>([]);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [rolesLoading, setRolesLoading] = useState(false);
+
+  // Edit user (email / phone)
+  const [editModalUser, setEditModalUser] = useState<AdminUser | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
 
   const load = useCallback(async (page = 1) => {
     if (!accessToken) return;
@@ -273,6 +280,53 @@ export function UsersPage() {
       await load(pagination.page);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to assign roles");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEditUser(user: AdminUser) {
+    if (!canEditUser) return;
+    clearMessages();
+    setEditModalUser(user);
+    setEditEmail(String(user.email ?? ""));
+    setEditPhone(String(user.phone ?? ""));
+  }
+
+  async function onConfirmEditUser() {
+    if (!accessToken || !editModalUser || !canEditUser) return;
+    const email = editEmail.trim();
+    if (!email) {
+      setError("Email is required");
+      return;
+    }
+    try {
+      clearMessages();
+      setSaving(true);
+      const phoneTrimmed = editPhone.trim();
+      const result: any = await updateUserAccount(accessToken, editModalUser.id, {
+        email,
+        // Only send phone if the operator edited it; sending an empty string clears it.
+        ...(phoneTrimmed !== String(editModalUser.phone ?? "").trim()
+          ? { phone: phoneTrimmed }
+          : {}),
+      });
+      const updatedEmail = String(result?.user?.email ?? email);
+      const updatedPhone = result?.user?.phone ?? (phoneTrimmed || null);
+      setSuccess("User account updated successfully");
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === editModalUser.id
+            ? { ...u, email: updatedEmail, phone: updatedPhone }
+            : u,
+        ),
+      );
+      if (openUserId === editModalUser.id && userDetail) {
+        setUserDetail({ ...userDetail, email: updatedEmail, phone: updatedPhone });
+      }
+      setEditModalUser(null);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Failed to update user");
     } finally {
       setSaving(false);
     }
@@ -601,6 +655,7 @@ export function UsersPage() {
                     saving={saving}
                     displayName={displayName(user)}
                     canManageUsers={canManageUsers}
+                    canEditUser={canEditUser}
                     onView={() => {
                       if (isOpen) { setOpenUserId(null); return; }
                       openDetail(user);
@@ -608,6 +663,7 @@ export function UsersPage() {
                     onBlock={() => startBlock(user)}
                     onAssignRoles={() => void startAssignRoles(user)}
                     onResendActivationLink={() => void onResendActivationLink(user)}
+                    onEditUser={() => startEditUser(user)}
                   >
                     {isOpen && (
                       <tr className="tableExpandRow">
@@ -694,6 +750,16 @@ export function UsersPage() {
                                   >
                                     Close
                                   </button>
+                                  {canEditUser && (
+                                    <button
+                                      className="btn btnPrimary btnSm stepperSaveBtn"
+                                      type="button"
+                                      onClick={() => startEditUser(userDetail)}
+                                      disabled={saving}
+                                    >
+                                      Edit Email
+                                    </button>
+                                  )}
                                   {canManageUsers && (
                                     <>
                                       <button
@@ -777,6 +843,41 @@ export function UsersPage() {
       </ConfirmModal>
 
       <ConfirmModal
+        open={Boolean(editModalUser)}
+        title="Edit User"
+        message={editModalUser ? `Update account details for ${editModalUser.first_name ?? ""} ${editModalUser.last_name ?? ""} (${editModalUser.email ?? ""})` : ""}
+        confirmLabel={saving ? "Saving…" : "Save Changes"}
+        busy={saving}
+        onCancel={() => setEditModalUser(null)}
+        onConfirm={() => void onConfirmEditUser()}
+      >
+        <div style={{ padding: "0 24px", marginBottom: 8, display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="fieldLabel">Email</span>
+            <input
+              className="input"
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              placeholder="user@example.com"
+              disabled={saving}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="fieldLabel">Phone (optional)</span>
+            <input
+              className="input"
+              type="tel"
+              value={editPhone}
+              onChange={(e) => setEditPhone(e.target.value)}
+              placeholder="+264 81 123 4567"
+              disabled={saving}
+            />
+          </label>
+        </div>
+      </ConfirmModal>
+
+      <ConfirmModal
         open={Boolean(rolesModalUser)}
         title="Assign Roles"
         message={rolesModalUser ? `Assign roles for ${rolesModalUser.email}` : ""}
@@ -824,22 +925,26 @@ function UserRow({
   open,
   saving,
   canManageUsers,
+  canEditUser,
   displayName,
   onView,
   onBlock,
   onAssignRoles,
   onResendActivationLink,
+  onEditUser,
   children,
 }: {
   user: AdminUser;
   open: boolean;
   saving: boolean;
   canManageUsers: boolean;
+  canEditUser: boolean;
   displayName: string;
   onView: () => void;
   onBlock: () => void;
   onAssignRoles: () => void;
   onResendActivationLink: () => void;
+  onEditUser: () => void;
   children: ReactNode;
 }) {
   const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString("en-GB") : "—";
@@ -862,6 +967,9 @@ function UserRow({
             label="Action"
             items={[
               { key: "view", label: open ? "Close" : "View Details", onClick: onView },
+              ...(canEditUser
+                ? [{ key: "edit-email", label: "Edit Email", onClick: onEditUser }]
+                : []),
               ...(canManageUsers
                 ? [{
                     key: isBlocked ? "unblock" : "block",
