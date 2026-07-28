@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import * as XLSX from "xlsx-js-style";
 import {
   getJobSeekerFullProfile,
   listUserDocuments,
@@ -466,12 +467,23 @@ export function JobApplicationsPage() {
   const { accessToken } = useAuth();
   const { jobId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission } = usePermissions();
+
+  const VALID_STAGES: readonly StageKey[] = ["longlisted", "shortlisted", "rejected", "interview", "assessment", "hired"];
+  const rawStageParam = (searchParams.get("stage") ?? "").toLowerCase();
+  const stageFilter: StageKey | null = (VALID_STAGES as readonly string[]).includes(rawStageParam)
+    ? (rawStageParam as StageKey)
+    : null;
+  const stageFilterLabel = stageFilter
+    ? (STATUS_ACTIONS.find((s) => s.key === stageFilter)?.label ?? stageFilter)
+    : "";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [jobTitle, setJobTitle] = useState("");
   const [applications, setApplications] = useState<JobApplication[]>([]);
@@ -549,6 +561,10 @@ export function JobApplicationsPage() {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [jobId]);
+
   const filteredApplications = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return applications;
@@ -592,18 +608,312 @@ export function JobApplicationsPage() {
   const statsCards = useMemo(() => {
     const total = applications.length;
     const unassigned = mainListApplications.length;
-    const cards = [
-      { label: "Total Applicants", value: total },
-      { label: "Unassigned", value: unassigned },
-      { label: "Longlisted", value: grouped.longlisted.length },
-      { label: "Shortlisted", value: grouped.shortlisted.length },
-      { label: "Interview", value: grouped.interview.length },
-      { label: "Assessment", value: grouped.assessment.length },
-      { label: "Hired", value: grouped.hired.length },
-      { label: "Rejected", value: grouped.rejected.length },
+    const cards: { label: string; value: number; stage: StageKey | "main" }[] = [
+      { label: "Total Applicants", value: total, stage: "main" },
+      { label: "Unassigned", value: unassigned, stage: "main" },
+      { label: "Longlisted", value: grouped.longlisted.length, stage: "longlisted" },
+      { label: "Shortlisted", value: grouped.shortlisted.length, stage: "shortlisted" },
+      { label: "Interview", value: grouped.interview.length, stage: "interview" },
+      { label: "Assessment", value: grouped.assessment.length, stage: "assessment" },
+      { label: "Hired", value: grouped.hired.length, stage: "hired" },
+      { label: "Rejected", value: grouped.rejected.length, stage: "rejected" },
     ];
     return cards;
   }, [applications.length, grouped, mainListApplications.length]);
+
+  function onStatsCardClick(stage: StageKey | "main") {
+    if (stage === "main") {
+      setSearchParams({});
+      requestAnimationFrame(() => {
+        const el = document.getElementById("applications-main-list");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+    setSearchParams({ stage });
+    setPage(1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function exportApplicantsToExcel(list: JobApplication[], exportLabel: string, fileKey: string) {
+    if (!accessToken) return;
+    if (!list || list.length === 0) {
+      setError("No candidates to export.");
+      return;
+    }
+    setExporting(true);
+    setError(null);
+    try {
+      const entries = await Promise.all(
+        list.map(async (app) => {
+          let profile: JobSeekerFullProfile | null | undefined = profileByAppId[app.id];
+          if (profile === undefined && app.applicant_id) {
+            try {
+              profile = await getJobSeekerFullProfile(accessToken, app.applicant_id);
+            } catch {
+              profile = null;
+            }
+          }
+          return { app, profile: profile ?? null };
+        }),
+      );
+
+      const rows = entries.map(({ app, profile }) => {
+        const personal = profile?.personalDetails ?? null;
+        const mainProfile = profile?.profile ?? null;
+        const experience = (profile?.experience ?? []) as Record<string, unknown>[];
+        const education = (profile?.education ?? []) as Record<string, unknown>[];
+        const currentExp = experience.find((e) => Boolean(e.is_current ?? e.isCurrent));
+        const pastExp = experience
+          .filter((e) => !(e.is_current ?? e.isCurrent))
+          .sort((a, b) => {
+            const da = new Date(String(a.end_date ?? a.endDate ?? "")).getTime();
+            const db = new Date(String(b.end_date ?? b.endDate ?? "")).getTime();
+            return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+          });
+
+        const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
+        const lastName = String(readValue(personal, "last_name", "lastName") ?? "").trim();
+        const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() ||
+          String(app.applicant_name ?? "").trim() || "—";
+
+        const qualificationLines = education
+          .map((e) => {
+            const q = String(e.qualification ?? "").trim();
+            const field = String(e.field_of_study ?? e.fieldOfStudy ?? "").trim();
+            const inst = String(e.institution_name ?? e.institutionName ?? "").trim();
+            if (!q && !field && !inst) return "";
+            const head = [q, field].filter(Boolean).join(" in ");
+            return inst ? `• ${head || "—"} — ${inst}` : `• ${head || "—"}`;
+          })
+          .filter(Boolean);
+        const qualificationsCell = qualificationLines.length > 0 ? qualificationLines.join("\n") : "—";
+
+        const formatDate = (raw: unknown) => {
+          const s = String(raw ?? "").trim();
+          if (!s) return "";
+          const iso = s.split("T")[0];
+          const [y] = iso.split("-");
+          return y || iso;
+        };
+        const durationLength = (startRaw: unknown, endRaw: unknown, isCurrent: boolean) => {
+          const start = new Date(String(startRaw ?? "").split("T")[0]);
+          const end = isCurrent ? new Date() : new Date(String(endRaw ?? "").split("T")[0]);
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+          let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+          if (end.getDate() < start.getDate()) months -= 1;
+          if (months < 0) return "";
+          const years = Math.floor(months / 12);
+          const rem = months % 12;
+          if (years === 0 && rem === 0) return "< 1 month";
+          const parts: string[] = [];
+          if (years > 0) parts.push(`${years} year${years === 1 ? "" : "s"}`);
+          if (rem > 0) parts.push(`${rem} month${rem === 1 ? "" : "s"}`);
+          return parts.join(" ");
+        };
+        const formatDuration = (exp: Record<string, unknown>) => {
+          const start = formatDate(exp.start_date ?? exp.startDate);
+          const isCurrent = Boolean(exp.is_current ?? exp.isCurrent);
+          const end = isCurrent ? "Present" : formatDate(exp.end_date ?? exp.endDate);
+          if (!start && !end) return "—";
+          if (!start) return end || "—";
+          if (!end) return start;
+          const length = durationLength(exp.start_date ?? exp.startDate, exp.end_date ?? exp.endDate, isCurrent);
+          return length ? `${start} → ${end} (${length})` : `${start} → ${end}`;
+        };
+
+        const pastRows = pastExp.map((e) => ({
+          employer: String(e.company_name ?? e.companyName ?? e.company ?? "").trim(),
+          position: String(e.job_title ?? e.jobTitle ?? e.position ?? "").trim(),
+          duration: formatDuration(e),
+        }));
+
+        const previousEmployerCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.employer || "—"}`).join("\n")
+          : "—";
+        const positionCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.position || "—"}`).join("\n")
+          : "—";
+        const durationCell = pastRows.length > 0
+          ? pastRows.map((r) => `• ${r.duration || "—"}`).join("\n")
+          : "—";
+
+        const statusLabel =
+          STATUS_ACTIONS.find((s) => s.key === detectStage(app, stageOverrides))?.label ??
+          detectStage(app, stageOverrides);
+
+        return {
+          Name: fullName,
+          Status: statusLabel,
+          "Expected Salary":
+            app.expected_salary != null
+              ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}`
+              : "—",
+          Nationality: String(readValue(personal, "nationality") ?? "—") || "—",
+          Qualification: qualificationsCell,
+          "Years of Experience":
+            String(readValue(mainProfile, "years_experience", "yearsExperience") ?? "—") || "—",
+          "Current Employer":
+            String(currentExp?.company_name ?? currentExp?.companyName ?? currentExp?.company ?? "—") || "—",
+          "Previous Employer": previousEmployerCell,
+          "Position Held": positionCell,
+          Duration: durationCell,
+        };
+      });
+
+      const stageLabel = exportLabel;
+      const stamp = new Date().toISOString().split("T")[0];
+      const safeJob = (jobTitle || "job").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "job";
+
+      const headers = [
+        "Name",
+        "Status",
+        "Expected Salary",
+        "Nationality",
+        "Qualification",
+        "Years of Experience",
+        "Current Employer",
+        "Previous Employer",
+        "Position Held",
+        "Duration",
+      ];
+
+      const description =
+        `This spreadsheet provides a high-level overview of ${stageLabel.toLowerCase()} ` +
+        `candidates for the role "${jobTitle || "—"}". Use it for quick review and ` +
+        `side-by-side comparison of candidate background, qualifications and work history.`;
+
+      const aoa: (string | number)[][] = [
+        [`${stageLabel} Spreadsheet Summary`],
+        [],
+        ["Job Title", jobTitle || "—"],
+        ["Stage", stageLabel],
+        ["Total Candidates", rows.length],
+        ["Exported", new Date().toLocaleString("en-GB")],
+        [],
+        [description],
+        [],
+        headers,
+        ...rows.map((r) => headers.map((h) => (r as Record<string, string | number>)[h] ?? "")),
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      // Column widths
+      ws["!cols"] = [
+        { wch: 28 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 40 },
+        { wch: 20 },
+        { wch: 28 },
+        { wch: 40 },
+        { wch: 32 },
+        { wch: 28 },
+      ];
+
+      // Merges: title row + description row span all 6 columns
+      ws["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        { s: { r: 7, c: 0 }, e: { r: 7, c: headers.length - 1 } },
+      ];
+
+      // Row heights for title + description
+      ws["!rows"] = [{ hpt: 32 }, {}, {}, {}, {}, {}, {}, { hpt: 36 }];
+
+      // Styles
+      const titleStyle = {
+        font: { name: "Calibri", sz: 18, bold: true, color: { rgb: "FFFFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FF1F2937" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+      const labelStyle = {
+        font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FF374151" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FFF3F4F6" } },
+        alignment: { vertical: "center" },
+      };
+      const valueStyle = {
+        font: { name: "Calibri", sz: 11, color: { rgb: "FF111827" } },
+        alignment: { vertical: "center" },
+      };
+      const descriptionStyle = {
+        font: { name: "Calibri", sz: 11, italic: true, color: { rgb: "FF4B5563" } },
+        alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      };
+      const headerStyle = {
+        font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FFFFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "FF2563EB" } },
+        alignment: { horizontal: "left", vertical: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "FF1E40AF" } },
+          bottom: { style: "thin", color: { rgb: "FF1E40AF" } },
+          left: { style: "thin", color: { rgb: "FF1E40AF" } },
+          right: { style: "thin", color: { rgb: "FF1E40AF" } },
+        },
+      };
+      const dataCellStyle = {
+        font: { name: "Calibri", sz: 11, color: { rgb: "FF111827" } },
+        alignment: { vertical: "top", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          bottom: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          left: { style: "thin", color: { rgb: "FFE5E7EB" } },
+          right: { style: "thin", color: { rgb: "FFE5E7EB" } },
+        },
+      };
+      const altDataCellStyle = {
+        ...dataCellStyle,
+        fill: { patternType: "solid", fgColor: { rgb: "FFF9FAFB" } },
+      };
+
+      function setCellStyle(addr: string, style: Record<string, unknown>) {
+        const cell = ws[addr];
+        if (!cell) return;
+        (cell as { s?: unknown }).s = style;
+      }
+
+      // Title row
+      setCellStyle("A1", titleStyle);
+      // Summary block: labels col A, values col B (rows 3-6, 1-indexed → indices 2-5)
+      for (let r = 2; r <= 5; r++) {
+        setCellStyle(XLSX.utils.encode_cell({ r, c: 0 }), labelStyle);
+        setCellStyle(XLSX.utils.encode_cell({ r, c: 1 }), valueStyle);
+      }
+      // Description row (row 8, index 7)
+      setCellStyle("A8", descriptionStyle);
+      // Header row (row 10, index 9)
+      for (let c = 0; c < headers.length; c++) {
+        setCellStyle(XLSX.utils.encode_cell({ r: 9, c }), headerStyle);
+      }
+      // Data rows start at index 10, up to 10 + rows.length - 1
+      for (let i = 0; i < rows.length; i++) {
+        const rIdx = 10 + i;
+        const style = i % 2 === 0 ? dataCellStyle : altDataCellStyle;
+        for (let c = 0; c < headers.length; c++) {
+          setCellStyle(XLSX.utils.encode_cell({ r: rIdx, c }), style);
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      const sheetName = `${stageLabel} Candidates`.slice(0, 31);
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+      XLSX.writeFile(workbook, `${safeJob}-${fileKey}-candidates-${stamp}.xlsx`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function onExportStageToExcel(stage: StageKey) {
+    const stageLabel = STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage;
+    await exportApplicantsToExcel(grouped[stage], stageLabel, stage);
+  }
+
+  async function onExportAllToExcel() {
+    await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
+  }
 
   const pagination = useMemo(() => {
     const total = mainListApplications.length;
@@ -777,6 +1087,12 @@ export function JobApplicationsPage() {
     const nextOpen = openProfileId === app.id ? null : app.id;
     setOpenProfileId(nextOpen);
     setExternalDocPreviewByAppId((prev) => ({ ...prev, [app.id]: null }));
+    if (nextOpen) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`application-card-${nextOpen}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
     if (!nextOpen || !accessToken) return;
     const hasProfile = profileByAppId[app.id] !== undefined;
     const hasDocs = Object.prototype.hasOwnProperty.call(documentsByAppId, app.id);
@@ -889,10 +1205,16 @@ export function JobApplicationsPage() {
     const documentsState = documentsByAppId[app.id];
     const resumesState = resumesByAppId[app.id];
     const personal = profile?.personalDetails ?? null;
+    const mainProfile = profile?.profile ?? null;
+    const addresses = Array.isArray(profile?.addresses) ? profile.addresses : [];
+    const education = Array.isArray(profile?.education) ? profile.education : [];
+    const experience = Array.isArray(profile?.experience) ? profile.experience : [];
+    const references = Array.isArray(profile?.references) ? profile.references : [];
     const docs = profileDocuments(app);
 
     const firstName = String(readValue(personal, "first_name", "firstName") ?? "").trim();
     const lastName = String(readValue(personal, "last_name", "lastName") ?? "").trim();
+    const middleName = String(readValue(personal, "middle_name", "middleName") ?? "").trim();
     const computedFullName = `${firstName} ${lastName}`.trim();
     const resolvedFullName =
       computedFullName ||
@@ -902,88 +1224,176 @@ export function JobApplicationsPage() {
       "—";
 
     return (
-      <div className="dropPanel">
-        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Job Seeker Profile</h3>
+      <div className="dropPanel candidateProfilePanel">
+        <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
           <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
         ) : profile === null ? (
           <p className="pageText">Profile details are not available for this applicant.</p>
         ) : (
           <>
-            <Section title="Personal Details">
-              <ReadField label="Full Name" value={resolvedFullName} />
-              <ReadField label="Email" value={app.applicant_email} />
-              <ReadField label="Phone" value={app.applicant_phone} />
-              <ReadField label="Gender" value={readValue(personal, "gender")} />
-              <ReadField label="Nationality" value={readValue(personal, "nationality")} />
-            </Section>
+            <div style={{ marginTop: 10 }}>
+              <div className="profileSectionHeading">Personal Details</div>
+              <div className="profileReadGrid" style={{ marginTop: 6 }}>
+                <ReadField label="Full Name" value={resolvedFullName} />
+                <ReadField label="First Name" value={firstName || "—"} />
+                <ReadField label="Last Name" value={lastName || "—"} />
+                {middleName ? <ReadField label="Middle Name" value={middleName} /> : null}
+                <ReadField label="Email" value={app.applicant_email} />
+                <ReadField label="Phone" value={app.applicant_phone} />
+                <ReadField label="Gender" value={readValue(personal, "gender")} />
+                <ReadField label="Date of Birth" value={String(readValue(personal, "date_of_birth", "dateOfBirth") ?? "—").split("T")[0] || "—"} />
+                <ReadField label="Nationality" value={readValue(personal, "nationality")} />
+                <ReadField label="Marital Status" value={readValue(personal, "marital_status", "maritalStatus")} />
+                <ReadField label="ID Type" value={readValue(personal, "id_type", "idType")} />
+                <ReadField label="ID Number" value={readValue(personal, "id_number", "idNumber")} />
+                <ReadField label="Disability Status" value={readValue(personal, "disability_status", "disabilityStatus") ? "Yes" : "No"} />
+              </div>
+            </div>
 
-            <Section title="Address">
-              {(profile.addresses ?? []).length === 0 ? (
-                <p className="pageText">No address records.</p>
-              ) : (
-                (profile.addresses ?? []).map((address, idx) => (
-                  <div key={`${app.id}-addr-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    {[
-                      readValue(address, "address_line1", "addressLine1"),
-                      readValue(address, "address_line2", "addressLine2"),
-                      readValue(address, "city"),
-                      readValue(address, "state"),
-                      readValue(address, "country"),
-                    ]
-                      .filter(Boolean)
-                      .map(String)
-                      .join(", ") || "—"}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Professional Summary</div>
+              <div style={{ marginTop: 6 }}>
+                <div className="readValue" style={{ whiteSpace: "pre-wrap" }}>
+                  {String(readValue(mainProfile, "professional_summary", "professionalSummary") ?? "—")}
+                </div>
+                <div className="profileReadGrid" style={{ marginTop: 8 }}>
+                  <ReadField
+                    label="Field of Expertise"
+                    value={readValue(mainProfile, "field_of_expertise", "fieldOfExpertise")}
+                  />
+                  <ReadField
+                    label="Qualification Level"
+                    value={readValue(mainProfile, "qualification_level", "qualificationLevel")}
+                  />
+                  <ReadField
+                    label="Years Experience"
+                    value={readValue(mainProfile, "years_experience", "yearsExperience")}
+                  />
+                </div>
+              </div>
+            </div>
 
-            <Section title="Education">
-              {(profile.education ?? []).length === 0 ? (
-                <p className="pageText">No education records.</p>
-              ) : (
-                (profile.education ?? []).map((edu, idx) => (
-                  <div key={`${app.id}-edu-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    <strong>{String(readValue(edu, "qualification") ?? "Qualification")}</strong>
-                    {" - "}
-                    {String(readValue(edu, "institution_name", "institutionName") ?? "Institution")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Address</div>
+              <div style={{ marginTop: 6 }}>
+                {addresses.length === 0 ? (
+                  <p className="pageText">No address records.</p>
+                ) : (
+                  addresses.map((address, idx) => {
+                    const isPrimary = Boolean(readValue(address, "is_primary", "isPrimary"));
+                    const line1 = String(readValue(address, "address_line1", "addressLine1") ?? "");
+                    const line2 = String(readValue(address, "address_line2", "addressLine2") ?? "");
+                    const city = String(readValue(address, "city") ?? "");
+                    const state = String(readValue(address, "state") ?? "");
+                    const country = String(readValue(address, "country") ?? "");
+                    const postal = String(readValue(address, "postal_code", "postalCode") ?? "");
+                    return (
+                      <div key={`${app.id}-addr-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < addresses.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        {isPrimary ? <span className="chipBadge" style={{ marginBottom: 6, display: "inline-block" }}>Primary</span> : null}
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          {line1 ? <ReadField label="Address Line 1" value={line1} /> : null}
+                          {line2 ? <ReadField label="Address Line 2" value={line2} /> : null}
+                          {city ? <ReadField label="City" value={city} /> : null}
+                          {state ? <ReadField label="Region / State" value={state} /> : null}
+                          {country ? <ReadField label="Country" value={country} /> : null}
+                          {postal ? <ReadField label="Postal Code" value={postal} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="Experience">
-              {(profile.experience ?? []).length === 0 ? (
-                <p className="pageText">No experience records.</p>
-              ) : (
-                (profile.experience ?? []).map((exp, idx) => (
-                  <div key={`${app.id}-exp-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    <strong>{String(readValue(exp, "job_title", "jobTitle") ?? "Role")}</strong>
-                    {" at "}
-                    {String(readValue(exp, "company_name", "companyName") ?? "Company")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Education</div>
+              <div style={{ marginTop: 6 }}>
+                {education.length === 0 ? (
+                  <p className="pageText">No education records.</p>
+                ) : (
+                  education.map((edu, idx) => {
+                    const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
+                    const qualification = String(readValue(edu, "qualification") ?? "");
+                    const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
+                    const grade = String(readValue(edu, "grade") ?? "");
+                    const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(edu, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(edu, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    return (
+                      <div key={`${app.id}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Institution" value={institution} />
+                          <ReadField label="Qualification" value={qualification} />
+                          {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
+                          {grade ? <ReadField label="Grade" value={grade} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="References">
-              {(profile.references ?? []).length === 0 ? (
-                <p className="pageText">No references listed.</p>
-              ) : (
-                (profile.references ?? []).map((ref, idx) => (
-                  <div key={`${app.id}-ref-${idx}`} className="readValue" style={{ marginBottom: 6 }}>
-                    {String(readValue(ref, "full_name", "fullName") ?? "Reference")} - {String(readValue(ref, "relationship") ?? "—")}
-                  </div>
-                ))
-              )}
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">Experience</div>
+              <div style={{ marginTop: 6 }}>
+                {experience.length === 0 ? (
+                  <p className="pageText">No experience records.</p>
+                ) : (
+                  experience.map((exp, idx) => {
+                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "—");
+                    const companyName = String(readValue(exp, "company_name", "companyName", "company") ?? "—");
+                    const employmentType = String(readValue(exp, "employment_type", "employmentType") ?? "");
+                    const isCurrent = Boolean(readValue(exp, "is_current", "isCurrent"));
+                    const startRaw = String(readValue(exp, "start_date", "startDate") ?? "");
+                    const endRaw = String(readValue(exp, "end_date", "endDate") ?? "");
+                    const start = startRaw ? startRaw.split("T")[0] : "";
+                    const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
+                    return (
+                      <div key={`${app.id}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Job Title" value={jobTitle} />
+                          <ReadField label="Company" value={companyName} />
+                          {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                          {start ? <ReadField label="Start Date" value={start} /> : null}
+                          {end ? <ReadField label="End Date" value={end} /> : null}
+                          {responsibilities ? (
+                            <div className="readFieldFull">
+                              <span className="readLabel">Responsibilities</span>
+                              <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-            <Section title="Professional Summary">
-              <p className="readValue" style={{ whiteSpace: "pre-wrap" }}>
-                {String(readValue(profile.profile, "professional_summary", "professionalSummary") ?? "—")}
-              </p>
-            </Section>
+            <div style={{ marginTop: 12 }}>
+              <div className="profileSectionHeading">References</div>
+              <div style={{ marginTop: 6 }}>
+                {references.length === 0 ? (
+                  <p className="pageText">No references listed.</p>
+                ) : (
+                  references.map((ref, idx) => (
+                    <div key={`${app.id}-ref-${idx}`} className="profileReadGrid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                      <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
+                      <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                      <ReadField label="Email" value={readValue(ref, "email")} />
+                      <ReadField label="Phone" value={readValue(ref, "phone")} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
             <Section title="Documents">
               {documentsState === undefined || resumesState === undefined ? (
@@ -1092,8 +1502,22 @@ export function JobApplicationsPage() {
   return (
     <div className="page">
       <div className="companiesHeader" style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <h1 className="pageTitle">Applications {jobTitle ? `- ${jobTitle}` : ""}</h1>
-        <button type="button" className="btn btnGhost btnSm" onClick={() => navigate("/app/jobs")}>Back to Jobs</button>
+        <h1 className="pageTitle">
+          Applications {jobTitle ? `- ${jobTitle}` : ""}
+          {stageFilter ? ` — ${stageFilterLabel}` : ""}
+        </h1>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {stageFilter ? (
+            <button
+              type="button"
+              className="btn btnGhost btnSm"
+              onClick={() => setSearchParams({})}
+            >
+              {"<-"} Back to All Applications
+            </button>
+          ) : null}
+          <button type="button" className="btn btnGhost btnSm" onClick={() => navigate("/app/jobs")}>Back to Jobs</button>
+        </div>
       </div>
 
       {error && <div className="errorBox">{error}</div>}
@@ -1103,14 +1527,22 @@ export function JobApplicationsPage() {
         {statsCards.map((c, idx) => {
           const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
           return (
-            <div key={c.label} className={`dashCard statsCard ${toneClass}`}>
+            <button
+              key={c.label}
+              type="button"
+              className={`dashCard statsCard statsCardBtn ${toneClass}`}
+              onClick={() => onStatsCardClick(c.stage)}
+              aria-label={`${c.label}: ${c.value}. Click to view list.`}
+            >
               <div className="readLabel">{c.label}</div>
               <div className="statsCardValue">{c.value}</div>
-            </div>
+            </button>
           );
         })}
       </div>
 
+      {!stageFilter && (
+      <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 260, flex: "1 1 340px" }}>
           <label className="fieldLabel">Search</label>
@@ -1168,10 +1600,22 @@ export function JobApplicationsPage() {
         </div>
       </div>
 
-      <div className="dashCardHeader" style={{ marginBottom: 10 }}>
+      <div
+        id="applications-main-list"
+        className="dashCardHeader"
+        style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+      >
         <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
           All Applicants
         </h2>
+        <button
+          type="button"
+          className="btn btnGhost btnSm"
+          onClick={() => void onExportAllToExcel()}
+          disabled={exporting || filteredApplications.length === 0}
+        >
+          {exporting ? "Exporting..." : "Export to Excel"}
+        </button>
       </div>
 
       <div className="jobCardsGrid" role="region" aria-label="Job applicants list">
@@ -1190,7 +1634,7 @@ export function JobApplicationsPage() {
             const current = detectStage(app, stageOverrides);
             const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
             return (
-              <article key={app.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+              <article key={app.id} id={`application-card-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                 <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                   <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{app.applicant_name ?? "—"}</h2>
                 </div>
@@ -1203,6 +1647,10 @@ export function JobApplicationsPage() {
                     value={app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}
                   />
                   <ReadField label="Current Status" value={current} />
+                  <ReadField
+                    label="Expected Salary"
+                    value={app.expected_salary != null ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}` : "—"}
+                  />
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
@@ -1286,9 +1734,13 @@ export function JobApplicationsPage() {
           Next {"->"}
         </button>
       </div>
+      </>
+      )}
 
-      {(Object.keys(grouped) as StageKey[]).map((stage) => (
-        <section key={stage} style={{ marginTop: 18 }}>
+      {(Object.keys(grouped) as StageKey[])
+        .filter((stage) => !stageFilter || stage === stageFilter)
+        .map((stage) => (
+        <section key={stage} id={`applications-stage-${stage}`} style={{ marginTop: 18 }}>
           <div
             className="dashCardHeader"
             style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
@@ -1296,14 +1748,24 @@ export function JobApplicationsPage() {
             <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
               {(STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage)} Applicants
             </h2>
-            <button
-              type="button"
-              className="btn btnPrimary btnSm"
-              style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
-              onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
-            >
-              {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btnPrimary btnSm"
+                style={{ background: "var(--menu-icon-active)", borderColor: "var(--menu-icon-active)" }}
+                onClick={() => setOpenGroups((prev) => ({ ...prev, [stage]: !prev[stage] }))}
+              >
+                {openGroups[stage] ? "Hide" : "Show"} {STATUS_ACTIONS.find((s) => s.key === stage)?.label ?? stage} ({grouped[stage].length})
+              </button>
+              <button
+                type="button"
+                className="btn btnGhost btnSm"
+                onClick={() => void onExportStageToExcel(stage)}
+                disabled={exporting || grouped[stage].length === 0}
+              >
+                {exporting ? "Exporting..." : "Export to Excel"}
+              </button>
+            </div>
           </div>
 
           {openGroups[stage] ? (
@@ -1317,7 +1779,7 @@ export function JobApplicationsPage() {
                   const current = detectStage(app, stageOverrides);
                   const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
                   return (
-                    <article key={`${stage}-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                    <article key={`${stage}-${app.id}`} id={`application-card-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                       <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                         <h3 className="dashCardTitle" style={{ fontSize: 15 }}>{app.applicant_name ?? "—"}</h3>
                       </div>
@@ -1329,6 +1791,10 @@ export function JobApplicationsPage() {
                           value={app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}
                         />
                         <ReadField label="Current Status" value={current} />
+                        <ReadField
+                          label="Expected Salary"
+                          value={app.expected_salary != null ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}` : "—"}
+                        />
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>

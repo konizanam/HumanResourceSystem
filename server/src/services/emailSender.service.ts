@@ -425,6 +425,40 @@ export function appName(): string {
   return v && v.trim() ? v.trim() : "";
 }
 
+/**
+ * Send the generic auto-rejection email to an applicant who failed screening.
+ * Uses the branded HTML wrapper so it matches other system emails.
+ */
+export async function sendApplicationAutoRejectionEmail(params: {
+  to: string;
+  applicantName: string;
+  jobTitle: string;
+  companyName?: string;
+}): Promise<void> {
+  const subject = `Update on your application for ${params.jobTitle}`;
+  const lines = [
+    `Dear ${params.applicantName || 'Applicant'},`,
+    '',
+    `Thank you for applying for the position of "${params.jobTitle}"${params.companyName ? ` at ${params.companyName}` : ''}.`,
+    '',
+    'Unfortunately, based on your responses to the screening questions, you did not meet the minimum screening criteria for this vacancy, and your application has not progressed further.',
+    '',
+    'We appreciate the time and effort you put into your application and wish you the very best in your future career search.',
+    '',
+    'Kind regards,',
+    'Recruitment Team',
+  ];
+  const bodyText = lines.join('\n');
+  const contentHtml = textToHtmlContent(bodyText);
+  const html = await wrapBrandedEmailHtml({
+    title: 'Application Update',
+    preheader: subject,
+    contentHtml,
+    accent: 'warning',
+  });
+  await sendEmail({ to: params.to, subject, html, text: bodyText });
+}
+
 function isProductionEnv(): boolean {
   return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
 }

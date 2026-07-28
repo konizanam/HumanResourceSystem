@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../middleware/auth"; // Use your existing auth middleware
+import { authenticate, authorizePermission } from "../middleware/auth"; // Use your existing auth middleware
 import { query } from "../config/database";
 import { ForbiddenError } from "../utils/errors";
 
@@ -167,6 +167,107 @@ meRouter.patch("/me", authenticate, async (req, res, next) => {
     return next(err);
   }
 });
+
+// PATCH /api/v1/users/:id - Update another user's email (and optionally phone).
+// Requires EDIT_USER permission. Phone is optional on this admin path so HR/admin
+// can correct only an email without supplying the phone number.
+meRouter.patch(
+  "/:id",
+  authenticate,
+  authorizePermission("EDIT_USER"),
+  async (req, res, next) => {
+    try {
+      const targetUserId = String(req.params?.id ?? "").trim();
+      if (!targetUserId) {
+        return res.status(400).json({ error: { message: "User id is required" } });
+      }
+
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+      if (!email) {
+        return res.status(400).json({ error: { message: "Email is required" } });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: { message: "Invalid email format" } });
+      }
+
+      const phoneRaw = req.body?.phone;
+      const phoneProvided = phoneRaw !== undefined && phoneRaw !== null;
+      let phone: string | null = null;
+      if (phoneProvided) {
+        phone = String(phoneRaw ?? "").trim();
+        if (phone.length > 0) {
+          if (!/^\+?[\d\s]+$/.test(phone)) {
+            return res.status(400).json({ error: { message: "Invalid phone format" } });
+          }
+          const phoneDigits = phone.replace(/\D/g, "");
+          if (phoneDigits.length > 15) {
+            return res.status(400).json({ error: { message: "Phone number must not exceed 15 digits" } });
+          }
+          if (phoneDigits.length < 6) {
+            return res.status(400).json({ error: { message: "Phone number appears too short" } });
+          }
+        } else {
+          phone = null;
+        }
+      }
+
+      const existing = await query(
+        `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1`,
+        [email, targetUserId],
+      );
+      if ((existing.rows?.length ?? 0) > 0) {
+        return res.status(409).json({ error: { message: "Email already in use" } });
+      }
+
+      const result = phoneProvided
+        ? await query(
+            `UPDATE users
+                SET email = $1,
+                    phone = $2,
+                    updated_at = NOW()
+              WHERE id = $3
+            RETURNING id, first_name, last_name, email, phone, is_active, created_at,
+                      (profile_picture_data IS NOT NULL) as has_profile_picture,
+                      profile_picture_updated_at`,
+            [email, phone, targetUserId],
+          )
+        : await query(
+            `UPDATE users
+                SET email = $1,
+                    updated_at = NOW()
+              WHERE id = $2
+            RETURNING id, first_name, last_name, email, phone, is_active, created_at,
+                      (profile_picture_data IS NOT NULL) as has_profile_picture,
+                      profile_picture_updated_at`,
+            [email, targetUserId],
+          );
+
+      const user = result.rows[0];
+      if (!user) {
+        return res.status(404).json({ error: { message: "User not found" } });
+      }
+
+      return res.json({
+        user: {
+          id: user.id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          email: user.email,
+          phone: user.phone,
+          is_active: user.is_active,
+          created_at: user.created_at,
+          has_profile_picture: Boolean(user.has_profile_picture),
+          profile_picture_url: user.has_profile_picture ? '/api/v1/profile/picture' : null,
+          profile_picture_updated_at: user.profile_picture_updated_at ?? null,
+        },
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 meRouter.get("/search", authenticate, async (req, res, next) => {
   try {

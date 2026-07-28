@@ -218,13 +218,23 @@ async function readSettings(): Promise<SystemSettings> {
   }
 }
 
+// Serialize writes so two concurrent updateSystemSettings calls can't race.
+let writeChain: Promise<void> = Promise.resolve();
+
 async function writeSettings(settings: SystemSettings): Promise<void> {
+  const next = writeChain.then(() => writeSettingsUnsafe(settings));
+  writeChain = next.catch(() => undefined);
+  return next;
+}
+
+async function writeSettingsUnsafe(settings: SystemSettings): Promise<void> {
   const filePath = settingsFilePath();
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
-  const tmp = `${filePath}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(settings, null, 2), "utf8");
-  await fs.rename(tmp, filePath);
+  const body = JSON.stringify(settings, null, 2);
+  // Direct overwrite — simpler and avoids Windows rename edge cases
+  // (AV, parent-dir watchers, tsx-watch file-holds all break tmp→rename).
+  await fs.writeFile(filePath, body, "utf8");
 }
 
 export async function getCompanyApprovalMode(): Promise<CompanyApprovalMode> {

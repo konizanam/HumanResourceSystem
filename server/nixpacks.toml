@@ -1,0 +1,13 @@
+# Force npm to install devDependencies during the Nixpacks build phase so
+# build-only tools (typescript / tsc, @types/*, ts-node) are available to
+# `npm run build`. Railway sets NODE_ENV=production by default, which causes
+# `npm ci` to skip devDependencies and the build then fails with either
+# "tsc: not found" or "Cannot find module 'express'" type errors.
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
+
+# Explicit override of the install phase so devDependencies are always
+# installed for the build, even if the variables above are ignored by the
+# platform.
+[phases.install]
+cmds = ["npm ci --include=dev"]

@@ -18,17 +18,29 @@ export interface DocumentData {
   uploaded_by: string;
 }
 
+// Every column on `documents` EXCEPT the file_data BYTEA blob. SELECT d.*
+// would otherwise drag the full file contents into every metadata read,
+// which made profile loads take minutes when several PDFs were attached.
+const DOCUMENT_METADATA_COLUMNS = `
+  d.id, d.user_id, d.company_id, d.file_name, d.original_name, d.file_size,
+  d.mime_type, d.file_path, d.file_url, d.document_type, d.category,
+  d.description, d.is_public, d.uploaded_by, d.created_at, d.updated_at
+`;
+
 export class DocumentService {
   
-  // Save document metadata to database
+  // Save document metadata to database. RETURNING projects metadata only so
+  // the upload response doesn't echo back the bytes the client just sent.
   async saveDocumentMetadata(data: DocumentData) {
     const result = await query(
       `INSERT INTO documents (
-        user_id, company_id, file_name, original_name, file_size, 
-        mime_type, file_path, file_url, file_data, document_type, category, 
+        user_id, company_id, file_name, original_name, file_size,
+        mime_type, file_path, file_url, file_data, document_type, category,
         description, is_public, uploaded_by
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING *`,
+      RETURNING id, user_id, company_id, file_name, original_name, file_size,
+        mime_type, file_path, file_url, document_type, category, description,
+        is_public, uploaded_by, created_at, updated_at`,
       [
         data.user_id || null,
         data.company_id || null,
@@ -46,14 +58,14 @@ export class DocumentService {
         data.uploaded_by
       ]
     );
-    
+
     return result.rows[0];
   }
 
-  // Get document by ID
+  // Get document metadata by ID (no file_data — use getDocumentForDownload for that).
   async getDocumentById(documentId: string, userId?: string) {
     const result = await query(
-      `SELECT d.*, 
+      `SELECT ${DOCUMENT_METADATA_COLUMNS},
         u.first_name || ' ' || u.last_name as uploaded_by_name
        FROM documents d
        LEFT JOIN users u ON d.uploaded_by = u.id
@@ -86,10 +98,44 @@ export class DocumentService {
     return document;
   }
 
+  // Fetch a single document INCLUDING file_data, for the download endpoint.
+  // Kept separate from getDocumentById so listing/metadata calls never pull
+  // the BYTEA blob.
+  async getDocumentForDownload(documentId: string, userId?: string) {
+    const result = await query(
+      `SELECT ${DOCUMENT_METADATA_COLUMNS}, d.file_data
+       FROM documents d
+       WHERE d.id = $1`,
+      [documentId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundError('Document not found');
+    }
+
+    const document = result.rows[0];
+
+    if (userId && !document.is_public) {
+      if (document.user_id !== userId && document.company_id) {
+        const companyAccess = await query(
+          'SELECT 1 FROM company_users WHERE company_id = $1 AND user_id = $2',
+          [document.company_id, userId]
+        );
+        if (companyAccess.rows.length === 0) {
+          throw new ForbiddenError('You do not have access to this document');
+        }
+      } else if (document.user_id !== userId) {
+        throw new ForbiddenError('You do not have access to this document');
+      }
+    }
+
+    return document;
+  }
+
   // Get user documents
   async getUserDocuments(userId: string, documentType?: string) {
     let sql = `
-      SELECT d.*, 
+      SELECT ${DOCUMENT_METADATA_COLUMNS},
         jsd.document_type as association_type,
         jsd.is_primary
       FROM documents d
@@ -112,7 +158,7 @@ export class DocumentService {
   // Get company documents
   async getCompanyDocuments(companyId: string, documentType?: string) {
     let sql = `
-      SELECT d.*, 
+      SELECT ${DOCUMENT_METADATA_COLUMNS},
         cd.document_type as association_type,
         cd.is_primary
       FROM documents d

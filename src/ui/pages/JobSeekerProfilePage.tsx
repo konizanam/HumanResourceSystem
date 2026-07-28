@@ -1211,6 +1211,20 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [directoryCanManageUsers, setDirectoryCanManageUsers] = useState(false);
 
   const [openDirectoryProfileId, setOpenDirectoryProfileId] = useState<string | null>(null);
+  const [pendingDirectoryScrollId, setPendingDirectoryScrollId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingDirectoryScrollId) return;
+    const targetId = pendingDirectoryScrollId;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`js-profile-card-${targetId}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    setPendingDirectoryScrollId(null);
+    return () => cancelAnimationFrame(raf1);
+  }, [pendingDirectoryScrollId]);
   const [directoryProfileByUserId, setDirectoryProfileByUserId] = useState<
     Record<string, JobSeekerFullProfile | null | undefined>
   >({});
@@ -1243,6 +1257,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
   const [success, setSuccess] = useState<string | null>(null);
   const [pendingJob, setPendingJob] = useState<JobListItem | null>(null);
   const [applyingPending, setApplyingPending] = useState(false);
+  const [expectedSalary, setExpectedSalary] = useState("");
   const [downloadingSelfProfile, setDownloadingSelfProfile] = useState(false);
   const [downloadingDirectoryProfileId, setDownloadingDirectoryProfileId] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -1389,9 +1404,18 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     }
   }, [accessToken, forcedMode]);
 
+  // Load once per mode. `load` identity also changes when the access token is
+  // silently refreshed (AuthContext), and reloading then would unmount the
+  // edit forms mid-typing and wipe unsaved input — so only reload when the
+  // mode actually changes; saves still trigger explicit reload() calls.
+  const loadedForModeRef = useRef<string | null>(null);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!accessToken) return;
+    const modeKey = String(forcedMode ?? "auto");
+    if (loadedForModeRef.current === modeKey) return;
+    loadedForModeRef.current = modeKey;
+    void load();
+  }, [accessToken, forcedMode, load]);
 
   useEffect(() => {
     const state = (location as any)?.state as { pendingJob?: JobListItem } | undefined;
@@ -1406,21 +1430,29 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     if (!accessToken || !pendingJob) return;
     const jobId = String(pendingJob.id ?? "").trim();
     if (!jobId) return;
+    if (pendingJob.expected_salary_required && !expectedSalary.trim()) {
+      setError("Expected salary is required for this job.");
+      return;
+    }
 
     try {
       setApplyingPending(true);
       setError(null);
       setSuccess(null);
 
-      await applyToJob(accessToken, { job_id: jobId });
+      await applyToJob(accessToken, {
+        job_id: jobId,
+        expected_salary: expectedSalary.trim() ? Number(expectedSalary) : null,
+      });
       setSuccess(`Application submitted for "${pendingJob.title}".`);
       setPendingJob(null);
+      setExpectedSalary("");
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to apply for job");
     } finally {
       setApplyingPending(false);
     }
-  }, [accessToken, pendingJob]);
+  }, [accessToken, pendingJob, expectedSalary]);
 
   const pendingJobCompanyName = useMemo(() => {
     if (!pendingJob) return "—";
@@ -1764,6 +1796,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const nextOpen = openDirectoryProfileId === id ? null : id;
     setOpenDirectoryProfileId(nextOpen);
     setDirectoryDocPreviewByUserId((prev) => ({ ...prev, [id]: null }));
+    // Scroll after React commits: two rAF passes so the filter re-render
+    // has resolved the card's final DOM position before we scroll to it.
+    setPendingDirectoryScrollId(id);
     if (!nextOpen || !accessToken) return;
 
     const hasProfile = Object.prototype.hasOwnProperty.call(directoryProfileByUserId, id);
@@ -1931,7 +1966,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
     const resolvedFullName = computedFullName || String(seeker.email ?? "—").trim() || "—";
 
     return (
-      <div className="dropPanel">
+      <div className="dropPanel candidateProfilePanel">
         <h3 className="editFormTitle" style={{ marginBottom: 8 }}>Candidate Full Profile</h3>
         {profile === undefined ? (
           <div className="placeholderSpinnerWrap" role="status" aria-live="polite"><span className="placeholderSpinner" aria-hidden="true" /><span className="srOnly">Loading</span></div>
@@ -2354,7 +2389,12 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               </div>
             </div>
           ) : (
-            jobSeekers.map((seeker, idx) => {
+            // While a seeker's profile is open, hide the rest so the full
+            // profile isn't surrounded by unrelated cards.
+            (openDirectoryProfileId
+              ? jobSeekers.filter((s) => String(s.id) === openDirectoryProfileId)
+              : jobSeekers
+            ).map((seeker, idx) => {
               const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
               const fullName = `${String(seeker.first_name ?? "").trim()} ${String(seeker.last_name ?? "").trim()}`.trim();
               const title = fullName || String(seeker.email ?? "Job Seeker");
@@ -2366,7 +2406,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               const isOpen = openDirectoryProfileId === seeker.id;
 
               return (
-                <article key={seeker.id} className={`dashCard jobCardsGridItem ${toneClass}`}>
+                <article key={seeker.id} id={`js-profile-card-${seeker.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
                   <div className="dashCardHeader" style={{ marginBottom: 6 }}>
                     <h2 className="dashCardTitle" style={{ fontSize: 15 }}>{title}</h2>
                   </div>
@@ -2569,6 +2609,22 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             />
           </div>
 
+          <div className="field" style={{ marginTop: 8, marginBottom: 4 }}>
+            <label className="fieldLabel">
+              Expected Salary {pendingJob.expected_salary_required ? "(required)" : "(optional)"}
+            </label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={expectedSalary}
+              onChange={(e) => setExpectedSalary(e.target.value)}
+              placeholder="e.g. 25000"
+              required={Boolean(pendingJob.expected_salary_required)}
+              disabled={applyingPending || saving}
+            />
+          </div>
+
           <div className="dashCardFooter" style={{ gap: 8 }}>
             <button
               className="btn btnPrimary pendingApplicationBtn"
@@ -2604,39 +2660,32 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
               <StepIcon step={i} />
               <span className="profileStepLabel">{label}</span>
             </button>
-
-            <button
-              type="button"
-              className={
-                "btn btnGhost btnSm profileStepEditBtn" +
-                (editingStep === i ? " profileStepEditBtnActive" : "")
-              }
-              disabled={saving}
-              onClick={() => {
-                setActiveStep(i);
-
-                if (editingStep === i) {
-                  setEditingStep(null);
-                  setEditResetToken((t) => t + 1);
-                } else {
-                  setEditingStep(i);
-                }
-
-                clearMessages();
-              }}
-            >
-              {editingStep === i ? (
-                "Cancel"
-              ) : (
-                <>
-                  <span className="profileEditLong">Edit {label}</span>
-                  <span className="profileEditShort">Edit</span>
-                </>
-              )}
-            </button>
           </div>
         ))}
       </div>
+
+      {activeStep !== 0 && (
+        <div className="profileStepAddBar">
+          <button
+            type="button"
+            className="btn btnGhost btnSm profileStepAddBtn"
+            disabled={saving}
+            onClick={() => {
+              if (editingStep === activeStep) {
+                setEditingStep(null);
+                setEditResetToken((t) => t + 1);
+              } else {
+                setEditingStep(activeStep);
+              }
+              clearMessages();
+            }}
+          >
+            {editingStep === activeStep
+              ? "Cancel"
+              : `${PROFILE_STEPS[activeStep] === "Professional Summary" ? "Edit" : "Add"} ${PROFILE_STEPS[activeStep]}`}
+          </button>
+        </div>
+      )}
 
       {/* ── Step Content ────────────────────────── */}
       <div className="profileStepContent">
@@ -2646,13 +2695,17 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             data={data.personalDetails}
             profilePictureUrl={String(data.profile_picture_url ?? "").trim()}
             profilePictureUpdatedAt={data.profile_picture_updated_at ?? null}
-            editing={isEditingThisStep}
+            editing={true}
             token={accessToken!}
             saving={saving}
             setSaving={setSaving}
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
         {activeStep === 1 && (
@@ -2666,6 +2719,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
         {activeStep === 2 && (
@@ -2679,6 +2736,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
         {activeStep === 3 && (
@@ -2692,6 +2753,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
         {activeStep === 4 && (
@@ -2705,6 +2770,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
         {activeStep === 5 && (
@@ -2718,6 +2787,10 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
             setError={setError}
             setSuccess={setSuccess}
             reload={load}
+            onSaved={() => {
+              setEditingStep(null);
+              setEditResetToken((t) => t + 1);
+            }}
           />
         )}
       </div>
@@ -2738,6 +2811,7 @@ type SectionProps = {
   setError: (v: string | null) => void;
   setSuccess: (v: string | null) => void;
   reload: () => Promise<void>;
+  onSaved?: () => void;
 };
 
 /* ================================================================== */
@@ -2755,6 +2829,7 @@ function PersonalDetailsSection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & {
   data: Record<string, unknown> | null;
   profilePictureUrl?: string;
@@ -3079,6 +3154,7 @@ function PersonalDetailsSection({
       setSuccess("Personal details saved");
       setDocsRefreshKey((v) => v + 1);
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -3570,7 +3646,7 @@ function PersonalDetailsSection({
       </div>
       <div className="stepperActions">
         <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
-          {saving ? "Saving…" : "Save Personal Details"}
+          {saving ? "Updating…" : "Update Personal Details"}
         </button>
       </div>
     </div>
@@ -3590,6 +3666,7 @@ function AddressSection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     addressLine1: "",
@@ -3602,6 +3679,7 @@ function AddressSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [ipCountryCode, setIpCountryCode] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -3699,6 +3777,7 @@ function AddressSection({
       setEditId(null);
       setFieldErrors({});
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -3719,47 +3798,11 @@ function AddressSection({
     }
   }
 
-  if (!editing) {
-    if (!items || items.length === 0) return <EmptyState label="No addresses added yet." />;
-
-    return (
-      <div className="recordList">
-        {items.map((a, idx) => {
-          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-          const addressLine1 = String(a.address_line1 ?? a.addressLine1 ?? "");
-          const addressLine2 = String(a.address_line2 ?? a.addressLine2 ?? "");
-          const city = String(a.city ?? "");
-          const state = String(a.state ?? "");
-          const country = String(a.country ?? "");
-          const postal = String(a.postal_code ?? a.postalCode ?? "");
-          const isPrimary = Boolean(a.is_primary ?? a.isPrimary);
-
-          return (
-            <div key={String(a.id ?? idx)} className={`dashCard ${toneClass}`}>
-              <div className="editForm" style={{ marginTop: 0 }}>
-                <div className="editGrid">
-                  <EditField label="Address Line 1" value={addressLine1} onChange={() => {}} disabled />
-                  <EditField label="Address Line 2" value={addressLine2} onChange={() => {}} disabled />
-                  <EditField label="City" value={city} onChange={() => {}} disabled />
-                  <EditField label="State/Region" value={state} onChange={() => {}} disabled />
-                  <EditField label="Country" value={country} onChange={() => {}} disabled />
-                  <EditField label="Postal Code" value={postal} onChange={() => {}} disabled />
-                  <label className="field fieldCheckbox fieldCheckboxIcon">
-                    <input type="checkbox" checked={isPrimary} disabled />
-                    <span className="fieldLabel">Primary address</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+  const viewItem = viewId ? items.find((x) => String(x.id) === viewId) ?? null : null;
 
   return (
     <>
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <div className="recordList">
           {items.map((a) => (
             <div key={a.id as string} className="recordCard">
@@ -3770,14 +3813,36 @@ function AddressSection({
                 {[a.city, a.state, a.country, a.postal_code].filter(Boolean).map(String).join(", ")}
                 {Boolean(a.is_primary) && <span className="chipBadge">Primary</span>}
               </div>
-              {editing && (
-                <div className="recordActions">
-                  <button className="btn btnGhost btnSm" onClick={() => startEdit(a)} type="button">Edit</button>
-                  <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(a.id as string)} type="button">Delete</button>
-                </div>
-              )}
+              <div className="recordActions">
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(a.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(a); }} type="button">Edit</button>
+                <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(a.id as string)} type="button">Delete</button>
+              </div>
             </div>
           ))}
+        </div>
+      ) : !editing ? (
+        <EmptyState label="No addresses added yet." />
+      ) : null}
+
+      {viewItem && (
+        <div className="editForm">
+          <h4 className="editFormTitle">View Address</h4>
+          <div className="editGrid">
+            <EditField label="Address Line 1" value={String(viewItem.address_line1 ?? "")} onChange={() => {}} disabled />
+            <EditField label="Address Line 2" value={String(viewItem.address_line2 ?? "")} onChange={() => {}} disabled />
+            <EditField label="City" value={String(viewItem.city ?? "")} onChange={() => {}} disabled />
+            <EditField label="State/Region" value={String(viewItem.state ?? "")} onChange={() => {}} disabled />
+            <EditField label="Country" value={String(viewItem.country ?? "")} onChange={() => {}} disabled />
+            <EditField label="Postal Code" value={String(viewItem.postal_code ?? "")} onChange={() => {}} disabled />
+            <label className="field fieldCheckbox fieldCheckboxIcon">
+              <input type="checkbox" checked={Boolean(viewItem.is_primary)} disabled />
+              <span className="fieldLabel">Primary address</span>
+            </label>
+          </div>
+          <div className="stepperActions">
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+          </div>
         </div>
       )}
 
@@ -3795,7 +3860,7 @@ function AddressSection({
           await onDelete(id);
         }}
       />
-      {editing && (
+      {(editing || editId) && (
         <div className="editForm">
           <h4 className="editFormTitle">{editId ? "Edit Address" : "Add Address"}</h4>
           <div className="editGrid">
@@ -3972,6 +4037,7 @@ function EducationSection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     institutionName: "",
@@ -3985,6 +4051,7 @@ function EducationSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [qualificationOpen, setQualificationOpen] = useState(false);
@@ -4094,6 +4161,7 @@ function EducationSection({
       setFieldErrors({});
       resetCertStaging();
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -4114,88 +4182,11 @@ function EducationSection({
     }
   }
 
-  if (!editing) {
-    if (!items || items.length === 0) return <EmptyState label="No education records added yet." />;
-
-    return (
-      <>
-      <div className="recordList">
-        {items.map((e, idx) => {
-          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-          const institution = String(e.institution_name ?? "");
-          const qualification = String(e.qualification ?? "");
-          const fieldOfStudy = String(e.field_of_study ?? "");
-          const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
-          const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
-          const isCurrent = Boolean(e.is_current);
-          const grade = String(e.grade ?? "");
-          const latestCertUrl = String(
-            latestQualificationEvidence?.download_url ??
-            latestQualificationEvidence?.file_url ??
-            "",
-          ).trim();
-          const latestCertOriginalName = String(latestQualificationEvidence?.original_name ?? "").trim();
-          const certificateUrl = latestCertUrl || String(e.certificate_url ?? "").trim();
-          const certPreviewKey = `qualification-evidence-${String(e.id ?? idx)}`;
-
-          return (
-            <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
-              <div className="editForm" style={{ marginTop: 0 }}>
-                <div className="editGrid">
-                  <EditField label="Institution" value={institution} onChange={() => {}} disabled />
-                  <EditField label="Qualification" value={qualification} onChange={() => {}} disabled />
-                  <EditField label="Field of Study" value={fieldOfStudy} onChange={() => {}} disabled />
-                  <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
-                  <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
-                  <EditField label="Grade" value={grade} onChange={() => {}} disabled />
-                  <div className="field fieldFull">
-                    <span className="fieldLabel">Qualification Evidence</span>
-                    <UploadedDocumentCard
-                      title="Qualification Evidence"
-                      url={certificateUrl}
-                      originalName={latestCertOriginalName || undefined}
-                      token={token}
-                      fallbackText="No file uploaded yet."
-                      previewKey={certPreviewKey}
-                      previewMode="external"
-                      externalPreviewOpen={certDocPreview?.key === certPreviewKey}
-                      onToggleExternalPreview={(blobUrl, key) =>
-                        setCertDocPreview((prev) =>
-                          prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
-                        )
-                      }
-                    />
-                  </div>
-                  <label className="field fieldCheckbox fieldCheckboxIcon">
-                    <input type="checkbox" checked={isCurrent} disabled />
-                    <span className="fieldLabel">Currently studying here</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {certDocPreview?.url ? (
-        <div className="field fieldFull" style={{ marginTop: 10 }}>
-          <div className="readLabel">{certDocPreview.title} Preview</div>
-          <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
-            {(() => {
-              const kind = getInlinePreviewKind(certDocPreview.url);
-              if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
-              if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
-              return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
-            })()}
-          </div>
-        </div>
-      ) : null}
-      </>
-    );
-  }
+  const viewItem = viewId ? items.find((x) => String(x.id) === viewId) ?? null : null;
 
   return (
     <>
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <div className="recordList">
           {items.map((e) => (
             <div key={e.id as string} className="recordCard">
@@ -4209,16 +4200,79 @@ function EducationSection({
                   {e.is_current ? " (Current)" : ""}
                 </span>
               </div>
-              {editing && (
-                <div className="recordActions">
-                  <button className="btn btnGhost btnSm" onClick={() => startEdit(e)} type="button">Edit</button>
-                  <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
-                </div>
-              )}
+              <div className="recordActions">
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(e.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(e); }} type="button">Edit</button>
+                <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
+              </div>
             </div>
           ))}
         </div>
-      )}
+      ) : !editing ? (
+        <EmptyState label="No education records added yet." />
+      ) : null}
+
+      {viewItem && (() => {
+        const latestCertUrl = String(
+          latestQualificationEvidence?.download_url ??
+          latestQualificationEvidence?.file_url ??
+          "",
+        ).trim();
+        const latestCertOriginalName = String(latestQualificationEvidence?.original_name ?? "").trim();
+        const certificateUrl = latestCertUrl || String(viewItem.certificate_url ?? "").trim();
+        const certPreviewKey = `qualification-evidence-${String(viewItem.id)}`;
+        return (
+          <div className="editForm">
+            <h4 className="editFormTitle">View Education</h4>
+            <div className="editGrid">
+              <EditField label="Institution" value={String(viewItem.institution_name ?? "")} onChange={() => {}} disabled />
+              <EditField label="Qualification" value={String(viewItem.qualification ?? "")} onChange={() => {}} disabled />
+              <EditField label="Field of Study" value={String(viewItem.field_of_study ?? "")} onChange={() => {}} disabled />
+              <EditField label="Start Date" value={viewItem.start_date ? String(viewItem.start_date).split("T")[0] : ""} onChange={() => {}} disabled />
+              <EditField label="End Date" value={viewItem.end_date ? String(viewItem.end_date).split("T")[0] : ""} onChange={() => {}} disabled />
+              <EditField label="Grade" value={String(viewItem.grade ?? "")} onChange={() => {}} disabled />
+              <div className="field fieldFull">
+                <span className="fieldLabel">Qualification Evidence</span>
+                <UploadedDocumentCard
+                  title="Qualification Evidence"
+                  url={certificateUrl}
+                  originalName={latestCertOriginalName || undefined}
+                  token={token}
+                  fallbackText="No file uploaded yet."
+                  previewKey={certPreviewKey}
+                  previewMode="external"
+                  externalPreviewOpen={certDocPreview?.key === certPreviewKey}
+                  onToggleExternalPreview={(blobUrl, key) =>
+                    setCertDocPreview((prev) =>
+                      prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
+                    )
+                  }
+                />
+              </div>
+              <label className="field fieldCheckbox fieldCheckboxIcon">
+                <input type="checkbox" checked={Boolean(viewItem.is_current)} disabled />
+                <span className="fieldLabel">Currently studying here</span>
+              </label>
+            </div>
+            {certDocPreview?.url ? (
+              <div className="field fieldFull" style={{ marginTop: 10 }}>
+                <div className="readLabel">{certDocPreview.title} Preview</div>
+                <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
+                  {(() => {
+                    const kind = getInlinePreviewKind(certDocPreview.url);
+                    if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
+                    if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
+                    return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
+                  })()}
+                </div>
+              </div>
+            ) : null}
+            <div className="stepperActions">
+              <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <ConfirmModal
         open={Boolean(confirmDeleteId)}
@@ -4234,7 +4288,7 @@ function EducationSection({
           await onDelete(id);
         }}
       />
-      {editing && (
+      {(editing || editId) && (
         <div className="editForm">
           <h4 className="editFormTitle">{editId ? "Edit Education" : "Add Education"}</h4>
           <div className="editGrid">
@@ -4442,6 +4496,7 @@ function ExperienceSection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     companyName: "",
@@ -4454,6 +4509,7 @@ function ExperienceSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   function startEdit(item: Record<string, unknown>) {
@@ -4490,6 +4546,7 @@ function ExperienceSection({
       setEditId(null);
       setFieldErrors({});
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -4510,51 +4567,11 @@ function ExperienceSection({
     }
   }
 
-  if (!editing) {
-    return (
-      <div className="recordList">
-        {(!items || items.length === 0) ? (
-          <EmptyState label="No experience records added yet." />
-        ) : (
-          items.map((e, idx) => {
-            const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-            const companyName = String(e.company_name ?? "");
-            const jobTitle = String(e.job_title ?? "");
-            const employmentType = String(e.employment_type ?? "");
-            const startDate = e.start_date ? String(e.start_date).split("T")[0] : "";
-            const endDate = e.end_date ? String(e.end_date).split("T")[0] : "";
-            const isCurrent = Boolean(e.is_current);
-            const responsibilities = String(e.responsibilities ?? "");
-            return (
-              <div key={String(e.id ?? idx)} className={`dashCard ${toneClass}`}>
-                <div className="editForm" style={{ marginTop: 0 }}>
-                  <div className="editGrid">
-                    <EditField label="Company Name" value={companyName} onChange={() => {}} disabled />
-                    <EditField label="Job Title" value={jobTitle} onChange={() => {}} disabled />
-                    <EditField label="Employment Type" value={employmentType} onChange={() => {}} disabled />
-                    <EditField label="Start Date" value={startDate} onChange={() => {}} disabled />
-                    <EditField label="End Date" value={endDate} onChange={() => {}} disabled />
-                    <label className="field fieldCheckbox fieldCheckboxIcon">
-                      <input type="checkbox" checked={isCurrent} disabled />
-                      <span className="fieldLabel">Currently working here</span>
-                    </label>
-                    <label className="field fieldFull">
-                      <span className="fieldLabel">Responsibilities</span>
-                      <textarea className="input textarea" value={responsibilities} readOnly disabled rows={3} />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    );
-  }
+  const viewItem = viewId ? items.find((x) => String(x.id) === viewId) ?? null : null;
 
   return (
     <>
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <div className="recordList">
           {items.map((e) => (
             <div key={e.id as string} className="recordCard">
@@ -4569,11 +4586,38 @@ function ExperienceSection({
                 </span>
               </div>
               <div className="recordActions">
-                <button className="btn btnGhost btnSm" onClick={() => startEdit(e)} type="button">Edit</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(e.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(e); }} type="button">Edit</button>
                 <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
               </div>
             </div>
           ))}
+        </div>
+      ) : !editing ? (
+        <EmptyState label="No experience records added yet." />
+      ) : null}
+
+      {viewItem && (
+        <div className="editForm">
+          <h4 className="editFormTitle">View Experience</h4>
+          <div className="editGrid">
+            <EditField label="Company Name" value={String(viewItem.company_name ?? "")} onChange={() => {}} disabled />
+            <EditField label="Job Title" value={String(viewItem.job_title ?? "")} onChange={() => {}} disabled />
+            <EditField label="Employment Type" value={String(viewItem.employment_type ?? "")} onChange={() => {}} disabled />
+            <EditField label="Start Date" value={viewItem.start_date ? String(viewItem.start_date).split("T")[0] : ""} onChange={() => {}} disabled />
+            <EditField label="End Date" value={viewItem.end_date ? String(viewItem.end_date).split("T")[0] : ""} onChange={() => {}} disabled />
+            <label className="field fieldCheckbox fieldCheckboxIcon">
+              <input type="checkbox" checked={Boolean(viewItem.is_current)} disabled />
+              <span className="fieldLabel">Currently working here</span>
+            </label>
+            <label className="field fieldFull">
+              <span className="fieldLabel">Responsibilities</span>
+              <textarea className="input textarea" value={String(viewItem.responsibilities ?? "")} readOnly disabled rows={3} />
+            </label>
+          </div>
+          <div className="stepperActions">
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+          </div>
         </div>
       )}
 
@@ -4592,6 +4636,7 @@ function ExperienceSection({
         }}
       />
 
+      {(editing || editId) && (
       <div className="editForm">
         <h4 className="editFormTitle">{editId ? "Edit Experience" : "Add Experience"}</h4>
         <div className="editGrid">
@@ -4695,6 +4740,7 @@ function ExperienceSection({
           </button>
         </div>
       </div>
+      )}
     </>
   );
 }
@@ -4712,6 +4758,7 @@ function ReferencesSection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & { items: Record<string, unknown>[] }) {
   const empty = {
     fullName: "",
@@ -4722,6 +4769,7 @@ function ReferencesSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -4757,6 +4805,7 @@ function ReferencesSection({
       setEditId(null);
       setFieldErrors({});
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -4777,40 +4826,11 @@ function ReferencesSection({
     }
   }
 
-  if (!editing) {
-    if (!items || items.length === 0) return <EmptyState label="No references added yet." />;
-
-    return (
-      <div className="recordList">
-        {items.map((r, idx) => {
-          const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
-          const fullName = String(r.full_name ?? "");
-          const relationship = String(r.relationship ?? "");
-          const company = String(r.company ?? "");
-          const email = String(r.email ?? "");
-          const phone = String(r.phone ?? "");
-
-          return (
-            <div key={String(r.id ?? idx)} className={`dashCard ${toneClass}`}>
-              <div className="editForm" style={{ marginTop: 0 }}>
-                <div className="editGrid">
-                  <EditField label="Full Name" value={fullName} onChange={() => {}} disabled />
-                  <EditField label="Relationship" value={relationship} onChange={() => {}} disabled />
-                  <EditField label="Company" value={company} onChange={() => {}} disabled />
-                  <EditField label="Email" value={email} onChange={() => {}} disabled />
-                  <EditField label="Phone" value={phone} onChange={() => {}} disabled />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+  const viewItem = viewId ? items.find((x) => String(x.id) === viewId) ?? null : null;
 
   return (
     <>
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <div className="recordList">
           {items.map((r) => (
             <div key={r.id as string} className="recordCard">
@@ -4822,14 +4842,31 @@ function ReferencesSection({
                   {[r.company, r.email, r.phone].filter(Boolean).join(" · ")}
                 </span>
               </div>
-              {editing && (
-                <div className="recordActions">
-                  <button className="btn btnGhost btnSm" onClick={() => startEdit(r)} type="button">Edit</button>
-                  <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(r.id as string)} type="button">Delete</button>
-                </div>
-              )}
+              <div className="recordActions">
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(r.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(r); }} type="button">Edit</button>
+                <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(r.id as string)} type="button">Delete</button>
+              </div>
             </div>
           ))}
+        </div>
+      ) : !editing ? (
+        <EmptyState label="No references added yet." />
+      ) : null}
+
+      {viewItem && (
+        <div className="editForm">
+          <h4 className="editFormTitle">View Reference</h4>
+          <div className="editGrid">
+            <EditField label="Full Name" value={String(viewItem.full_name ?? "")} onChange={() => {}} disabled />
+            <EditField label="Relationship" value={String(viewItem.relationship ?? "")} onChange={() => {}} disabled />
+            <EditField label="Company" value={String(viewItem.company ?? "")} onChange={() => {}} disabled />
+            <EditField label="Email" value={String(viewItem.email ?? "")} onChange={() => {}} disabled />
+            <EditField label="Phone" value={String(viewItem.phone ?? "")} onChange={() => {}} disabled />
+          </div>
+          <div className="stepperActions">
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+          </div>
         </div>
       )}
 
@@ -4847,7 +4884,7 @@ function ReferencesSection({
           await onDelete(id);
         }}
       />
-      {editing && (
+      {(editing || editId) && (
         <div className="editForm">
           <h4 className="editFormTitle">{editId ? "Edit Reference" : "Add Reference"}</h4>
           <div className="editGrid">
@@ -4942,6 +4979,7 @@ function ProfessionalSummarySection({
   setError,
   setSuccess,
   reload,
+  onSaved,
 }: SectionProps & { data: Record<string, unknown> | null }) {
   const d = data ?? {};
   const [form, setForm] = useState({
@@ -4994,6 +5032,7 @@ function ProfessionalSummarySection({
       setSuccess("Professional summary saved");
       setFieldErrors({});
       await reload();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {

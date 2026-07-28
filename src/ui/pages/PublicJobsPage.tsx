@@ -207,6 +207,7 @@ export function PublicJobsPage() {
   const [saving, setSaving] = useState(false);
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
   const [applyConfirmJob, setApplyConfirmJob] = useState<JobListItem | null>(null);
+  const [expectedSalary, setExpectedSalary] = useState("");
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -611,6 +612,7 @@ export function PublicJobsPage() {
         setProfileIncompleteModalOpen(true);
         return;
       }
+      setExpectedSalary("");
       setApplyConfirmJob(job);
     } catch (e) {
       setError((e as Error)?.message ?? "Failed to validate profile completeness");
@@ -646,10 +648,17 @@ export function PublicJobsPage() {
 
   async function onConfirmApply() {
     if (!accessToken || !applyConfirmJob) return;
+    if (applyConfirmJob.expected_salary_required && !expectedSalary.trim()) {
+      setError("Expected salary is required for this job.");
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
-      await applyToJob(accessToken, { job_id: applyConfirmJob.id });
+      await applyToJob(accessToken, {
+        job_id: applyConfirmJob.id,
+        expected_salary: expectedSalary.trim() ? Number(expectedSalary) : null,
+      });
       setAppliedJobIds((prev) => {
         const next = new Set(prev);
         next.add(String(applyConfirmJob.id));
@@ -657,6 +666,7 @@ export function PublicJobsPage() {
       });
       setSuccess(`Application submitted for "${applyConfirmJob.title}".`);
       setApplyConfirmJob(null);
+      setExpectedSalary("");
     } catch (e) {
       const message = String((e as Error)?.message ?? "").trim();
       setError(message || "Failed to apply for job");
@@ -1225,6 +1235,21 @@ export function PublicJobsPage() {
           <div className="modalCard" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
             <div className="modalTitle">Confirm Application</div>
             <div className="modalMessage">Apply for <strong>{applyConfirmJob.title}</strong>?</div>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="fieldLabel">
+                Expected Salary {applyConfirmJob.expected_salary_required ? "(required)" : "(optional)"}
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={expectedSalary}
+                onChange={(e) => setExpectedSalary(e.target.value)}
+                placeholder="e.g. 25000"
+                required={Boolean(applyConfirmJob.expected_salary_required)}
+                disabled={saving}
+              />
+            </div>
             <div className="modalActions">
               <button className="btn btnGhost" type="button" onClick={() => setApplyConfirmJob(null)} disabled={saving}>
                 Cancel

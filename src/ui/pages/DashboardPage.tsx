@@ -136,6 +136,8 @@ export function DashboardPage() {
   const [updateProfileBeforeApplyJob, setUpdateProfileBeforeApplyJob] = useState<JobListItem | null>(null);
   const [profileIncompleteModalOpen, setProfileIncompleteModalOpen] = useState(false);
   const [applyContextJob, setApplyContextJob] = useState<JobListItem | null>(null);
+  const [expectedSalary, setExpectedSalary] = useState("");
+  const [salaryError, setSalaryError] = useState("");
   const [seekerCompanies, setSeekerCompanies] = useState<Company[]>([]);
   const [seekerCategories, setSeekerCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -617,16 +619,20 @@ export function DashboardPage() {
         return;
       }
 
-      const created = await applyToJob(accessToken, { job_id: jobId });
+      const created = await applyToJob(accessToken, {
+        job_id: jobId,
+        expected_salary: expectedSalary.trim() ? Number(expectedSalary) : null,
+      });
       setSeekerApplications((prev) => [created, ...prev]);
       setSuccess(`Application submitted for "${job.title}".`);
+      setExpectedSalary("");
     } catch (e) {
       const message = String((e as Error)?.message ?? "").trim();
       setError(message || "Failed to apply for job");
     } finally {
       setApplyingJobId(null);
     }
-  }, [accessToken, canApplyJob, seekerAppliedJobIds]);
+  }, [accessToken, canApplyJob, seekerAppliedJobIds, expectedSalary]);
 
   const onStartApplyFromDashboard = useCallback(async (job: JobListItem) => {
     if (!accessToken) return;
@@ -644,6 +650,8 @@ export function DashboardPage() {
         setProfileIncompleteModalOpen(true);
         return;
       }
+      setExpectedSalary("");
+      setSalaryError("");
       setUpdateProfileBeforeApplyJob(job);
     } catch (e) {
       setError(String((e as Error)?.message ?? "") || "Failed to validate profile completeness");
@@ -1728,6 +1736,22 @@ export function DashboardPage() {
               Would you like to update your profile before applying for{" "}
               <strong>{updateProfileBeforeApplyJob.title}</strong>?
             </div>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="fieldLabel">
+                Expected Salary {updateProfileBeforeApplyJob.expected_salary_required ? "(required)" : "(optional)"}
+              </label>
+              <input
+                className={`input${salaryError ? " inputError" : ""}`}
+                type="number"
+                min={0}
+                value={expectedSalary}
+                onChange={(e) => { setExpectedSalary(e.target.value); if (salaryError) setSalaryError(""); }}
+                placeholder="e.g. 25000"
+                required={Boolean(updateProfileBeforeApplyJob.expected_salary_required)}
+                disabled={Boolean(applyingJobId)}
+              />
+              {salaryError ? <span className="fieldError">{salaryError}</span> : null}
+            </div>
             <div className="modalActions">
               <button
                 className="btn btnGhost"
@@ -1742,6 +1766,10 @@ export function DashboardPage() {
                 type="button"
                 onClick={() => {
                   const job = updateProfileBeforeApplyJob;
+                  if (job.expected_salary_required && !expectedSalary.trim()) {
+                    setSalaryError("Expected salary is required for this job.");
+                    return;
+                  }
                   setUpdateProfileBeforeApplyJob(null);
                   void onApplyFromDashboard(job);
                 }}

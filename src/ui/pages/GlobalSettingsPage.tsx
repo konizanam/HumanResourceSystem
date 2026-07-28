@@ -408,7 +408,7 @@ export function GlobalSettingsPage() {
               </label>
             </div>
             <div className="stepperActions">
-              <button className="btn btnGhost btnSm stepperSaveBtn" type="button" disabled={saving || !canEdit} onClick={onSaveCompany}>
+              <button className="btn btnPrimary" type="button" disabled={saving || !canEdit} onClick={onSaveCompany}>
                 {saving ? "Saving..." : "Save Company Info"}
               </button>
             </div>
@@ -583,7 +583,7 @@ export function GlobalSettingsPage() {
           </section>
         </div>
         <div className="stepperActions">
-          <button className="btn btnGhost btnSm stepperSaveBtn" type="button" disabled={saving || loading || !canEditSystemSettings} onClick={onSaveSettings}>
+          <button className="btn btnPrimary" type="button" disabled={saving || loading || !canEditSystemSettings} onClick={onSaveSettings}>
             {saving ? "Saving..." : "Save Settings"}
           </button>
         </div>
