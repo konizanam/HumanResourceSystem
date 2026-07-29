@@ -153,12 +153,10 @@ function settingsFilePath() {
   return RESOLVED_SETTINGS_FILE_PATH;
 }
 
-async function readSettings(): Promise<SystemSettings> {
-  try {
-    const raw = await fs.readFile(settingsFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as Partial<SystemSettings> | null;
-    if (!parsed || typeof parsed !== "object") return DEFAULT_SETTINGS;
+function sanitizeSettings(parsed: Partial<SystemSettings> | null): SystemSettings {
+  if (!parsed || typeof parsed !== "object") return DEFAULT_SETTINGS;
 
+  {
     const mode =
       parsed.company_approval_mode === "pending" || parsed.company_approval_mode === "auto_approved"
         ? parsed.company_approval_mode
@@ -213,9 +211,75 @@ async function readSettings(): Promise<SystemSettings> {
       login_welcome_title: loginWelcomeTitle,
       login_welcome_subtitle: loginWelcomeSubtitle,
     };
-  } catch {
-    return DEFAULT_SETTINGS;
   }
+}
+
+// Settings live in Postgres so they survive redeploys (container disks are
+// ephemeral). The JSON file remains as a migration source for pre-DB
+// deployments and as a fallback when no database is reachable.
+let settingsTableEnsured = false;
+
+async function ensureSettingsTable(): Promise<void> {
+  if (settingsTableEnsured) return;
+  await dbQuery(
+    `CREATE TABLE IF NOT EXISTS system_settings (
+       id smallint PRIMARY KEY,
+       data jsonb NOT NULL,
+       updated_at timestamptz NOT NULL DEFAULT now()
+     )`,
+  );
+  settingsTableEnsured = true;
+}
+
+async function readSettingsFromDb(): Promise<SystemSettings | null> {
+  try {
+    await ensureSettingsTable();
+    const result = await dbQuery(`SELECT data FROM system_settings WHERE id = 1 LIMIT 1`);
+    const row = result.rows[0] as { data?: unknown } | undefined;
+    if (!row || !row.data || typeof row.data !== "object") return null;
+    return sanitizeSettings(row.data as Partial<SystemSettings>);
+  } catch {
+    return null;
+  }
+}
+
+async function writeSettingsToDb(settings: SystemSettings): Promise<void> {
+  await ensureSettingsTable();
+  await dbQuery(
+    `INSERT INTO system_settings (id, data, updated_at)
+     VALUES (1, $1::jsonb, now())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+    [JSON.stringify(settings)],
+  );
+}
+
+async function readSettingsFromFile(): Promise<SystemSettings | null> {
+  try {
+    const raw = await fs.readFile(settingsFilePath(), "utf8");
+    const parsed = JSON.parse(raw) as Partial<SystemSettings> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    return sanitizeSettings(parsed);
+  } catch {
+    return null;
+  }
+}
+
+async function readSettings(): Promise<SystemSettings> {
+  const fromDb = await readSettingsFromDb();
+  if (fromDb) return fromDb;
+
+  const fromFile = await readSettingsFromFile();
+  if (fromFile) {
+    // One-time migration: promote legacy file-based settings into the DB.
+    try {
+      await writeSettingsToDb(fromFile);
+    } catch {
+      // DB unavailable — keep serving from the file.
+    }
+    return fromFile;
+  }
+
+  return DEFAULT_SETTINGS;
 }
 
 // Serialize writes so two concurrent updateSystemSettings calls can't race.
@@ -228,13 +292,25 @@ async function writeSettings(settings: SystemSettings): Promise<void> {
 }
 
 async function writeSettingsUnsafe(settings: SystemSettings): Promise<void> {
-  const filePath = settingsFilePath();
-  const dir = path.dirname(filePath);
-  await fs.mkdir(dir, { recursive: true });
-  const body = JSON.stringify(settings, null, 2);
-  // Direct overwrite — simpler and avoids Windows rename edge cases
-  // (AV, parent-dir watchers, tsx-watch file-holds all break tmp→rename).
-  await fs.writeFile(filePath, body, "utf8");
+  let dbOk = false;
+  try {
+    await writeSettingsToDb(settings);
+    dbOk = true;
+  } catch {
+    // Fall through to the file write below.
+  }
+
+  try {
+    const filePath = settingsFilePath();
+    const dir = path.dirname(filePath);
+    await fs.mkdir(dir, { recursive: true });
+    const body = JSON.stringify(settings, null, 2);
+    // Direct overwrite — simpler and avoids Windows rename edge cases
+    // (AV, parent-dir watchers, tsx-watch file-holds all break tmp→rename).
+    await fs.writeFile(filePath, body, "utf8");
+  } catch (fileError) {
+    if (!dbOk) throw fileError;
+  }
 }
 
 export async function getCompanyApprovalMode(): Promise<CompanyApprovalMode> {
