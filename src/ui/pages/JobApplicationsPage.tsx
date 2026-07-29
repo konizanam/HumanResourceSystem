@@ -93,6 +93,13 @@ function isAssignedToStatus(app: JobApplication, overrides: Record<string, Stage
   );
 }
 
+function displayStatus(app: JobApplication, overrides: Record<string, StageKey>): string {
+  if (isAssignedToStatus(app, overrides)) return detectStage(app, overrides);
+  const raw =
+    String(app.workflow_status ?? "").trim() || String(app.status ?? "").trim();
+  return raw || "applied";
+}
+
 function readValue(source: Record<string, unknown> | null | undefined, ...keys: string[]) {
   if (!source) return null;
   for (const key of keys) {
@@ -572,7 +579,7 @@ export function JobApplicationsPage() {
       const name = String(app.applicant_name ?? "").toLowerCase();
       const email = String(app.applicant_email ?? "").toLowerCase();
       const phone = String(app.applicant_phone ?? "").toLowerCase();
-      const status = detectStage(app, stageOverrides).toLowerCase();
+      const status = displayStatus(app, stageOverrides).toLowerCase();
       const applied = app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB").toLowerCase() : "";
       return (
         name.includes(q) ||
@@ -738,9 +745,10 @@ export function JobApplicationsPage() {
           ? pastRows.map((r) => `• ${r.duration || "—"}`).join("\n")
           : "—";
 
-        const statusLabel =
-          STATUS_ACTIONS.find((s) => s.key === detectStage(app, stageOverrides))?.label ??
-          detectStage(app, stageOverrides);
+        const statusLabel = isAssignedToStatus(app, stageOverrides)
+          ? STATUS_ACTIONS.find((s) => s.key === detectStage(app, stageOverrides))?.label ??
+            detectStage(app, stageOverrides)
+          : displayStatus(app, stageOverrides);
 
         return {
           Name: fullName,
@@ -1646,7 +1654,7 @@ export function JobApplicationsPage() {
                     label="Applied Date"
                     value={app.created_at ? new Date(app.created_at).toLocaleDateString("en-GB") : "—"}
                   />
-                  <ReadField label="Current Status" value={current} />
+                  <ReadField label="Current Status" value={displayStatus(app, stageOverrides)} />
                   <ReadField
                     label="Expected Salary"
                     value={app.expected_salary != null ? `N$ ${Number(app.expected_salary).toLocaleString("en-US")}` : "—"}
