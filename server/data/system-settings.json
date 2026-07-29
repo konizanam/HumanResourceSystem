@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "company_approval_mode": "auto_approved",
+  "system_name": "Hito HR Consultant",
+  "branding_logo_url": "",
+  "app_color": "#2c2e83",
+  "main_company_id": "df2ba8ec-0c2d-497e-8d32-7f2d8bbf7d7a",
+  "application_status_notifications": {
+    "APPLIED": true,
+    "SCREENING": true,
+    "LONG_LISTED": true,
+    "SHORTLISTED": true,
+    "ORAL_INTERVIEW": true,
+    "PRACTICAL_INTERVIEW": true,
+    "FINAL_INTERVIEW": true,
+    "OFFER_MADE": true,
+    "HIRED": true,
+    "REJECTED": true,
+    "WITHDRAWN": true
+  },
+  "login_welcome_title": "People's First",
+  "login_welcome_subtitle": "Your one-stop Human Resource Centre"
+}
