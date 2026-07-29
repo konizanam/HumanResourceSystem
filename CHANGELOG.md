@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.2...v1.8.0) (2026-07-29)
+
+
+### Features
+
+* **applications:** merge Selma job applications rework from konizanam ([390abbe](https://github.com/kondjaboytjie/HumanResourceSystem/commit/390abbecf163ad985950b8ac2a778418dfc3ed97)), closes [#2](https://github.com/kondjaboytjie/HumanResourceSystem/issues/2)
+
 ## [1.7.2](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.1...v1.7.2) (2026-07-07)
 
 
