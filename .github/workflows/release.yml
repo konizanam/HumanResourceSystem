@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   release:
+    # Releases are cut only from the canonical repo; forks/mirrors
+    # (e.g. konizanam) have a protected main and must not release.
+    if: github.repository == 'kondjaboytjie/HumanResourceSystem'
     runs-on: ubuntu-latest
 
     steps:
