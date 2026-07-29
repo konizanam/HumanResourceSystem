@@ -1,3 +1,10 @@
+## [1.8.3](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.8.2...v1.8.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **settings:** persist system settings in Postgres so deploys stop resetting them ([8d22e62](https://github.com/kondjaboytjie/HumanResourceSystem/commit/8d22e6248845696a81ec6ac12c0a3510f7fa4962))
+
 ## [1.8.2](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.8.1...v1.8.2) (2026-07-29)
 
 
