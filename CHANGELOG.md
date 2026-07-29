@@ -1,3 +1,15 @@
+## [1.8.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.8.0...v1.8.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **applications:** show real status for applicants not yet assigned a stage ([97d9290](https://github.com/kondjaboytjie/HumanResourceSystem/commit/97d9290fd50975c44c515793845eedb2424d569f))
+
+
+### Reverts
+
+* restore codebase to pre-Selma-merge state (b89ab0b) ([b17566e](https://github.com/kondjaboytjie/HumanResourceSystem/commit/b17566e6b1f07098fbe6f00c866d3bb7a0e9edfb))
+
 ## [1.7.1](https://github.com/kondjaboytjie/HumanResourceSystem/compare/v1.7.0...v1.7.1) (2026-07-02)
 
 
