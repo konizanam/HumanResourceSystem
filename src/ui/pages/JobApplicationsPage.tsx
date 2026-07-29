@@ -95,9 +95,7 @@ function isAssignedToStatus(app: JobApplication, overrides: Record<string, Stage
 
 function displayStatus(app: JobApplication, overrides: Record<string, StageKey>): string {
   if (isAssignedToStatus(app, overrides)) return detectStage(app, overrides);
-  const raw =
-    String(app.workflow_status ?? "").trim() || String(app.status ?? "").trim();
-  return raw || "applied";
+  return "applied";
 }
 
 function readValue(source: Record<string, unknown> | null | undefined, ...keys: string[]) {
@@ -1639,7 +1637,6 @@ export function JobApplicationsPage() {
           </div>
         ) : (
           visibleApplications.map((app, idx) => {
-            const current = detectStage(app, stageOverrides);
             const toneClass = idx % 2 === 0 ? "jobCardToneA" : "jobCardToneB";
             return (
               <article key={app.id} id={`application-card-${app.id}`} className={`dashCard jobCardsGridItem ${toneClass}`}>
@@ -1662,7 +1659,7 @@ export function JobApplicationsPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 12 }}>
-                  {STATUS_ACTIONS.filter((s) => s.key !== current)
+                  {STATUS_ACTIONS
                     .filter((action) => canSetStage(action.key))
                     .map((action) => (
                       <button
