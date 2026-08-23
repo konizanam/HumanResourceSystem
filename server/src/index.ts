@@ -38,6 +38,26 @@ async function ensureSchema() {
   await query(
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_updated_at TIMESTAMP",
   );
+  await query(
+    "ALTER TABLE job_seeker_experience ADD COLUMN IF NOT EXISTS notice_period VARCHAR(100)",
+  );
+  await query(
+    `CREATE TABLE IF NOT EXISTS daily_unique_visitors (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      visit_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      visitor_hash VARCHAR(64) NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      ip_address INET,
+      user_agent TEXT,
+      first_path TEXT,
+      first_seen_at TIMESTAMP DEFAULT NOW(),
+      last_seen_at TIMESTAMP DEFAULT NOW(),
+      request_count INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      CONSTRAINT uq_daily_unique_visitors_date_hash UNIQUE (visit_date, visitor_hash)
+    )`,
+  );
 
   // Persist uploaded documents in DB so downloads survive ephemeral file systems.
   await query(

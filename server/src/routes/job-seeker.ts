@@ -462,6 +462,7 @@ const experienceSchema = z.object({
   endDate: z.string().optional().nullable(),
   isCurrent: z.boolean().optional(),
   responsibilities: z.string().max(2000).optional().nullable(),
+  noticePeriod: z.string().max(100).optional().nullable(),
   salary: z.number().optional().nullable(),
   referenceContact: z.string().max(255).optional().nullable(),
 });
@@ -474,8 +475,8 @@ jobSeekerRouter.post("/experience", async (req, res, next) => {
     const { rows } = await query(
       `INSERT INTO job_seeker_experience
          (user_id, company_name, job_title, employment_type, start_date, end_date,
-          is_current, responsibilities, salary, reference_contact)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           is_current, responsibilities, notice_period, salary, reference_contact)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
         userId,
@@ -486,6 +487,7 @@ jobSeekerRouter.post("/experience", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.responsibilities ?? null,
+        d.noticePeriod ?? null,
         d.salary ?? null,
         d.referenceContact ?? null,
       ]
@@ -506,7 +508,7 @@ jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
       `UPDATE job_seeker_experience SET
          company_name = $3, job_title = $4, employment_type = $5,
          start_date = $6, end_date = $7, is_current = $8,
-         responsibilities = $9, salary = $10, reference_contact = $11
+         responsibilities = $9, notice_period = $10, salary = $11, reference_contact = $12
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
       [
@@ -519,6 +521,7 @@ jobSeekerRouter.put("/experience/:id", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.responsibilities ?? null,
+        d.noticePeriod ?? null,
         d.salary ?? null,
         d.referenceContact ?? null,
       ]

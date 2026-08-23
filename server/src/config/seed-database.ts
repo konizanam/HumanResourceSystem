@@ -624,6 +624,18 @@ function randomDate(start: Date, end: Date): Date {
   return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
 }
 
+function toDatabaseApplicationStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    APPLIED: 'APPLIED',
+    PENDING: 'SCREENING',
+    REVIEWED: 'LONG_LISTED',
+    ACCEPTED: 'HIRED',
+    REJECTED: 'REJECTED',
+    WITHDRAWN: 'WITHDRAWN',
+  };
+  return statusMap[status.toUpperCase()] ?? 'APPLIED';
+}
+
 async function tryInsertApplication(
   client: any,
   params: {
@@ -644,7 +656,7 @@ async function tryInsertApplication(
         params.id,
         params.jobId,
         params.applicantId,
-        params.status,
+        toDatabaseApplicationStatus(params.status),
         params.createdAt,
       ]
     );
@@ -665,7 +677,7 @@ async function tryInsertApplication(
       params.applicantId,
       'Seeded application (auto-generated).',
       'https://example.com/resume.pdf',
-      params.status,
+        toDatabaseApplicationStatus(params.status),
       params.createdAt,
       params.createdAt,
     ]
@@ -777,11 +789,14 @@ async function seedDatabase() {
     for (const role of roles) {
       const id = generateUUID();
       roleIds[role.name] = id;
-      // Remove ON CONFLICT
-      await client.query(
-        'INSERT INTO roles (id, name, description) VALUES ($1, $2, $3)',
+      const roleResult = await client.query(
+        `INSERT INTO roles (id, name, description)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description
+         RETURNING id`,
         [id, role.name, role.description]
       );
+      roleIds[role.name] = roleResult.rows[0].id;
     }
 
     // =============================================
@@ -829,11 +844,11 @@ async function seedDatabase() {
       await client.query(
         `INSERT INTO users (
           id, first_name, last_name, email, password_hash, 
-          is_active, email_verified, created_at, updated_at, status, role
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          is_active, email_verified, created_at, updated_at, role
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           userId, seeker.firstName, seeker.lastName, seeker.email, 
-          hashedPassword, true, true, new Date(), new Date(), UserStatus.ACTIVE, 'JOB_SEEKER'
+          hashedPassword, true, true, new Date(), new Date(), 'JOB_SEEKER'
         ]
       );
       
@@ -852,11 +867,11 @@ async function seedDatabase() {
       await client.query(
         `INSERT INTO users (
           id, first_name, last_name, email, password_hash, 
-          is_active, email_verified, created_at, updated_at, status, role
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          is_active, email_verified, created_at, updated_at, role
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           userId, employer.firstName, employer.lastName, employer.email,
-          hashedPassword, true, true, new Date(), new Date(), UserStatus.ACTIVE, 'EMPLOYER'
+          hashedPassword, true, true, new Date(), new Date(), 'EMPLOYER'
         ]
       );
       
@@ -875,11 +890,11 @@ async function seedDatabase() {
       await client.query(
         `INSERT INTO users (
           id, first_name, last_name, email, password_hash, 
-          is_active, email_verified, created_at, updated_at, status, role
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          is_active, email_verified, created_at, updated_at, role
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           userId, admin.firstName, admin.lastName, admin.email,
-          hashedPassword, true, true, new Date(), new Date(), UserStatus.ACTIVE, 'ADMIN'
+          hashedPassword, true, true, new Date(), new Date(), 'ADMIN'
         ]
       );
       
@@ -933,7 +948,7 @@ async function seedDatabase() {
       // Insert employer stats
       await client.query(
         `INSERT INTO employer_stats (
-          employer_id, total_jobs_posted, active_jobs, 
+          user_id, total_jobs_posted, active_jobs, 
           total_applications_received, total_views, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6)`,
         [employerUserId, 0, 0, 0, 0, new Date()]
@@ -969,8 +984,15 @@ async function seedDatabase() {
       const views = randomInt(50, 500);
       const applicationsCount = randomInt(5, 50);
       const isFlagged = job.status === JobStatus.FLAGGED;
+      const databaseStatus =
+        job.status === JobStatus.ACTIVE
+          ? 'APPROVED'
+          : job.status === JobStatus.FLAGGED
+            ? 'PENDING'
+            : job.status.toUpperCase();
 
       // Prefer the schema used by current API routes (includes employer_id/updated_at).
+      await client.query('SAVEPOINT seed_job_insert');
       try {
         await client.query(
           `INSERT INTO jobs (
@@ -988,7 +1010,7 @@ async function seedDatabase() {
             subcategoryIds[job.subcategory || job.category],
             job.salaryMin,
             job.salaryMax,
-            job.status,
+            databaseStatus,
             job.location,
             job.employmentType,
             job.experienceLevel,
@@ -1007,10 +1029,12 @@ async function seedDatabase() {
             isFlagged ? 'Seeded flagged job (demo)' : null,
           ]
         );
+        await client.query('RELEASE SAVEPOINT seed_job_insert');
       } catch (err: any) {
         if (err?.code !== '42703' && err?.code !== '42P01') throw err;
 
         // Legacy fallback.
+        await client.query('ROLLBACK TO SAVEPOINT seed_job_insert');
         await client.query(
           `INSERT INTO jobs (
             id, company_id, title, description, category_id, subcategory_id,
@@ -1027,7 +1051,7 @@ async function seedDatabase() {
             subcategoryIds[job.subcategory || job.category],
             job.salaryMin,
             job.salaryMax,
-            job.status,
+            databaseStatus,
             job.location,
             job.employmentType,
             job.experienceLevel,
@@ -1042,6 +1066,7 @@ async function seedDatabase() {
             JSON.stringify(job.benefits || [])
           ]
         );
+        await client.query('RELEASE SAVEPOINT seed_job_insert');
       }
     }
 
@@ -1652,13 +1677,13 @@ console.log('📝 Continuing with permissions...');
       
       // Get actual counts
       const jobsResult = await client.query(
-        'SELECT COUNT(*) as count FROM jobs WHERE employer_id = $1',
+        'SELECT COUNT(*) as count FROM jobs WHERE created_by = $1',
         [employerUserId]
       );
       const totalJobs = parseInt(jobsResult.rows[0]?.count || '0');
       
       const activeJobsResult = await client.query(
-        "SELECT COUNT(*) as count FROM jobs WHERE employer_id = $1 AND status = 'active'",
+        "SELECT COUNT(*) as count FROM jobs WHERE created_by = $1 AND status = 'APPROVED'",
         [employerUserId]
       );
       const activeJobs = parseInt(activeJobsResult.rows[0]?.count || '0');
@@ -1666,13 +1691,13 @@ console.log('📝 Continuing with permissions...');
       const applicationsResult = await client.query(
         `SELECT COUNT(*) as count FROM applications a 
          JOIN jobs j ON a.job_id = j.id 
-         WHERE j.employer_id = $1`,
+         WHERE j.created_by = $1`,
         [employerUserId]
       );
       const totalApplications = parseInt(applicationsResult.rows[0]?.count || '0');
       
       const viewsResult = await client.query(
-        'SELECT SUM(views) as total FROM jobs WHERE employer_id = $1',
+        'SELECT SUM(views) as total FROM jobs WHERE created_by = $1',
         [employerUserId]
       );
       const totalViews = parseInt(viewsResult.rows[0]?.total || '0');
@@ -1684,7 +1709,7 @@ console.log('📝 Continuing with permissions...');
          total_applications_received = $3,
          total_views = $4,
          updated_at = $5
-         WHERE employer_id = $6`,
+         WHERE user_id = $6`,
         [totalJobs, activeJobs, totalApplications, totalViews, new Date(), employerUserId]
       );
     }
