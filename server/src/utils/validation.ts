@@ -106,6 +106,7 @@ export const experienceValidation = [
   body('end_date').optional().isISO8601().toDate(),
   body('is_current').optional().isBoolean(),
   body('responsibilities').optional().trim(),
+  body('notice_period').optional().trim(),
   body('salary').optional().isNumeric(),
 ];
 
