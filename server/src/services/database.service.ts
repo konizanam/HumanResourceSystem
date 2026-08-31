@@ -443,14 +443,14 @@ export class DatabaseService {
   // ==================== EXPERIENCE METHODS ====================
 
   async createExperience(userId: string, data: any) {
-    const { company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, salary } = data;
+    const { company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, notice_period, salary } = data;
     
     const result = await query(
       `INSERT INTO job_seeker_experience 
-       (user_id, company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, salary)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      (user_id, company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, notice_period, salary)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [userId, company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, salary]
+          [userId, company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, notice_period, salary]
     );
     
     return result.rows[0];
@@ -465,7 +465,7 @@ export class DatabaseService {
   }
 
   async updateExperience(experienceId: string, userId: string, data: any) {
-    const { company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, salary } = data;
+    const { company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, notice_period, salary } = data;
     
     const result = await query(
       `UPDATE job_seeker_experience
@@ -476,10 +476,11 @@ export class DatabaseService {
            end_date = COALESCE($5, end_date),
            is_current = COALESCE($6, is_current),
            responsibilities = COALESCE($7, responsibilities),
-           salary = COALESCE($8, salary)
-       WHERE id = $9 AND user_id = $10
+             notice_period = COALESCE($8, notice_period),
+             salary = COALESCE($9, salary)
+           WHERE id = $10 AND user_id = $11
        RETURNING *`,
-      [company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, salary, experienceId, userId]
+          [company_name, job_title, employment_type, start_date, end_date, is_current, responsibilities, notice_period, salary, experienceId, userId]
     );
     
     return result.rows[0];

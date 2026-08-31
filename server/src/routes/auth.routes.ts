@@ -100,6 +100,12 @@ function createTwoFactorChallenge(input: {
     expiresAt,
   });
 
+  logDevOtpToTerminal({
+    email: input.email,
+    challengeId,
+    code,
+  });
+
   return {
     challengeId,
     code,
@@ -848,12 +854,6 @@ authRouter.post("/login", async (req, res, next) => {
       expiresInSeconds: challenge.expiresInSeconds,
     });
 
-    logDevOtpToTerminal({
-      email: user.email,
-      challengeId: challenge.challengeId,
-      code: challenge.code,
-    });
-
     return res.status(202).json({
       requiresTwoFactor: true,
       challengeId: challenge.challengeId,
@@ -974,12 +974,6 @@ authRouter.post("/2fa/challenge", async (req, res, next) => {
       expiresInSeconds: challenge.expiresInSeconds,
     });
 
-    logDevOtpToTerminal({
-      email: user.email,
-      challengeId: challenge.challengeId,
-      code: challenge.code,
-    });
-
     return res.json({
       message: "2FA challenge created",
       challengeId: challenge.challengeId,
@@ -1015,12 +1009,6 @@ authRouter.post("/2fa/resend", async (req, res, next) => {
       userFullName: existing.name,
       code: next.code,
       expiresInSeconds: next.expiresInSeconds,
-    });
-
-    logDevOtpToTerminal({
-      email: existing.email,
-      challengeId: next.challengeId,
-      code: next.code,
     });
 
     return res.json({
