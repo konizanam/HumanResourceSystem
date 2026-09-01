@@ -1378,6 +1378,7 @@ export async function saveExperience(
         : ((d.end_date ?? d.endDate ?? "").toString() || undefined),
     is_current: isCurrent,
     responsibilities: (d.responsibilities ?? "").toString(),
+    notice_period: (d.notice_period ?? d.noticePeriod ?? "").toString() || undefined,
     salary:
       d.salary === undefined || d.salary === null || d.salary === ""
         ? undefined
