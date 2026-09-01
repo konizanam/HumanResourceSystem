@@ -1008,6 +1008,7 @@ async function createProfilePdfReport(params: {
     String(readProfileValue(exp, "employment_type", "employmentType") ?? "-"),
     formatDateValue(readProfileValue(exp, "start_date", "startDate")),
     formatDateValue(readProfileValue(exp, "end_date", "endDate")),
+    String(readProfileValue(exp, "notice_period", "noticePeriod") ?? "-") || "-",
     String(readProfileValue(exp, "responsibilities", "description") ?? "-").slice(0, 200) || "-",
   ]);
 
@@ -1018,8 +1019,8 @@ async function createProfilePdfReport(params: {
   autoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
-    head: [["Job Title", "Company", "Employment Type", "Start", "End", "Responsibilities"]],
-    body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-", "-"]],
+    head: [["Job Title", "Company", "Employment Type", "Start", "End", "Notice Period", "Responsibilities"]],
+    body: experienceRows.length > 0 ? experienceRows : [["-", "-", "-", "-", "-", "-", "-"]],
     styles: { fontSize: 8.2, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, textColor: DARK_TEXT, overflow: "linebreak" },
     headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: "bold", fontSize: 8 },
     alternateRowStyles: { fillColor: LIGHT_BG },
@@ -1029,7 +1030,8 @@ async function createProfilePdfReport(params: {
       2: { cellWidth: 25 },
       3: { cellWidth: 17 },
       4: { cellWidth: 17 },
-      5: { cellWidth: contentWidth - 125 },
+      5: { cellWidth: 25 },
+      6: { cellWidth: contentWidth - 150 },
     },
     tableLineColor: DIVIDER,
     tableLineWidth: 0.2,
@@ -2110,6 +2112,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                           <ReadField label="Job Title" value={jobTitle} />
                           <ReadField label="Company" value={companyName} />
                           {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                          {isCurrent ? (
+                            <ReadField label="Notice Period" value={readValue(exp, "notice_period", "noticePeriod")} />
+                          ) : null}
                           {start ? <ReadField label="Start Date" value={start} /> : null}
                           {end ? <ReadField label="End Date" value={end} /> : null}
                           {responsibilities ? (
@@ -2780,6 +2785,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
           <ProfessionalSummarySection
             key={`step-5-${editResetToken}`}
             data={data.profile}
+            experience={data.experience}
             editing={isEditingThisStep}
             token={accessToken!}
             saving={saving}
@@ -4506,6 +4512,7 @@ function ExperienceSection({
     endDate: "",
     isCurrent: false,
     responsibilities: "",
+    noticePeriod: "",
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
@@ -4516,13 +4523,14 @@ function ExperienceSection({
     setEditId(item.id as string);
     setFieldErrors({});
     setForm({
-      companyName: (item.company_name as string) ?? "",
-      jobTitle: (item.job_title as string) ?? "",
-      employmentType: (item.employment_type as string) ?? "",
-      startDate: (item.start_date as string)?.split("T")[0] ?? "",
-      endDate: (item.end_date as string)?.split("T")[0] ?? "",
-      isCurrent: (item.is_current as boolean) ?? false,
-      responsibilities: (item.responsibilities as string) ?? "",
+      companyName: String(item.company_name ?? item.companyName ?? item.company ?? ""),
+      jobTitle: String(item.job_title ?? item.jobTitle ?? item.position ?? ""),
+      employmentType: String(item.employment_type ?? item.employmentType ?? ""),
+      startDate: String(item.start_date ?? item.startDate ?? "").split("T")[0],
+      endDate: String(item.end_date ?? item.endDate ?? "").split("T")[0],
+      isCurrent: Boolean(item.is_current ?? item.isCurrent),
+      responsibilities: String(item.responsibilities ?? item.description ?? ""),
+      noticePeriod: String(item.notice_period ?? item.noticePeriod ?? ""),
     });
   }
 
@@ -4610,6 +4618,9 @@ function ExperienceSection({
               <input type="checkbox" checked={Boolean(viewItem.is_current)} disabled />
               <span className="fieldLabel">Currently working here</span>
             </label>
+            {Boolean(viewItem.is_current) && (
+              <EditField label="Notice Period" value={String(viewItem.notice_period ?? "")} onChange={() => {}} disabled />
+            )}
             <label className="field fieldFull">
               <span className="fieldLabel">Responsibilities</span>
               <textarea className="input textarea" value={String(viewItem.responsibilities ?? "")} readOnly disabled rows={3} />
@@ -4643,7 +4654,15 @@ function ExperienceSection({
           <EditField
             label="Company Name"
             value={form.companyName}
-            onChange={(v) => setForm({ ...form, companyName: v })}
+            onChange={(v) => {
+              setForm({ ...form, companyName: v });
+              setFieldErrors((prev) => {
+                if (!prev.companyName) return prev;
+                const next = { ...prev };
+                delete next.companyName;
+                return next;
+              });
+            }}
             required
             error={fieldErrors.companyName}
           />
@@ -4730,6 +4749,25 @@ function ExperienceSection({
             />
             <span className="fieldLabel">Currently working here</span>
           </label>
+          {form.isCurrent && (
+            <label className="field">
+              <span className="fieldLabel">Notice Period</span>
+              <select
+                className="input"
+                value={form.noticePeriod}
+                onChange={(e) => setForm({ ...form, noticePeriod: e.target.value })}
+              >
+                <option value="">Select</option>
+                <option value="Immediately available">Immediately available</option>
+                <option value="1 week">1 week</option>
+                <option value="2 weeks">2 weeks</option>
+                <option value="1 month">1 month</option>
+                <option value="2 months">2 months</option>
+                <option value="3 months">3 months</option>
+              </select>
+              {fieldErrors.noticePeriod && <span className="fieldError">{fieldErrors.noticePeriod}</span>}
+            </label>
+          )}
         </div>
         <div className="stepperActions">
           {editId && (
@@ -4972,6 +5010,7 @@ function ReferencesSection({
 
 function ProfessionalSummarySection({
   data,
+  experience,
   editing,
   token,
   saving,
@@ -4980,8 +5019,12 @@ function ProfessionalSummarySection({
   setSuccess,
   reload,
   onSaved,
-}: SectionProps & { data: Record<string, unknown> | null }) {
+}: SectionProps & { data: Record<string, unknown> | null; experience: Record<string, unknown>[] }) {
   const d = data ?? {};
+  const currentExperience = experience.find((item) => Boolean(item.is_current ?? item.isCurrent));
+  const noticePeriod = currentExperience
+    ? String(currentExperience.notice_period ?? currentExperience.noticePeriod ?? "").trim()
+    : "";
   const [form, setForm] = useState({
     professionalSummary: (d.professional_summary as string) ?? (d.professionalSummary as string) ?? "",
     fieldOfExpertise: (d.field_of_expertise as string) ?? (d.fieldOfExpertise as string) ?? "",
@@ -5062,6 +5105,7 @@ function ProfessionalSummarySection({
             onChange={() => {}}
             disabled
           />
+          {noticePeriod ? <EditField label="Notice Period" value={noticePeriod} onChange={() => {}} disabled /> : null}
           <label className="field fieldFull">
             <span className="fieldLabel">Professional Summary</span>
             <textarea
