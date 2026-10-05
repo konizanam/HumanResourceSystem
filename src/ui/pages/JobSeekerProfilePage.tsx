@@ -3724,6 +3724,32 @@ function PersonalDetailsSection({
 /*  Address Section                                                     */
 /* ================================================================== */
 
+// Card text for an address without repeating itself: line 2 is skipped when it
+// matches or is already part of line 1, and city/region/country/postal code
+// are left out when line 1 already contains them.
+function addressSummary(address: Record<string, unknown>): { title: string; rest: string } {
+  const clean = (value: unknown) => String(value ?? "").trim();
+  const line1 = clean(address.address_line1 ?? address.addressLine1);
+  const line2 = clean(address.address_line2 ?? address.addressLine2);
+  // Compare whole comma-separated parts, so "Windhoek" is not mistaken for
+  // being part of "Klein Windhoek".
+  const parts = (value: string) =>
+    value.split(",").map((part) => part.trim().toLowerCase()).filter(Boolean);
+  const line1Parts = new Set(parts(line1));
+
+  const lines = [line1];
+  if (line2 && !parts(line2).every((part) => line1Parts.has(part))) lines.push(line2);
+  const title = lines.filter(Boolean).join(", ");
+  const titleParts = new Set(parts(title));
+
+  const rest = [address.city, address.state, address.country, address.postal_code]
+    .map(clean)
+    .filter((part) => part && !titleParts.has(part.toLowerCase()))
+    .join(", ");
+
+  return { title: title || rest, rest: title ? rest : "" };
+}
+
 function AddressSection({
   items,
   editing,
@@ -3885,10 +3911,20 @@ function AddressSection({
           {items.map((a) => (
             <div key={a.id as string} className="recordCard">
               <div className="recordBody">
-                <strong>{String(a.address_line1 ?? "")}</strong>
-                {a.address_line2 ? `, ${String(a.address_line2)}` : ""}
-                <br />
-                {[a.city, a.state, a.country, a.postal_code].filter(Boolean).map(String).join(", ")}
+                {(() => {
+                  const summary = addressSummary(a);
+                  return (
+                    <>
+                      <strong>{summary.title}</strong>
+                      {summary.rest ? (
+                        <>
+                          <br />
+                          {summary.rest}
+                        </>
+                      ) : null}
+                    </>
+                  );
+                })()}
                 {Boolean(a.is_primary) && <span className="chipBadge">Primary</span>}
               </div>
               <div className="recordActions">
