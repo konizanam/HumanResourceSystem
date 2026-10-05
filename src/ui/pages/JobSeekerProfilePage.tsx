@@ -7,6 +7,12 @@ import { COUNTRY_NAMES } from "../utils/countries";
 import { NATIONALITIES, findNationality, normalizeNationality } from "../utils/nationalities";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
+  FIELD_OF_STUDY_OPTIONS as EDUCATION_FIELD_OF_STUDY_OPTIONS,
+  QUALIFICATION_LEVELS as EDUCATION_QUALIFICATION_OPTIONS,
+  matchOption,
+  selectFromListMessage,
+} from "../utils/options";
+import {
   CALLING_CODE_OPTIONS,
   DEFAULT_CALLING_CODE,
   composeInternationalPhone,
@@ -59,49 +65,6 @@ const PROFILE_STEPS = [
   "Experience",
   "References",
   "Professional Summary",
-] as const;
-
-const EDUCATION_QUALIFICATION_OPTIONS = [
-  "Primary School",
-  "Secondary School",
-  "High School",
-  "Certificate",
-  "Diploma",
-  "Advanced Diploma",
-  "Bachelor's",
-  "Honours",
-  "Postgraduate Diploma",
-  "Master's",
-  "Doctorate (PhD)",
-] as const;
-
-const EDUCATION_FIELD_OF_STUDY_OPTIONS = [
-  "Accounting",
-  "Administration",
-  "Agriculture",
-  "Architecture",
-  "Auditing",
-  "Banking",
-  "Business Analysis",
-  "Business Development",
-  "Civil Engineering",
-  "Customer Service",
-  "Data Science",
-  "Education",
-  "Electrical Engineering",
-  "Finance",
-  "Healthcare",
-  "Human Resources",
-  "Information Technology",
-  "Law",
-  "Logistics",
-  "Marketing",
-  "Mechanical Engineering",
-  "Procurement",
-  "Project Management",
-  "Public Administration",
-  "Sales",
-  "Software Development",
 ] as const;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -3842,15 +3805,24 @@ function AddressSection({
     if (!form.addressLine1.trim()) errs.addressLine1 = "Address line 1 is required";
     if (!form.addressLine2.trim()) errs.addressLine2 = "Address line 2 is required";
     if (!form.city.trim()) errs.city = "City is required";
+    else if (isNamibia && !matchOption(form.city, NAMIBIA_TOWNS_CITIES)) errs.city = selectFromListMessage("city");
     if (!form.state.trim()) errs.state = "State/Region is required";
+    else if (isNamibia && !matchOption(form.state, NAMIBIA_REGIONS)) errs.state = selectFromListMessage("region");
     if (!form.country.trim()) errs.country = "Country is required";
+    else if (!matchOption(form.country, COUNTRY_NAMES)) errs.country = selectFromListMessage("country");
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
     setSaving(true);
     setError(null);
     try {
-      await saveAddress(token, form, editId ?? undefined);
+      // Save the listed spelling of each suggested value.
+      await saveAddress(token, {
+        ...form,
+        city: (isNamibia ? matchOption(form.city, NAMIBIA_TOWNS_CITIES) : null) ?? form.city.trim(),
+        state: (isNamibia ? matchOption(form.state, NAMIBIA_REGIONS) : null) ?? form.state.trim(),
+        country: matchOption(form.country, COUNTRY_NAMES) ?? form.country.trim(),
+      }, editId ?? undefined);
       setSuccess(editId ? "Address updated" : "Address added");
       setForm(empty);
       setEditId(null);
@@ -4169,7 +4141,9 @@ function EducationSection({
     const errs: Record<string, string> = {};
     if (!form.institutionName.trim()) errs.institutionName = "Institution is required";
     if (!form.qualification.trim()) errs.qualification = "Qualification is required";
+    else if (!matchOption(form.qualification, EDUCATION_QUALIFICATION_OPTIONS)) errs.qualification = selectFromListMessage("qualification");
     if (!form.fieldOfStudy.trim()) errs.fieldOfStudy = "Field of study is required";
+    else if (!matchOption(form.fieldOfStudy, EDUCATION_FIELD_OF_STUDY_OPTIONS)) errs.fieldOfStudy = selectFromListMessage("field of study");
     if (!form.startDate) errs.startDate = "Start date is required";
     if (!form.isCurrent && !form.endDate) errs.endDate = "End date is required";
     if (!form.grade.trim()) errs.grade = "Grade is required";
@@ -4182,7 +4156,11 @@ function EducationSection({
     try {
       // Qualification evidence is uploaded once under Personal Details; the API
       // links new education entries to it.
-      await saveEducation(token, form, editId ?? undefined);
+      await saveEducation(token, {
+        ...form,
+        qualification: matchOption(form.qualification, EDUCATION_QUALIFICATION_OPTIONS) ?? form.qualification.trim(),
+        fieldOfStudy: matchOption(form.fieldOfStudy, EDUCATION_FIELD_OF_STUDY_OPTIONS) ?? form.fieldOfStudy.trim(),
+      }, editId ?? undefined);
       setSuccess(editId ? "Education updated" : "Education added");
       setForm(empty);
       setEditId(null);
@@ -5001,7 +4979,9 @@ function ProfessionalSummarySection({
   async function onSave() {
     const errs: Record<string, string> = {};
     if (!form.fieldOfExpertise.trim()) errs.fieldOfExpertise = "Field of expertise is required";
+    else if (!matchOption(form.fieldOfExpertise, EDUCATION_FIELD_OF_STUDY_OPTIONS)) errs.fieldOfExpertise = selectFromListMessage("field of expertise");
     if (!form.qualificationLevel.trim()) errs.qualificationLevel = "Qualification level is required";
+    else if (!matchOption(form.qualificationLevel, EDUCATION_QUALIFICATION_OPTIONS)) errs.qualificationLevel = selectFromListMessage("qualification level");
     if (!form.professionalSummary.trim()) errs.professionalSummary = "Professional summary is required";
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -5009,7 +4989,11 @@ function ProfessionalSummarySection({
     setSaving(true);
     setError(null);
     try {
-      await updateProfile(token, form);
+      await updateProfile(token, {
+        ...form,
+        fieldOfExpertise: matchOption(form.fieldOfExpertise, EDUCATION_FIELD_OF_STUDY_OPTIONS) ?? form.fieldOfExpertise.trim(),
+        qualificationLevel: matchOption(form.qualificationLevel, EDUCATION_QUALIFICATION_OPTIONS) ?? form.qualificationLevel.trim(),
+      });
       setSuccess("Professional summary saved");
       setFieldErrors({});
       await reload();

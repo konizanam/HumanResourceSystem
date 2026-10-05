@@ -170,6 +170,16 @@ function displayUser(u: UserSearchResult): string {
   return (u.email ?? "").trim() || "User";
 }
 
+/** Returns the existing industry's name for an exact (case-insensitive) match, else null. */
+async function findListedIndustry(token: string, value: string): Promise<string | null> {
+  const key = value.trim().toLowerCase();
+  if (!key) return null;
+  const response = await listIndustries(token, { page: 1, limit: 50, search: value.trim() });
+  const industries = Array.isArray(response.industries) ? response.industries : [];
+  const match = industries.find((item) => String(item?.name ?? "").trim().toLowerCase() === key);
+  return match ? String(match.name).trim() : null;
+}
+
 export function CompaniesPage() {
   const { accessToken } = useAuth();
   const { hasPermission } = usePermissions();
@@ -613,8 +623,14 @@ export function CompaniesPage() {
       setSaving(true);
 
       const errs: Record<string, string> = {};
+      let listedIndustry: string | null = null;
       if (!addForm.name.trim()) errs.name = "Company name is required";
       if (!(addForm.industry ?? "").trim()) errs.industry = "Industry is required";
+      else {
+        // Only existing industries may be used; the API would otherwise create a new one.
+        listedIndustry = await findListedIndustry(accessToken, addForm.industry ?? "");
+        if (!listedIndustry) errs.industry = "Select an industry from the list";
+      }
       if (!(addForm.description ?? "").trim()) errs.description = "Description is required";
       if (!addForm.logoFile) errs.logo = "Company logo is required";
       if (!(addForm.contact_email ?? "").trim()) errs.contact_email = "Contact email is required";
@@ -624,11 +640,14 @@ export function CompaniesPage() {
       if (!(addForm.address_line2 ?? "").trim()) errs.address_line2 = "Address line 2 is required";
       if (!(addForm.city ?? "").trim()) errs.city = "City is required";
       if (!(addForm.country ?? "").trim()) errs.country = "Country is required";
+      if ((assignQuery.split(",").pop() ?? "").trim()) {
+        errs.assign_users = "Select a user from the list, or clear the text";
+      }
 
       setAddFieldErrors(errs);
       if (Object.keys(errs).length > 0) return;
 
-      const payload = normalizePayload(addForm);
+      const payload = normalizePayload({ ...addForm, industry: listedIndustry ?? addForm.industry });
 
       const created = await createCompany(accessToken, payload);
 
@@ -676,6 +695,20 @@ export function CompaniesPage() {
       if (!payload.name) {
         setError("Company name is required");
         return;
+      }
+      if ((editAssignQuery.split(",").pop() ?? "").trim()) {
+        setError("Select a user from the list, or clear the text in the user field");
+        return;
+      }
+      // A changed industry must be an existing one; the API would otherwise create a new one.
+      const industryValue = String(payload.industry ?? "").trim();
+      if (industryValue && industryValue !== String(openCompany?.industry ?? "").trim()) {
+        const listedIndustry = await findListedIndustry(accessToken, industryValue);
+        if (!listedIndustry) {
+          setError("Select an industry from the list");
+          return;
+        }
+        payload.industry = listedIndustry;
       }
 
       const updated = await updateCompany(accessToken, openCompanyId, payload);
