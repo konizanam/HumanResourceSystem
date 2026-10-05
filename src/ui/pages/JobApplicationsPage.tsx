@@ -1335,6 +1335,9 @@ export function JobApplicationsPage() {
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
                     return (
                       <div key={`${app.id}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Education {idx + 1}{qualification ? ` (${qualification})` : ""}
+                        </div>
                         <div className="profileReadGrid" style={{ marginTop: 0 }}>
                           <ReadField label="Institution" value={institution} />
                           <ReadField label="Qualification" value={qualification} />
@@ -1368,6 +1371,9 @@ export function JobApplicationsPage() {
                     const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
                     return (
                       <div key={`${app.id}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Experience {idx + 1}{jobTitle && jobTitle !== "—" ? ` (${jobTitle})` : ""}
+                        </div>
                         <div className="profileReadGrid" style={{ marginTop: 0 }}>
                           <ReadField label="Job Title" value={jobTitle} />
                           <ReadField label="Company" value={companyName} />
@@ -1394,14 +1400,22 @@ export function JobApplicationsPage() {
                 {references.length === 0 ? (
                   <p className="pageText">No references listed.</p>
                 ) : (
-                  references.map((ref, idx) => (
-                    <div key={`${app.id}-ref-${idx}`} className="profileReadGrid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                      <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
-                      <ReadField label="Relationship" value={readValue(ref, "relationship")} />
-                      <ReadField label="Email" value={readValue(ref, "email")} />
-                      <ReadField label="Phone" value={readValue(ref, "phone")} />
-                    </div>
-                  ))
+                  references.map((ref, idx) => {
+                    const refName = String(readValue(ref, "full_name", "fullName", "name") ?? "").trim();
+                    return (
+                      <div key={`${app.id}-ref-${idx}`} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Reference {idx + 1}{refName ? ` (${refName})` : ""}
+                        </div>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
+                          <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                          <ReadField label="Email" value={readValue(ref, "email")} />
+                          <ReadField label="Phone" value={readValue(ref, "phone")} />
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
