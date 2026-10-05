@@ -2654,6 +2654,12 @@ input[type="radio"][required]:checked {
   font-size: 14px;
 }
 
+.profileRecordFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 /* My Profile record lists alternate the same two tones. */
 .recordList > .recordCard:nth-child(odd) {
   background: var(--record-tone-a);

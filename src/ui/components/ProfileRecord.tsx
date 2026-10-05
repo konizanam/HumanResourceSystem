@@ -36,6 +36,18 @@ export function ProfileRecord({
         {summary}
         {expanded ? details : null}
       </div>
+      {details && expanded ? (
+        <div className="profileRecordFooter">
+          <button
+            type="button"
+            className="btn btnGhost btnSm"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(false)}
+          >
+            View less
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
