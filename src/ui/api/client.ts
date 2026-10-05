@@ -1064,7 +1064,6 @@ export async function forgotPassword(email: string) {
   });
   return (await res.json()) as {
     message?: string;
-    maskedEmail?: string;
     resetToken?: string;
   };
 }
