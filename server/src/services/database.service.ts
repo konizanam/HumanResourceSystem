@@ -391,21 +391,21 @@ export class DatabaseService {
   // ==================== EDUCATION METHODS ====================
 
   async createEducation(userId: string, data: any) {
-    const { institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url } = data;
+    const { institution_name, qualification, qualification_name, field_of_study, start_date, end_date, is_current, grade, certificate_url } = data;
     
     // New entries link to the user's qualifications file (one file for all).
     const result = await query(
       `INSERT INTO job_seeker_education 
-       (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url)
+       (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url, qualification_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, (
          SELECT '/api/v1/documents/' || d.id || '/download'
            FROM documents d
           WHERE d.user_id = $1 AND d.company_id IS NULL AND d.document_type = 'qualification_evidence'
           ORDER BY d.created_at DESC
           LIMIT 1
-       )))
+       )), $10)
        RETURNING *`,
-      [userId, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url]
+      [userId, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url, qualification_name]
     );
     
     return result.rows[0];
@@ -420,7 +420,7 @@ export class DatabaseService {
   }
 
   async updateEducation(educationId: string, userId: string, data: any) {
-    const { institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url } = data;
+    const { institution_name, qualification, qualification_name, field_of_study, start_date, end_date, is_current, grade, certificate_url } = data;
     
     const result = await query(
       `UPDATE job_seeker_education
@@ -431,10 +431,11 @@ export class DatabaseService {
            end_date = COALESCE($5, end_date),
            is_current = COALESCE($6, is_current),
            grade = COALESCE($7, grade),
-           certificate_url = COALESCE($8, certificate_url)
+           certificate_url = COALESCE($8, certificate_url),
+           qualification_name = COALESCE($11, qualification_name)
        WHERE id = $9 AND user_id = $10
        RETURNING *`,
-      [institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url, educationId, userId]
+      [institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url, educationId, userId, qualification_name]
     );
     
     return result.rows[0];

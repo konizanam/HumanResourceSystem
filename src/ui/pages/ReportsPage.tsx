@@ -17,6 +17,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { educationLabel } from "../utils/education";
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return <h2 className="reportsCardTitle" style={{ margin: "0", fontSize: "1.25rem", fontWeight: 800, color: "var(--heading)", letterSpacing: "0.01em" }}>{children}</h2>;
@@ -877,7 +878,7 @@ export function ReportsPage() {
         Nationality: String((row.personalDetails as any)?.nationality ?? "—"),
         Gender: String((row.personalDetails as any)?.gender ?? "—"),
         Address: [addr?.address_line1, addr?.address_line2, addr?.city, addr?.country].filter(Boolean).join(", ") || "—",
-        "Top Education": String(edu?.qualification_type ?? edu?.institution_name ?? "—"),
+        "Top Education": educationLabel(edu) || String(edu?.institution_name ?? "—"),
         "Latest Experience": String(exp?.job_title ?? exp?.company_name ?? "—"),
         Skills: row.skills || "—",
         Certifications: row.certifications || "—",
@@ -1573,7 +1574,7 @@ export function ReportsPage() {
                         <td>{formatDateOnly(String((row.personalDetails as any)?.date_of_birth ?? ""))}</td>
                         <td>{String((row.personalDetails as any)?.nationality ?? "—")}</td>
                         <td>{[addr?.address_line1, addr?.address_line2, addr?.city, addr?.country].filter(Boolean).join(", ") || "—"}</td>
-                        <td>{String(edu?.qualification_type ?? edu?.institution_name ?? "—")}</td>
+                        <td>{educationLabel(edu) || String(edu?.institution_name ?? "—")}</td>
                         <td>{String(exp?.job_title ?? exp?.company_name ?? "—")}</td>
                         <td>{row.skills || "—"}</td>
                         <td>{row.certifications || "—"}</td>

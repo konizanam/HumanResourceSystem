@@ -367,6 +367,7 @@ jobSeekerRouter.get("/education", async (req, res, next) => {
 const educationSchema = z.object({
   institutionName: z.string().min(1).max(255),
   qualification: z.string().min(1).max(255),
+  qualificationName: z.string().trim().min(1, "Qualification name is required").max(255),
   fieldOfStudy: z.string().max(255).optional().nullable(),
   startDate: z.string().optional().nullable(),
   endDate: z.string().optional().nullable(),
@@ -382,14 +383,14 @@ jobSeekerRouter.post("/education", async (req, res, next) => {
     // New entries link to the user's qualifications file (one file for all).
     const { rows } = await query(
       `INSERT INTO job_seeker_education
-         (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url)
+         (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url, qualification_name)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8, (
          SELECT '/api/v1/documents/' || d.id || '/download'
            FROM documents d
           WHERE d.user_id = $1 AND d.company_id IS NULL AND d.document_type = 'qualification_evidence'
           ORDER BY d.created_at DESC
           LIMIT 1
-       ))
+       ), $9)
        RETURNING *`,
       [
         userId,
@@ -400,6 +401,7 @@ jobSeekerRouter.post("/education", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.grade ?? null,
+        d.qualificationName,
       ]
     );
 
@@ -417,7 +419,8 @@ jobSeekerRouter.put("/education/:id", async (req, res, next) => {
     const { rows } = await query(
       `UPDATE job_seeker_education SET
          institution_name = $3, qualification = $4, field_of_study = $5,
-         start_date = $6, end_date = $7, is_current = $8, grade = $9
+         start_date = $6, end_date = $7, is_current = $8, grade = $9,
+         qualification_name = $10
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
       [
@@ -430,6 +433,7 @@ jobSeekerRouter.put("/education/:id", async (req, res, next) => {
         d.endDate ?? null,
         d.isCurrent ?? false,
         d.grade ?? null,
+        d.qualificationName,
       ]
     );
 

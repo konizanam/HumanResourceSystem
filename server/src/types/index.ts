@@ -55,6 +55,7 @@ export interface JobSeekerEducation {
   user_id: string;
   institution_name: string;
   qualification: string;
+  qualification_name?: string | null;
   field_of_study?: string;
   start_date?: Date;
   end_date?: Date;

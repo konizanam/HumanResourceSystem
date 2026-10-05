@@ -42,6 +42,12 @@ async function ensureSchema() {
   await query(
     "ALTER TABLE job_seeker_experience ADD COLUMN IF NOT EXISTS notice_period VARCHAR(100)",
   );
+
+  // Free-text qualification name (e.g. "Bachelor of Information Technology");
+  // `qualification` holds the listed qualification type.
+  await query(
+    "ALTER TABLE job_seeker_education ADD COLUMN IF NOT EXISTS qualification_name VARCHAR(255)",
+  );
   await query(
     `CREATE TABLE IF NOT EXISTS daily_unique_visitors (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
