@@ -54,6 +54,7 @@ import {
   type JobSeekerResume,
 } from "../api/client";
 import { ProfileRecord } from "../components/ProfileRecord";
+import { educationLabel, educationTitle, qualificationName as readQualificationName } from "../utils/education";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -939,7 +940,7 @@ async function createProfilePdfReport(params: {
   // ── Education ───────────────────────────────────────────────────────────
   const educationRows = (Array.isArray(params.education) ? params.education : []).map((edu) => [
     String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "-"),
-    String(readProfileValue(edu, "qualification") ?? "-"),
+    educationLabel(edu) || "-",
     String(readProfileValue(edu, "field_of_study", "fieldOfStudy") ?? "-"),
     formatDateValue(readProfileValue(edu, "start_date", "startDate", "start_year", "startYear")),
     formatDateValue(readProfileValue(edu, "end_date", "endDate", "end_year", "endYear")),
@@ -2027,6 +2028,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                   education.map((edu, idx) => {
                     const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
                     const qualification = String(readValue(edu, "qualification") ?? "").trim();
+                    const title = educationTitle(edu);
                     const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
                     const grade = String(readValue(edu, "grade") ?? "");
                     const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
@@ -2038,10 +2040,11 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                       <ProfileRecord
                         key={`${userId}-edu-${idx}`}
                         index={idx}
-                        title={qualification || institution}
+                        title={title || institution}
                         summary={
                           <>
                             <ReadField label="Institution" value={institution} />
+                            {qualification && qualification !== title ? <ReadField label="Qualification Type" value={qualification} /> : null}
                             {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
                           </>
                         }
@@ -4117,6 +4120,7 @@ function EducationSection({
   const empty = {
     institutionName: "",
     qualification: "",
+    qualificationName: "",
     fieldOfStudy: "",
     startDate: "",
     endDate: "",
@@ -4153,6 +4157,7 @@ function EducationSection({
     setForm({
       institutionName: (item.institution_name as string) ?? "",
       qualification: (item.qualification as string) ?? "",
+      qualificationName: readQualificationName(item),
       fieldOfStudy: (item.field_of_study as string) ?? "",
       startDate: (item.start_date as string)?.split("T")[0] ?? "",
       endDate: (item.end_date as string)?.split("T")[0] ?? "",
@@ -4164,8 +4169,9 @@ function EducationSection({
   async function onSave() {
     const errs: Record<string, string> = {};
     if (!form.institutionName.trim()) errs.institutionName = "Institution is required";
-    if (!form.qualification.trim()) errs.qualification = "Qualification is required";
-    else if (!matchOption(form.qualification, EDUCATION_QUALIFICATION_OPTIONS)) errs.qualification = selectFromListMessage("qualification");
+    if (!form.qualification.trim()) errs.qualification = "Qualification type is required";
+    else if (!matchOption(form.qualification, EDUCATION_QUALIFICATION_OPTIONS)) errs.qualification = selectFromListMessage("qualification type");
+    if (!form.qualificationName.trim()) errs.qualificationName = "Qualification name is required";
     if (!form.fieldOfStudy.trim()) errs.fieldOfStudy = "Field of study is required";
     else if (!matchOption(form.fieldOfStudy, EDUCATION_FIELD_OF_STUDY_OPTIONS)) errs.fieldOfStudy = selectFromListMessage("field of study");
     if (!form.startDate) errs.startDate = "Start date is required";
@@ -4183,6 +4189,7 @@ function EducationSection({
       await saveEducation(token, {
         ...form,
         qualification: matchOption(form.qualification, EDUCATION_QUALIFICATION_OPTIONS) ?? form.qualification.trim(),
+        qualificationName: form.qualificationName.trim(),
         fieldOfStudy: matchOption(form.fieldOfStudy, EDUCATION_FIELD_OF_STUDY_OPTIONS) ?? form.fieldOfStudy.trim(),
       }, editId ?? undefined);
       setSuccess(editId ? "Education updated" : "Education added");
@@ -4220,7 +4227,7 @@ function EducationSection({
           {items.map((e) => (
             <div key={e.id as string} className="recordCard">
               <div className="recordBody">
-                <strong>{e.qualification as string}</strong> — {e.institution_name as string}
+                <strong>{educationTitle(e)}</strong> — {e.institution_name as string}
                 <br />
                 <span className="recordMeta">
                   {e.field_of_study as string}
@@ -4247,7 +4254,8 @@ function EducationSection({
             <h4 className="editFormTitle">View Education</h4>
             <div className="editGrid">
               <EditField label="Institution" value={String(viewItem.institution_name ?? "")} onChange={() => {}} disabled />
-              <EditField label="Qualification" value={String(viewItem.qualification ?? "")} onChange={() => {}} disabled />
+              <EditField label="Qualification Name" value={readQualificationName(viewItem)} onChange={() => {}} disabled />
+              <EditField label="Qualification Type" value={String(viewItem.qualification ?? "")} onChange={() => {}} disabled />
               <EditField label="Field of Study" value={String(viewItem.field_of_study ?? "")} onChange={() => {}} disabled />
               <EditField label="Start Date" value={viewItem.start_date ? String(viewItem.start_date).split("T")[0] : ""} onChange={() => {}} disabled />
               <EditField label="End Date" value={viewItem.end_date ? String(viewItem.end_date).split("T")[0] : ""} onChange={() => {}} disabled />
@@ -4297,7 +4305,7 @@ function EducationSection({
             </label>
 
             <label className="field">
-              <span className="fieldLabel">Qualification</span>
+              <span className="fieldLabel">Qualification Type</span>
               <input
                 className="input"
                 value={form.qualification}
@@ -4311,7 +4319,7 @@ function EducationSection({
                 required
               />
               {qualificationOpen && qualificationSuggestions.length > 0 && (
-                <div className="autocompleteList" role="listbox" aria-label="Qualification suggestions">
+                <div className="autocompleteList" role="listbox" aria-label="Qualification type suggestions">
                   {qualificationSuggestions.map((o) => (
                     <button
                       key={o}
@@ -4330,6 +4338,21 @@ function EducationSection({
               )}
               {fieldErrors.qualification && (
                 <span className="fieldError">{fieldErrors.qualification}</span>
+              )}
+            </label>
+
+            <label className="field">
+              <span className="fieldLabel">Qualification Name</span>
+              <input
+                className="input"
+                value={form.qualificationName}
+                onChange={(e) => setForm({ ...form, qualificationName: e.target.value })}
+                placeholder="e.g. Bachelor of Information Technology"
+                maxLength={255}
+                required
+              />
+              {fieldErrors.qualificationName && (
+                <span className="fieldError">{fieldErrors.qualificationName}</span>
               )}
             </label>
 

@@ -1317,6 +1317,7 @@ export async function saveEducation(
   const payload = {
     institution_name: (d.institution_name ?? d.institutionName ?? "").toString(),
     qualification: (d.qualification ?? "").toString(),
+    qualification_name: (d.qualification_name ?? d.qualificationName ?? "").toString().trim(),
     field_of_study: (d.field_of_study ?? d.fieldOfStudy ?? "").toString(),
     start_date: (d.start_date ?? d.startDate ?? "").toString(),
     end_date:

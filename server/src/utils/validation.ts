@@ -79,7 +79,8 @@ export const addressValidation = [
 
 export const educationValidation = [
   body('institution_name').notEmpty().withMessage('Institution name is required').trim(),
-  body('qualification').notEmpty().withMessage('Qualification is required').trim(),
+  body('qualification').notEmpty().withMessage('Qualification type is required').trim(),
+  body('qualification_name').notEmpty().withMessage('Qualification name is required').trim(),
   body('field_of_study').notEmpty().withMessage('Field of study is required').trim(),
   body('start_date')
     .notEmpty()

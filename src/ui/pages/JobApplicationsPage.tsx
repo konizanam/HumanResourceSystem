@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
 import { ProfileRecord } from "../components/ProfileRecord";
+import { educationLabel, educationTitle } from "../utils/education";
 
 type StageKey =
   | "longlisted"
@@ -715,7 +716,7 @@ export function JobApplicationsPage() {
 
         const qualificationLines = education
           .map((e) => {
-            const q = String(e.qualification ?? "").trim();
+            const q = educationLabel(e);
             const field = String(e.field_of_study ?? e.fieldOfStudy ?? "").trim();
             const inst = String(e.institution_name ?? e.institutionName ?? "").trim();
             if (!q && !field && !inst) return "";
@@ -1356,6 +1357,7 @@ export function JobApplicationsPage() {
                   education.map((edu, idx) => {
                     const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
                     const qualification = String(readValue(edu, "qualification") ?? "").trim();
+                    const title = educationTitle(edu);
                     const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
                     const grade = String(readValue(edu, "grade") ?? "");
                     const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
@@ -1367,10 +1369,11 @@ export function JobApplicationsPage() {
                       <ProfileRecord
                         key={`${app.id}-edu-${idx}`}
                         index={idx}
-                        title={qualification || institution}
+                        title={title || institution}
                         summary={
                           <>
                             <ReadField label="Institution" value={institution} />
+                            {qualification && qualification !== title ? <ReadField label="Qualification Type" value={qualification} /> : null}
                             {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
                           </>
                         }
