@@ -3193,6 +3193,11 @@ function PersonalDetailsSection({
           <EditField label="Nationality" value={String(d.nationality ?? "")} onChange={() => {}} disabled />
           <EditField label="ID Type" value={String(d.id_type ?? "")} onChange={() => {}} disabled />
           <EditField label="ID Number" value={String(d.id_number ?? "")} onChange={() => {}} disabled />
+          <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
+          <label className="field fieldCheckbox">
+            <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
+            <span className="fieldLabel">Disability status</span>
+          </label>
           <div className="field fieldFull">
             <div className="uploadedDocsGrid">
               <UploadedDocumentCard
@@ -3291,11 +3296,6 @@ function PersonalDetailsSection({
               </div>
             </div>
           ) : null}
-          <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
-          <label className="field fieldCheckbox">
-            <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
-            <span className="fieldLabel">Disability status</span>
-          </label>
         </div>
       </div>
     );
@@ -3460,6 +3460,33 @@ function PersonalDetailsSection({
           required
           error={fieldErrors.idNumber}
         />
+        <label className="field">
+          <span className="fieldLabel">Marital Status</span>
+          <select
+            className="input"
+            value={form.maritalStatus}
+            onChange={(e) => set("maritalStatus", e.target.value)}
+            required
+          >
+            <option value="">Select</option>
+            <option value="Single">Single</option>
+            <option value="Married">Married</option>
+            <option value="Divorced">Divorced</option>
+            <option value="Widowed">Widowed</option>
+            <option value="Separated">Separated</option>
+          </select>
+          {fieldErrors.maritalStatus && (
+            <span className="fieldError">{fieldErrors.maritalStatus}</span>
+          )}
+        </label>
+        <label className="field fieldCheckbox">
+          <input
+            type="checkbox"
+            checked={form.disabilityStatus}
+            onChange={(e) => set("disabilityStatus", e.target.checked)}
+          />
+          <span className="fieldLabel">Disability status</span>
+        </label>
         <div className="field fieldFull">
           <div className="uploadedDocsGrid">
             <label className="field">
@@ -3656,33 +3683,6 @@ function PersonalDetailsSection({
             </div>
           </div>
         ) : null}
-        <label className="field">
-          <span className="fieldLabel">Marital Status</span>
-          <select
-            className="input"
-            value={form.maritalStatus}
-            onChange={(e) => set("maritalStatus", e.target.value)}
-            required
-          >
-            <option value="">Select</option>
-            <option value="Single">Single</option>
-            <option value="Married">Married</option>
-            <option value="Divorced">Divorced</option>
-            <option value="Widowed">Widowed</option>
-            <option value="Separated">Separated</option>
-          </select>
-          {fieldErrors.maritalStatus && (
-            <span className="fieldError">{fieldErrors.maritalStatus}</span>
-          )}
-        </label>
-        <label className="field fieldCheckbox">
-          <input
-            type="checkbox"
-            checked={form.disabilityStatus}
-            onChange={(e) => set("disabilityStatus", e.target.checked)}
-          />
-          <span className="fieldLabel">Disability status</span>
-        </label>
       </div>
       <div className="stepperActions">
         <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">
