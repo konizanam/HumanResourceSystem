@@ -33,6 +33,19 @@ const STATUS_ACTIONS: { key: StageKey; label: string }[] = [
   { key: "hired", label: "Hired" },
 ];
 
+// Status filter on the main applicants list: "applied" = not yet moved to a stage.
+type ApplicantStatusFilter = "applied" | StageKey;
+
+const APPLICANT_STATUS_FILTERS: { key: ApplicantStatusFilter; label: string }[] = [
+  { key: "applied", label: "Applied" },
+  { key: "longlisted", label: "Longlisted" },
+  { key: "shortlisted", label: "Shortlisted" },
+  { key: "interview", label: "Interview" },
+  { key: "assessment", label: "Assessment" },
+  { key: "hired", label: "Hired" },
+  { key: "rejected", label: "Rejected" },
+];
+
 const LEGACY_STATUS_MAP: Record<StageKey, string> = {
   longlisted: "reviewed",
   shortlisted: "reviewed",
@@ -500,6 +513,7 @@ export function JobApplicationsPage() {
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [stageOverrides, setStageOverrides] = useState<Record<string, StageKey>>({});
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ApplicantStatusFilter>("applied");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
@@ -595,10 +609,21 @@ export function JobApplicationsPage() {
     });
   }, [applications, search, stageOverrides]);
 
-  const mainListApplications = useMemo(
+  const unassignedApplications = useMemo(
     () => filteredApplications.filter((app) => !isAssignedToStatus(app, stageOverrides)),
     [filteredApplications, stageOverrides],
   );
+
+  // Main list: unassigned applicants by default, or everyone in the chosen stage.
+  const mainListApplications = useMemo(
+    () =>
+      statusFilter === "applied"
+        ? unassignedApplications
+        : filteredApplications.filter((app) => displayStatus(app, stageOverrides) === statusFilter),
+    [filteredApplications, stageOverrides, statusFilter, unassignedApplications],
+  );
+
+  const statusFilterLabel = APPLICANT_STATUS_FILTERS.find((s) => s.key === statusFilter)?.label ?? "Applied";
 
   const grouped = useMemo(() => {
     const map: Record<StageKey, JobApplication[]> = {
@@ -618,7 +643,7 @@ export function JobApplicationsPage() {
 
   const statsCards = useMemo(() => {
     const total = applications.length;
-    const unassigned = mainListApplications.length;
+    const unassigned = unassignedApplications.length;
     const cards: { label: string; value: number; stage: StageKey | "main" }[] = [
       { label: "Total Applicants", value: total, stage: "main" },
       { label: "Unassigned", value: unassigned, stage: "main" },
@@ -630,7 +655,7 @@ export function JobApplicationsPage() {
       { label: "Rejected", value: grouped.rejected.length, stage: "rejected" },
     ];
     return cards;
-  }, [applications.length, grouped, mainListApplications.length]);
+  }, [applications.length, grouped, unassignedApplications.length]);
 
   function onStatsCardClick(stage: StageKey | "main") {
     if (stage === "main") {
@@ -924,7 +949,11 @@ export function JobApplicationsPage() {
   }
 
   async function onExportAllToExcel() {
-    await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
+    if (statusFilter === "applied") {
+      await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
+      return;
+    }
+    await exportApplicantsToExcel(mainListApplications, `${statusFilterLabel} Applicants`, statusFilter);
   }
 
   const pagination = useMemo(() => {
@@ -1596,6 +1625,22 @@ export function JobApplicationsPage() {
           />
         </div>
 
+        <div style={{ minWidth: 180, flex: "0 1 220px" }}>
+          <label className="fieldLabel">Status</label>
+          <select
+            className="input"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as ApplicantStatusFilter);
+              setPage(1);
+            }}
+          >
+            {APPLICANT_STATUS_FILTERS.map((option) => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="publicJobsPager" role="navigation" aria-label="Applicants pagination top">
           <label className="publicJobsPagerSelect">
             Records
@@ -1645,7 +1690,7 @@ export function JobApplicationsPage() {
         style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
       >
         <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
-          All Applicants
+          {statusFilter === "applied" ? "All Applicants" : `${statusFilterLabel} Applicants`}
         </h2>
         <button
           type="button"
@@ -1664,7 +1709,9 @@ export function JobApplicationsPage() {
               {applications.length === 0
                 ? "No applicants found for this job."
                 : mainListApplications.length === 0
-                  ? "No applicants pending status assignment in the main list."
+                  ? statusFilter === "applied" && !search.trim()
+                    ? "No applicants pending status assignment in the main list."
+                    : `No ${statusFilterLabel.toLowerCase()} applicants match your filters.`
                   : "No applicants match your search."}
             </div>
           </div>
