@@ -81,6 +81,7 @@ export class DocumentController {
         document_type || 'general',
         is_primary === 'true'
       );
+      await documentService.replaceJobSeekerDocument(userId, document_type || 'general', document.id);
 
       res.status(201).json({
         status: 'success',
@@ -203,6 +204,7 @@ export class DocumentController {
           document_type || 'general',
           false
         );
+        await documentService.replaceJobSeekerDocument(userId, document_type || 'general', document.id);
 
         uploadedDocs.push(document);
       }

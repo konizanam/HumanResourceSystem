@@ -393,10 +393,17 @@ export class DatabaseService {
   async createEducation(userId: string, data: any) {
     const { institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url } = data;
     
+    // New entries link to the user's qualifications file (one file for all).
     const result = await query(
       `INSERT INTO job_seeker_education 
        (user_id, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, (
+         SELECT '/api/v1/documents/' || d.id || '/download'
+           FROM documents d
+          WHERE d.user_id = $1 AND d.company_id IS NULL AND d.document_type = 'qualification_evidence'
+          ORDER BY d.created_at DESC
+          LIMIT 1
+       )))
        RETURNING *`,
       [userId, institution_name, qualification, field_of_study, start_date, end_date, is_current, grade, certificate_url]
     );

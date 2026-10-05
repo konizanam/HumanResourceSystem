@@ -2820,6 +2820,13 @@ input[type="radio"][required]:checked {
   grid-column: 1 / -1;
 }
 
+/* My Profile: three-column form fields on wide screens. */
+@media (min-width: 1000px) {
+  .profileStepContent .editGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .fieldCheckbox {
   flex-direction: row;
   display: flex;

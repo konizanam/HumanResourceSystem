@@ -190,7 +190,9 @@ router.post('/',
       }
 
       const jobSeekerId = req.user!.userId;
-      const isPrimary = req.body.is_primary === 'true' || req.body.is_primary === true;
+      // A user keeps a single CV: the new upload replaces the old one, so it is
+      // always the primary.
+      const isPrimary = true;
 
       // Start transaction
       await dbQuery('BEGIN');
@@ -222,6 +224,12 @@ router.post('/',
             req.file.buffer,
             isPrimary
           ]
+        );
+
+        // Drop previous CVs — no history of replaced files is kept.
+        await dbQuery(
+          'DELETE FROM resumes WHERE job_seeker_id = $1 AND id <> $2',
+          [jobSeekerId, result.rows[0]?.id]
         );
 
         // Update user's resume_url for backward compatibility
