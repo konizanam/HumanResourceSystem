@@ -150,6 +150,7 @@ export function ReportsPage() {
   const [sortBy, setSortBy] = useState<SortBy>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("DESC");
   const [directoryGenderFilter, setDirectoryGenderFilter] = useState<string>("");
+  const [directoryNationalityFilter, setDirectoryNationalityFilter] = useState<string>("");
 
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string>("");
@@ -182,6 +183,7 @@ export function ReportsPage() {
   const [jobApplicantsToDate, setJobApplicantsToDate] = useState<string>("");
 
   const [directoryGenderByUserId, setDirectoryGenderByUserId] = useState<Record<string, string>>({});
+  const [directoryNationalityByUserId, setDirectoryNationalityByUserId] = useState<Record<string, string>>({});
 
   const [applicantsPage, setApplicantsPage] = useState(1);
   const [directoryPage, setDirectoryPage] = useState(1);
@@ -285,6 +287,7 @@ export function ReportsPage() {
     if (toFetch.length === 0) return;
 
     const nextMap: Record<string, string> = {};
+    const nextNationalityMap: Record<string, string> = {};
     const batchSize = 8;
 
     for (let index = 0; index < toFetch.length; index += batchSize) {
@@ -294,18 +297,21 @@ export function ReportsPage() {
           try {
             const profile = await getJobSeekerFullProfile(accessToken, userId);
             const gender = normalizeGender(String((profile.personalDetails as any)?.gender ?? ""));
-            return { userId, gender };
+            const nationality = String((profile.personalDetails as any)?.nationality ?? "").trim();
+            return { userId, gender, nationality };
           } catch {
-            return { userId, gender: "" };
+            return { userId, gender: "", nationality: "" };
           }
         }),
       );
 
       results.forEach((result) => {
         nextMap[result.userId] = result.gender;
+        nextNationalityMap[result.userId] = result.nationality;
       });
     }
 
+    setDirectoryNationalityByUserId((prev) => ({ ...prev, ...nextNationalityMap }));
     setDirectoryGenderByUserId((prev) => ({ ...prev, ...nextMap }));
   }, [accessToken, directoryGenderByUserId]);
 
@@ -407,13 +413,24 @@ export function ReportsPage() {
 
   const directoryFilteredRows = useMemo(() => {
     if (reportType !== "job_seekers") return rows;
-    if (!directoryGenderFilter) return rows;
+    if (!directoryGenderFilter && !directoryNationalityFilter) return rows;
 
     return rows.filter((row) => {
       const key = String(row.id ?? "");
-      return normalizeGender(directoryGenderByUserId[key]) === directoryGenderFilter;
+      if (directoryGenderFilter && normalizeGender(directoryGenderByUserId[key]) !== directoryGenderFilter) return false;
+      if (directoryNationalityFilter && (directoryNationalityByUserId[key] ?? "").toLowerCase() !== directoryNationalityFilter.toLowerCase()) return false;
+      return true;
     });
-  }, [rows, reportType, directoryGenderFilter, directoryGenderByUserId]);
+  }, [rows, reportType, directoryGenderFilter, directoryNationalityFilter, directoryGenderByUserId, directoryNationalityByUserId]);
+
+  const directoryNationalityOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    Object.values(directoryNationalityByUserId).forEach((value) => {
+      const trimmed = value.trim();
+      if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+    });
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [directoryNationalityByUserId]);
 
   const applicationsFilteredBase = useMemo(() => {
     const searchQuery = applicationFilterSearch.trim().toLowerCase();
@@ -808,6 +825,7 @@ export function ReportsPage() {
         Email: row.email ?? "—",
         Phone: row.phone ?? "—",
         Gender: titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown"),
+        Nationality: directoryNationalityByUserId[String(row.id ?? "")] || "—",
         Status: statusLabel(row),
         Verified: row.email_verified ? "Yes" : "No",
         "Created At": formatDate(row.created_at),
@@ -1741,6 +1759,20 @@ export function ReportsPage() {
                 </select>
               </div>
               <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Nationality</label>
+                <select
+                  className="input"
+                  value={directoryNationalityFilter}
+                  onChange={(e) => setDirectoryNationalityFilter(e.target.value)}
+                  disabled={reportType !== "job_seekers"}
+                >
+                  <option value="">All</option>
+                  {directoryNationalityOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
                 <label className="fieldLabel">Verified</label>
                 <select className="input" value={verified} onChange={(e) => setVerified(e.target.value as "" | "true" | "false") }>
                   <option value="">All</option>
@@ -1792,6 +1824,7 @@ export function ReportsPage() {
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Gender</th>
+                        <th>Nationality</th>
                         <th>Status</th>
                         <th>Verified</th>
                         <th>Created</th>
@@ -1813,7 +1846,7 @@ export function ReportsPage() {
                 </thead>
                 <tbody>
                   {pagedDirectoryRows.total === 0 ? (
-                    <tr><td colSpan={8}>No records found for the selected filters.</td></tr>
+                    <tr><td colSpan={reportType === "job_seekers" ? 9 : 8}>No records found for the selected filters.</td></tr>
                   ) : (
                     pagedDirectoryRows.rows.map((row) => (
                       <tr key={row.id}>
@@ -1823,6 +1856,7 @@ export function ReportsPage() {
                             <td>{row.email ?? "—"}</td>
                             <td>{row.phone ?? "—"}</td>
                             <td>{titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown")}</td>
+                            <td>{directoryNationalityByUserId[String(row.id ?? "")] || "—"}</td>
                             <td>{statusLabel(row)}</td>
                             <td>{row.email_verified ? "Yes" : "No"}</td>
                             <td>{formatDate(row.created_at)}</td>
