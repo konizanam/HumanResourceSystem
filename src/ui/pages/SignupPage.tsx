@@ -10,7 +10,6 @@ import {
   updatePersonalDetails,
   updateProfile,
 } from "../api/client";
-import { COUNTRY_NAMES } from "../utils/countries";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
   CALLING_CODE_OPTIONS,
@@ -21,51 +20,15 @@ import {
   validateInternationalPhone,
 } from "../utils/phoneCountryCodes";
 import { applyAppThemeColor } from "../utils/themeColor";
+import { NATIONALITIES, findNationality } from "../utils/nationalities";
+import {
+  FIELD_OF_STUDY_OPTIONS as FIELD_OF_EXPERTISE_OPTIONS,
+  QUALIFICATION_LEVELS,
+  matchOption,
+  selectFromListMessage,
+} from "../utils/options";
 
 const DEFAULT_APP_COLOR = "#6b7280";
-
-const QUALIFICATION_LEVELS = [
-  "Primary School",
-  "Secondary School",
-  "High School",
-  "Certificate",
-  "Diploma",
-  "Advanced Diploma",
-  "Bachelor's",
-  "Honours",
-  "Postgraduate Diploma",
-  "Master's",
-  "Doctorate (PhD)",
-] as const;
-
-const FIELD_OF_EXPERTISE_OPTIONS = [
-  "Accounting",
-  "Administration",
-  "Agriculture",
-  "Architecture",
-  "Auditing",
-  "Banking",
-  "Business Analysis",
-  "Business Development",
-  "Civil Engineering",
-  "Customer Service",
-  "Data Science",
-  "Education",
-  "Electrical Engineering",
-  "Finance",
-  "Healthcare",
-  "Human Resources",
-  "Information Technology",
-  "Law",
-  "Logistics",
-  "Marketing",
-  "Mechanical Engineering",
-  "Procurement",
-  "Project Management",
-  "Public Administration",
-  "Sales",
-  "Software Development",
-] as const;
 
 function EyeIcon({ open }: { open: boolean }) {
   return (
@@ -162,7 +125,7 @@ const DEV_PREFILL: Partial<FormData> = {
 
   gender: "Male",
   dateOfBirth: "1990-01-01",
-  nationality: "Namibia",
+  nationality: "Namibian",
   idType: "National ID",
   idNumber: "AA1234567",
   maritalStatus: "Single",
@@ -381,10 +344,11 @@ export function SignupPage() {
   const nationalitySuggestions = useMemo(() => {
     const q = form.nationality.trim().toLowerCase();
     if (!q) return [];
-    const matches = COUNTRY_NAMES.filter((c) =>
-      c.toLowerCase().startsWith(q)
-    );
-    return matches.slice(0, 8);
+    // Already a listed nationality — nothing left to suggest.
+    if (findNationality(q) === form.nationality) return [];
+    const startsWith = NATIONALITIES.filter((n) => n.toLowerCase().startsWith(q));
+    const contains = NATIONALITIES.filter((n) => !n.toLowerCase().startsWith(q) && n.toLowerCase().includes(q));
+    return [...startsWith, ...contains].slice(0, 8);
   }, [form.nationality]);
 
   const passwordChecks = useMemo(() => {
@@ -464,6 +428,7 @@ export function SignupPage() {
       if (!form.gender) errs.gender = "Gender is required";
       if (!form.dateOfBirth) errs.dateOfBirth = "Date of birth is required";
       if (!form.nationality.trim()) errs.nationality = "Nationality is required";
+      else if (!findNationality(form.nationality)) errs.nationality = "Select a nationality from the list (e.g. Namibian)";
       if (!form.idType) errs.idType = "ID Type is required";
       if (!form.idNumber.trim()) errs.idNumber = "ID/Passport Number is required";
     }
@@ -471,13 +436,17 @@ export function SignupPage() {
     if (step === 1) {
       if (!form.addressLine1.trim()) errs.addressLine1 = "Address line 1 is required";
       if (!form.city.trim()) errs.city = "City is required";
+      else if (isNamibia && !matchOption(form.city, NAMIBIA_TOWNS_CITIES)) errs.city = selectFromListMessage("city");
       if (!form.state.trim()) errs.state = "State/Region is required";
+      else if (isNamibia && !matchOption(form.state, NAMIBIA_REGIONS)) errs.state = selectFromListMessage("region");
       if (!form.country.trim()) errs.country = "Country is required";
     }
 
     if (step === 2) {
       if (!form.fieldOfExpertise.trim()) errs.fieldOfExpertise = "Field of expertise is required";
+      else if (!matchOption(form.fieldOfExpertise, FIELD_OF_EXPERTISE_OPTIONS)) errs.fieldOfExpertise = selectFromListMessage("field of expertise");
       if (!form.qualificationLevel.trim()) errs.qualificationLevel = "Qualification level is required";
+      else if (!matchOption(form.qualificationLevel, QUALIFICATION_LEVELS)) errs.qualificationLevel = selectFromListMessage("qualification level");
       if (!form.yearsExperience.trim()) errs.yearsExperience = "Years of experience is required";
       else if (!/^\d+$/.test(form.yearsExperience.trim())) errs.yearsExperience = "Must be a number";
       if (!form.professionalSummary.trim()) errs.professionalSummary = "Professional summary is required";
@@ -542,7 +511,7 @@ export function SignupPage() {
         middle_name: form.middleName.trim() || undefined,
         gender: form.gender,
         date_of_birth: form.dateOfBirth,
-        nationality: form.nationality.trim(),
+        nationality: findNationality(form.nationality) ?? form.nationality.trim(),
         id_type: form.idType,
         id_number: form.idNumber.trim(),
         marital_status: form.maritalStatus.trim() || undefined,
@@ -552,8 +521,8 @@ export function SignupPage() {
       await saveAddress(token, {
         address_line1: form.addressLine1.trim(),
         address_line2: form.addressLine2.trim() || undefined,
-        city: form.city.trim(),
-        state: form.state.trim(),
+        city: (isNamibia ? matchOption(form.city, NAMIBIA_TOWNS_CITIES) : null) ?? form.city.trim(),
+        state: (isNamibia ? matchOption(form.state, NAMIBIA_REGIONS) : null) ?? form.state.trim(),
         country: form.country.trim(),
         postal_code: form.postalCode.trim() || undefined,
         is_primary: true,
@@ -561,8 +530,8 @@ export function SignupPage() {
 
       await updateProfile(token, {
         professional_summary: form.professionalSummary.trim(),
-        field_of_expertise: form.fieldOfExpertise.trim(),
-        qualification_level: form.qualificationLevel.trim(),
+        field_of_expertise: matchOption(form.fieldOfExpertise, FIELD_OF_EXPERTISE_OPTIONS) ?? form.fieldOfExpertise.trim(),
+        qualification_level: matchOption(form.qualificationLevel, QUALIFICATION_LEVELS) ?? form.qualificationLevel.trim(),
         years_experience: Number(form.yearsExperience.trim()),
       });
 
@@ -880,7 +849,7 @@ export function SignupPage() {
                 }}
                 onFocus={() => setNationalityOpen(true)}
                 onBlur={() => setNationalityOpen(false)}
-                placeholder="Start typing (e.g. Namibia)"
+                placeholder="Start typing (e.g. Namibian)"
                 required
               />
               {nationalityOpen && nationalitySuggestions.length > 0 && (
