@@ -14,6 +14,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { ProfileRecord } from "../components/ProfileRecord";
 
 type StageKey =
   | "longlisted"
@@ -30,6 +31,19 @@ const STATUS_ACTIONS: { key: StageKey; label: string }[] = [
   { key: "interview", label: "Interview" },
   { key: "assessment", label: "Assessment" },
   { key: "hired", label: "Hired" },
+];
+
+// Status filter on the main applicants list: "applied" = not yet moved to a stage.
+type ApplicantStatusFilter = "applied" | StageKey;
+
+const APPLICANT_STATUS_FILTERS: { key: ApplicantStatusFilter; label: string }[] = [
+  { key: "applied", label: "Applied" },
+  { key: "longlisted", label: "Longlisted" },
+  { key: "shortlisted", label: "Shortlisted" },
+  { key: "interview", label: "Interview" },
+  { key: "assessment", label: "Assessment" },
+  { key: "hired", label: "Hired" },
+  { key: "rejected", label: "Rejected" },
 ];
 
 const LEGACY_STATUS_MAP: Record<StageKey, string> = {
@@ -499,6 +513,7 @@ export function JobApplicationsPage() {
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [stageOverrides, setStageOverrides] = useState<Record<string, StageKey>>({});
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ApplicantStatusFilter>("applied");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
@@ -594,10 +609,21 @@ export function JobApplicationsPage() {
     });
   }, [applications, search, stageOverrides]);
 
-  const mainListApplications = useMemo(
+  const unassignedApplications = useMemo(
     () => filteredApplications.filter((app) => !isAssignedToStatus(app, stageOverrides)),
     [filteredApplications, stageOverrides],
   );
+
+  // Main list: unassigned applicants by default, or everyone in the chosen stage.
+  const mainListApplications = useMemo(
+    () =>
+      statusFilter === "applied"
+        ? unassignedApplications
+        : filteredApplications.filter((app) => displayStatus(app, stageOverrides) === statusFilter),
+    [filteredApplications, stageOverrides, statusFilter, unassignedApplications],
+  );
+
+  const statusFilterLabel = APPLICANT_STATUS_FILTERS.find((s) => s.key === statusFilter)?.label ?? "Applied";
 
   const grouped = useMemo(() => {
     const map: Record<StageKey, JobApplication[]> = {
@@ -617,7 +643,7 @@ export function JobApplicationsPage() {
 
   const statsCards = useMemo(() => {
     const total = applications.length;
-    const unassigned = mainListApplications.length;
+    const unassigned = unassignedApplications.length;
     const cards: { label: string; value: number; stage: StageKey | "main" }[] = [
       { label: "Total Applicants", value: total, stage: "main" },
       { label: "Unassigned", value: unassigned, stage: "main" },
@@ -629,7 +655,7 @@ export function JobApplicationsPage() {
       { label: "Rejected", value: grouped.rejected.length, stage: "rejected" },
     ];
     return cards;
-  }, [applications.length, grouped, mainListApplications.length]);
+  }, [applications.length, grouped, unassignedApplications.length]);
 
   function onStatsCardClick(stage: StageKey | "main") {
     if (stage === "main") {
@@ -923,7 +949,11 @@ export function JobApplicationsPage() {
   }
 
   async function onExportAllToExcel() {
-    await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
+    if (statusFilter === "applied") {
+      await exportApplicantsToExcel(filteredApplications, "All Applicants", "all");
+      return;
+    }
+    await exportApplicantsToExcel(mainListApplications, `${statusFilterLabel} Applicants`, statusFilter);
   }
 
   const pagination = useMemo(() => {
@@ -1325,7 +1355,7 @@ export function JobApplicationsPage() {
                 ) : (
                   education.map((edu, idx) => {
                     const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
-                    const qualification = String(readValue(edu, "qualification") ?? "");
+                    const qualification = String(readValue(edu, "qualification") ?? "").trim();
                     const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
                     const grade = String(readValue(edu, "grade") ?? "");
                     const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
@@ -1334,19 +1364,24 @@ export function JobApplicationsPage() {
                     const start = startRaw ? startRaw.split("T")[0] : "";
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
                     return (
-                      <div key={`${app.id}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Education {idx + 1}{qualification ? ` (${qualification})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Institution" value={institution} />
-                          <ReadField label="Qualification" value={qualification} />
-                          {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
-                          {grade ? <ReadField label="Grade" value={grade} /> : null}
-                          {start ? <ReadField label="Start Date" value={start} /> : null}
-                          {end ? <ReadField label="End Date" value={end} /> : null}
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-edu-${idx}`}
+                        index={idx}
+                        title={qualification || institution}
+                        summary={
+                          <>
+                            <ReadField label="Institution" value={institution} />
+                            {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
+                          </>
+                        }
+                        details={
+                          <>
+                            {grade ? <ReadField label="Grade" value={grade} /> : null}
+                            {start ? <ReadField label="Start Date" value={start} /> : null}
+                            {end ? <ReadField label="End Date" value={end} /> : null}
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
@@ -1360,7 +1395,7 @@ export function JobApplicationsPage() {
                   <p className="pageText">No experience records.</p>
                 ) : (
                   experience.map((exp, idx) => {
-                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "—");
+                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "").trim();
                     const companyName = String(readValue(exp, "company_name", "companyName", "company") ?? "—");
                     const employmentType = String(readValue(exp, "employment_type", "employmentType") ?? "");
                     const isCurrent = Boolean(readValue(exp, "is_current", "isCurrent"));
@@ -1368,26 +1403,33 @@ export function JobApplicationsPage() {
                     const endRaw = String(readValue(exp, "end_date", "endDate") ?? "");
                     const start = startRaw ? startRaw.split("T")[0] : "";
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    const period = [start, end].filter(Boolean).join(" – ");
+                    const noticePeriod = String(readValue(exp, "notice_period", "noticePeriod") ?? "").trim();
                     const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
                     return (
-                      <div key={`${app.id}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Experience {idx + 1}{jobTitle && jobTitle !== "—" ? ` (${jobTitle})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Job Title" value={jobTitle} />
-                          <ReadField label="Company" value={companyName} />
-                          {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
-                          {start ? <ReadField label="Start Date" value={start} /> : null}
-                          {end ? <ReadField label="End Date" value={end} /> : null}
-                          {responsibilities ? (
-                            <div className="readFieldFull">
-                              <span className="readLabel">Responsibilities</span>
-                              <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-exp-${idx}`}
+                        index={idx}
+                        title={jobTitle || companyName}
+                        summary={
+                          <>
+                            <ReadField label="Company" value={companyName} />
+                            {period ? <ReadField label="Period" value={period} /> : null}
+                          </>
+                        }
+                        details={
+                          <>
+                            {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                            {isCurrent && noticePeriod ? <ReadField label="Notice Period" value={noticePeriod} /> : null}
+                            {responsibilities ? (
+                              <div className="readFieldFull">
+                                <span className="readLabel">Responsibilities</span>
+                                <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
+                              </div>
+                            ) : null}
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
@@ -1403,17 +1445,18 @@ export function JobApplicationsPage() {
                   references.map((ref, idx) => {
                     const refName = String(readValue(ref, "full_name", "fullName", "name") ?? "").trim();
                     return (
-                      <div key={`${app.id}-ref-${idx}`} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Reference {idx + 1}{refName ? ` (${refName})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
-                          <ReadField label="Relationship" value={readValue(ref, "relationship")} />
-                          <ReadField label="Email" value={readValue(ref, "email")} />
-                          <ReadField label="Phone" value={readValue(ref, "phone")} />
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-ref-${idx}`}
+                        index={idx}
+                        title={refName || "Reference"}
+                        summary={
+                          <>
+                            <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                            <ReadField label="Email" value={readValue(ref, "email")} />
+                            <ReadField label="Phone" value={readValue(ref, "phone")} />
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
@@ -1582,6 +1625,22 @@ export function JobApplicationsPage() {
           />
         </div>
 
+        <div style={{ minWidth: 180, flex: "0 1 220px" }}>
+          <label className="fieldLabel">Status</label>
+          <select
+            className="input"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as ApplicantStatusFilter);
+              setPage(1);
+            }}
+          >
+            {APPLICANT_STATUS_FILTERS.map((option) => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="publicJobsPager" role="navigation" aria-label="Applicants pagination top">
           <label className="publicJobsPagerSelect">
             Records
@@ -1631,7 +1690,7 @@ export function JobApplicationsPage() {
         style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
       >
         <h2 className="dashCardTitle" style={{ fontSize: 16 }}>
-          All Applicants
+          {statusFilter === "applied" ? "All Applicants" : `${statusFilterLabel} Applicants`}
         </h2>
         <button
           type="button"
@@ -1650,7 +1709,9 @@ export function JobApplicationsPage() {
               {applications.length === 0
                 ? "No applicants found for this job."
                 : mainListApplications.length === 0
-                  ? "No applicants pending status assignment in the main list."
+                  ? statusFilter === "applied" && !search.trim()
+                    ? "No applicants pending status assignment in the main list."
+                    : `No ${statusFilterLabel.toLowerCase()} applicants match your filters.`
                   : "No applicants match your search."}
             </div>
           </div>
