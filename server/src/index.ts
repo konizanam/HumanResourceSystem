@@ -7,6 +7,7 @@ import app from './app';
 import dotenv from 'dotenv';
 import path from 'path';
 import { query } from './config/database';
+import { COUNTRY_NATIONALITIES } from './utils/nationalities';
 
 // Load environment variables (only in development — production uses platform env vars)
 if (process.env.NODE_ENV !== 'production') {
@@ -332,8 +333,26 @@ async function ensureSchema() {
   );
 }
 
+// Older profiles stored the country name (e.g. "Namibia") as nationality;
+// convert those to the listed nationality (e.g. "Namibian").
+async function migrateNationalities() {
+  const params: string[] = [];
+  const values = COUNTRY_NATIONALITIES.map(([country, nationality]) => {
+    params.push(country.toLowerCase(), nationality);
+    return `($${params.length - 1}, $${params.length})`;
+  });
+  await query(
+    `UPDATE job_seeker_personal_details d
+        SET nationality = m.nationality
+       FROM (VALUES ${values.join(", ")}) AS m(country, nationality)
+      WHERE LOWER(TRIM(d.nationality)) = m.country`,
+    params,
+  );
+}
+
 async function start() {
   await ensureSchema();
+  await migrateNationalities();
 
   // Start the server
   const server = app.listen(PORT, () => {
