@@ -154,7 +154,7 @@ function getApplyProfileCompleteness(profile: any, hasCv: boolean): ProfileCompl
   const education = Array.isArray(profile?.education) ? profile.education : [];
   if (education.length === 0) reasons.push("Missing education");
   if (education.some((item: any) => !String(item?.certificate_url ?? item?.certificateUrl ?? "").trim())) {
-    reasons.push("Missing qualification evidence for one or more education records");
+    reasons.push("Missing qualifications document (upload it under Personal Details)");
   }
 
   if (!hasCv) reasons.push("Missing CV");

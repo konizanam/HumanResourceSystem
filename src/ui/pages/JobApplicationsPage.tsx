@@ -213,15 +213,20 @@ function collectProfileDocuments(params: {
     latestProfileCertificateUrl || String(readValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
   if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert, fileName: fileNameFromUrl(profileCert) });
 
-  const educationCertificateUrls = new Set<string>();
-  for (let eduIndex = 0; eduIndex < activeEducation.length; eduIndex += 1) {
-    const edu = activeEducation[eduIndex];
-    const cert = String(readValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
-    if (!cert) continue;
-    const inst = String(readValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
-    const title = inst ? `Education Certificate ${eduIndex + 1} - ${inst}` : `Education Certificate ${eduIndex + 1}`;
-    educationCertificateUrls.add(cert);
-    cards.push({ title, url: cert, hint: inst || undefined, fileName: fileNameFromUrl(cert) });
+  // One qualifications file covers every education entry.
+  const latestQualification = latestByType.get("qualification_evidence");
+  const qualificationUrl =
+    String(latestQualification?.download_url ?? latestQualification?.file_url ?? "").trim() ||
+    activeEducation
+      .map((edu) => String(readValue(edu, "certificate_url", "certificateUrl") ?? "").trim())
+      .find(Boolean) ||
+    "";
+  if (qualificationUrl) {
+    cards.push({
+      title: "Qualifications",
+      url: qualificationUrl,
+      fileName: String(latestQualification?.original_name ?? "").trim() || fileNameFromUrl(qualificationUrl),
+    });
   }
 
   for (const d of latestByType.values()) {
@@ -230,7 +235,7 @@ function collectProfileDocuments(params: {
     const docType = String(d.document_type ?? "Document").trim() || "Document";
     if (docType.toLowerCase() === "id_document" && url === idDoc) continue;
     if (docType.toLowerCase() === "certificate" && url === profileCert) continue;
-    if (docType.toLowerCase() === "qualification_evidence" && educationCertificateUrls.has(url)) continue;
+    if (docType.toLowerCase() === "qualification_evidence") continue;
     cards.push({
       title: docType,
       url,

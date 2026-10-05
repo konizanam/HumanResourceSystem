@@ -1474,7 +1474,7 @@ export function JobsPage() {
       reasons.push("education array missing or empty");
     }
     if (Array.isArray(education) && education.some((item: any) => !String(item?.certificate_url ?? item?.certificateUrl ?? "").trim())) {
-      reasons.push("education evidence missing for one or more entries");
+      reasons.push("qualifications document missing (upload it under Personal Details)");
     }
     if (!hasCv) {
       reasons.push("CV missing");

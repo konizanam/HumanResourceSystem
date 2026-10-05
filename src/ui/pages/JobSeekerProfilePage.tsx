@@ -669,21 +669,19 @@ function collectProfileDocuments(params: {
   const profileCert = latestProfileCertificateUrl || String(readProfileValue(params.profile, "certificate_url", "certificateUrl") ?? "").trim();
   if (profileCert) cards.push({ title: "Profile Certificate", url: profileCert });
 
-  const educationCertificateUrls = new Set<string>();
-  for (let eduIndex = 0; eduIndex < activeEducation.length; eduIndex += 1) {
-    const edu = activeEducation[eduIndex];
-    const cert = String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim();
-    if (!cert) continue;
-    const inst = String(readProfileValue(edu, "institution", "institution_name", "institutionName") ?? "").trim();
-    const title = inst
-      ? `Education Certificate ${eduIndex + 1} - ${inst}`
-      : `Education Certificate ${eduIndex + 1}`;
-    educationCertificateUrls.add(cert);
+  // One qualifications file covers every education entry.
+  const latestQualification = latestByType.get("qualification_evidence");
+  const qualificationUrl =
+    String(latestQualification?.download_url ?? latestQualification?.file_url ?? "").trim() ||
+    activeEducation
+      .map((edu) => String(readProfileValue(edu, "certificate_url", "certificateUrl") ?? "").trim())
+      .find(Boolean) ||
+    "";
+  if (qualificationUrl) {
     cards.push({
-      title,
-      url: cert,
-      hint: inst || undefined,
-      fileName: undefined,
+      title: "Qualifications",
+      url: qualificationUrl,
+      fileName: String(latestQualification?.original_name ?? "").trim() || undefined,
     });
   }
 
@@ -693,9 +691,7 @@ function collectProfileDocuments(params: {
     const docType = String(d.document_type ?? "Document").trim() || "Document";
     if (docType.toLowerCase() === "id_document" && url === idDoc) continue;
     if (docType.toLowerCase() === "certificate" && url === profileCert) continue;
-    if (docType.toLowerCase() === "qualification_evidence" && educationCertificateUrls.has(url)) {
-      continue;
-    }
+    if (docType.toLowerCase() === "qualification_evidence") continue;
     cards.push({
       title: docType,
       url,
@@ -2862,6 +2858,8 @@ function PersonalDetailsSection({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [licenseDocumentUrl, setLicenseDocumentUrl] = useState("");
   const [conductCertificateUrl, setConductCertificateUrl] = useState("");
+  // One file holding all of the user's qualifications (education entries link to it).
+  const [qualificationUrl, setQualificationUrl] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [docsRefreshKey, setDocsRefreshKey] = useState(0);
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState(false);
@@ -2870,6 +2868,7 @@ function PersonalDetailsSection({
   const [idDocOriginalName, setIdDocOriginalName] = useState("");
   const [licenseOriginalName, setLicenseOriginalName] = useState("");
   const [conductOriginalName, setConductOriginalName] = useState("");
+  const [qualificationOriginalName, setQualificationOriginalName] = useState("");
 
   // Pending (staged) files — uploaded only when Save is clicked
   const [pendingIdDocFile, setPendingIdDocFile] = useState<File | null>(null);
@@ -2878,6 +2877,8 @@ function PersonalDetailsSection({
   const [pendingLicenseLocalUrl, setPendingLicenseLocalUrl] = useState("");
   const [pendingConductFile, setPendingConductFile] = useState<File | null>(null);
   const [pendingConductLocalUrl, setPendingConductLocalUrl] = useState("");
+  const [pendingQualificationFile, setPendingQualificationFile] = useState<File | null>(null);
+  const [pendingQualificationLocalUrl, setPendingQualificationLocalUrl] = useState("");
   const [cvLoading, setCvLoading] = useState(false);
   const [primaryResume, setPrimaryResume] = useState<{ id: string; file_name?: string; download_url?: string; file_path?: string } | null>(null);
   const [pendingCvFile, setPendingCvFile] = useState<File | null>(null);
@@ -2996,6 +2997,9 @@ function PersonalDetailsSection({
         const licenseDoc = findDoc("license_document");
         const conductDoc = findDoc("conduct_certificate");
         const idDoc = findDoc("id_document");
+        const qualificationDoc = findDoc("qualification_evidence");
+        setQualificationUrl(String(qualificationDoc?.download_url ?? qualificationDoc?.file_url ?? "").trim());
+        setQualificationOriginalName(String(qualificationDoc?.original_name ?? "").trim());
         setLicenseDocumentUrl(String(licenseDoc?.download_url ?? licenseDoc?.file_url ?? "").trim());
         setConductCertificateUrl(String(conductDoc?.download_url ?? conductDoc?.file_url ?? "").trim());
         setLicenseOriginalName(String(licenseDoc?.original_name ?? "").trim());
@@ -3005,6 +3009,7 @@ function PersonalDetailsSection({
         if (cancelled) return;
         setLicenseDocumentUrl("");
         setConductCertificateUrl("");
+        setQualificationUrl("");
       } finally {
         if (!cancelled) setDocumentsLoading(false);
       }
@@ -3031,7 +3036,7 @@ function PersonalDetailsSection({
     void loadResumes();
   }, [loadResumes]);
 
-  function stageDocument(file: File | null, type: "id" | "license" | "conduct") {
+  function stageDocument(file: File | null, type: "id" | "license" | "conduct" | "qualification") {
     if (!file) return;
     const fileError = validatePdfUpload(file);
     if (fileError) { setError(fileError); return; }
@@ -3044,6 +3049,9 @@ function PersonalDetailsSection({
     } else if (type === "license") {
       setPendingLicenseFile(file);
       setPendingLicenseLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
+    } else if (type === "qualification") {
+      setPendingQualificationFile(file);
+      setPendingQualificationLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
     } else {
       setPendingConductFile(file);
       setPendingConductLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
@@ -3148,6 +3156,14 @@ function PersonalDetailsSection({
         setPendingConductFile(null);
         setPendingConductLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
       }
+      if (pendingQualificationFile) {
+        // Replaces the previous file; the API points every education entry at it.
+        const up = await uploadJobSeekerDocument(token, pendingQualificationFile, "qualification_evidence", "Qualifications", true);
+        setQualificationUrl(String(up.url ?? "").trim());
+        setQualificationOriginalName(String(up.document?.original_name ?? pendingQualificationFile.name ?? "").trim());
+        setPendingQualificationFile(null);
+        setPendingQualificationLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+      }
       if (pendingCvFile) {
         const uploaded = await uploadJobSeekerResume(token, pendingCvFile, true);
         setPrimaryResume(uploaded);
@@ -3178,7 +3194,7 @@ function PersonalDetailsSection({
 
   useEffect(() => {
     setExternalDocPreview(null);
-  }, [editing, currentIdDocumentUrl, licenseDocumentUrl, conductCertificateUrl, form.idDocumentUrl, primaryResume]);
+  }, [editing, currentIdDocumentUrl, licenseDocumentUrl, conductCertificateUrl, qualificationUrl, form.idDocumentUrl, primaryResume]);
 
   if (!editing) {
     return (
@@ -3247,6 +3263,18 @@ function PersonalDetailsSection({
                 fallbackText="No file uploaded."
                 previewMode="external"
                 externalPreviewOpen={externalDocPreview?.title === "Conduct Certificate (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                }
+              />
+              <UploadedDocumentCard
+                title="Qualifications"
+                url={qualificationUrl}
+                originalName={qualificationOriginalName}
+                token={token}
+                fallbackText="No file uploaded yet."
+                previewMode="external"
+                externalPreviewOpen={externalDocPreview?.title === "Qualifications"}
                 onToggleExternalPreview={(blobUrl, title) =>
                   setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
@@ -3560,6 +3588,38 @@ function PersonalDetailsSection({
                 hint={(pendingConductLocalUrl || conductCertificateUrl) ? "Upload another file to replace the current one." : undefined}
                 previewMode="external"
                 externalPreviewOpen={externalDocPreview?.title === "Conduct Certificate (Optional)"}
+                onToggleExternalPreview={(blobUrl, title) =>
+                  setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
+                }
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Qualifications</span>
+              <span className="fieldHint">One PDF containing all your qualifications. It is used for every qualification you add.</span>
+              <input
+                className="input"
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(e) => {
+                  stageDocument(e.target.files?.[0] ?? null, "qualification");
+                  e.currentTarget.value = "";
+                }}
+                disabled={saving || documentsLoading}
+              />
+              {pendingQualificationFile && (
+                <span className="fieldHint" style={{ color: "var(--accent)" }}>
+                  Selected: {pendingQualificationFile.name} — will be uploaded on Save
+                </span>
+              )}
+              <UploadedDocumentCard
+                title="Qualifications"
+                url={pendingQualificationLocalUrl || qualificationUrl}
+                originalName={pendingQualificationFile ? pendingQualificationFile.name : qualificationOriginalName}
+                token={token}
+                fallbackText="No file uploaded yet."
+                hint={(pendingQualificationLocalUrl || qualificationUrl) ? "Upload another file to replace the current one." : undefined}
+                previewMode="external"
+                externalPreviewOpen={externalDocPreview?.title === "Qualifications"}
                 onToggleExternalPreview={(blobUrl, title) =>
                   setExternalDocPreview((prev) => (prev?.title === title ? null : { url: blobUrl, title }))
                 }
@@ -4063,7 +4123,6 @@ function EducationSection({
     endDate: "",
     isCurrent: false,
     grade: "",
-    certificateUrl: "",
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
@@ -4072,32 +4131,6 @@ function EducationSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [qualificationOpen, setQualificationOpen] = useState(false);
   const [studyOpen, setStudyOpen] = useState(false);
-  const [certDocPreview, setCertDocPreview] = useState<{ url: string; title: string; key: string } | null>(null);
-  const [pendingCertFile, setPendingCertFile] = useState<File | null>(null);
-  const [pendingCertLocalUrl, setPendingCertLocalUrl] = useState("");
-  const [latestQualificationEvidence, setLatestQualificationEvidence] = useState<UserDocument | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const docs = await listMyDocuments(token, "qualification_evidence");
-        if (cancelled) return;
-        const sorted = (docs ?? []).slice().sort((a, b) => {
-          const at = new Date(String(a.created_at ?? "")).getTime();
-          const bt = new Date(String(b.created_at ?? "")).getTime();
-          return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
-        });
-        setLatestQualificationEvidence(sorted[0] ?? null);
-      } catch {
-        if (!cancelled) setLatestQualificationEvidence(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token, items]);
 
   const qualificationSuggestions = useMemo(() => {
     const q = form.qualification.trim().toLowerCase();
@@ -4116,7 +4149,6 @@ function EducationSection({
   function startEdit(item: Record<string, unknown>) {
     setEditId(item.id as string);
     setFieldErrors({});
-    resetCertStaging();
     setForm({
       institutionName: (item.institution_name as string) ?? "",
       qualification: (item.qualification as string) ?? "",
@@ -4125,31 +4157,8 @@ function EducationSection({
       endDate: (item.end_date as string)?.split("T")[0] ?? "",
       isCurrent: (item.is_current as boolean) ?? false,
       grade: (item.grade as string) ?? "",
-      certificateUrl: (item.certificate_url as string) ?? "",
     });
   }
-
-  function stageCertificate(file: File | null) {
-    if (!file) return;
-    const fileError = validatePdfUpload(file);
-    if (fileError) { setError(fileError); return; }
-    setError(null);
-    const localUrl = URL.createObjectURL(file);
-    setPendingCertFile(file);
-    setPendingCertLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return localUrl; });
-    setFieldErrors((prev) => { const next = { ...prev }; delete next.certificateUrl; return next; });
-  }
-
-  function resetCertStaging() {
-    setPendingCertFile(null);
-    setPendingCertLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
-  }
-
-  // One qualification file covers all of the user's qualifications; every
-  // education entry links to it.
-  const sharedCertUrl = String(
-    latestQualificationEvidence?.download_url ?? latestQualificationEvidence?.file_url ?? "",
-  ).trim();
 
   async function onSave() {
     const errs: Record<string, string> = {};
@@ -4159,7 +4168,6 @@ function EducationSection({
     if (!form.startDate) errs.startDate = "Start date is required";
     if (!form.isCurrent && !form.endDate) errs.endDate = "End date is required";
     if (!form.grade.trim()) errs.grade = "Grade is required";
-    if (!sharedCertUrl && !form.certificateUrl.trim() && !pendingCertFile) errs.certificateUrl = "Qualification evidence is required";
 
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -4167,21 +4175,13 @@ function EducationSection({
     setSaving(true);
     setError(null);
     try {
-      let certUrl = sharedCertUrl || form.certificateUrl;
-      if (pendingCertFile) {
-        const up = await uploadJobSeekerDocument(token, pendingCertFile, "qualification_evidence", "Qualification evidence");
-        certUrl = String(up.url ?? "").trim();
-        resetCertStaging();
-      }
-      await saveEducation(token, {
-        ...form,
-        certificateUrl: certUrl,
-      }, editId ?? undefined);
+      // Qualification evidence is uploaded once under Personal Details; the API
+      // links new education entries to it.
+      await saveEducation(token, form, editId ?? undefined);
       setSuccess(editId ? "Education updated" : "Education added");
       setForm(empty);
       setEditId(null);
       setFieldErrors({});
-      resetCertStaging();
       await reload();
       onSaved?.();
     } catch (e) {
@@ -4235,14 +4235,6 @@ function EducationSection({
       ) : null}
 
       {viewItem && (() => {
-        const latestCertUrl = String(
-          latestQualificationEvidence?.download_url ??
-          latestQualificationEvidence?.file_url ??
-          "",
-        ).trim();
-        const latestCertOriginalName = String(latestQualificationEvidence?.original_name ?? "").trim();
-        const certificateUrl = latestCertUrl || String(viewItem.certificate_url ?? "").trim();
-        const certPreviewKey = `qualification-evidence-${String(viewItem.id)}`;
         return (
           <div className="editForm">
             <h4 className="editFormTitle">View Education</h4>
@@ -4253,42 +4245,11 @@ function EducationSection({
               <EditField label="Start Date" value={viewItem.start_date ? String(viewItem.start_date).split("T")[0] : ""} onChange={() => {}} disabled />
               <EditField label="End Date" value={viewItem.end_date ? String(viewItem.end_date).split("T")[0] : ""} onChange={() => {}} disabled />
               <EditField label="Grade" value={String(viewItem.grade ?? "")} onChange={() => {}} disabled />
-              <div className="field fieldFull">
-                <span className="fieldLabel">Qualification Evidence</span>
-                <UploadedDocumentCard
-                  title="Qualification Evidence"
-                  url={certificateUrl}
-                  originalName={latestCertOriginalName || undefined}
-                  token={token}
-                  fallbackText="No file uploaded yet."
-                  previewKey={certPreviewKey}
-                  previewMode="external"
-                  externalPreviewOpen={certDocPreview?.key === certPreviewKey}
-                  onToggleExternalPreview={(blobUrl, key) =>
-                    setCertDocPreview((prev) =>
-                      prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
-                    )
-                  }
-                />
-              </div>
               <label className="field fieldCheckbox fieldCheckboxIcon">
                 <input type="checkbox" checked={Boolean(viewItem.is_current)} disabled />
                 <span className="fieldLabel">Currently studying here</span>
               </label>
             </div>
-            {certDocPreview?.url ? (
-              <div className="field fieldFull" style={{ marginTop: 10 }}>
-                <div className="readLabel">{certDocPreview.title} Preview</div>
-                <div className="uploadedDocPreview" style={{ marginTop: 6 }}>
-                  {(() => {
-                    const kind = getInlinePreviewKind(certDocPreview.url);
-                    if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
-                    if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
-                    return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
-                  })()}
-                </div>
-              </div>
-            ) : null}
             <div className="stepperActions">
               <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
             </div>
@@ -4441,61 +4402,10 @@ function EducationSection({
               <input type="checkbox" checked={form.isCurrent} onChange={(e) => setForm({ ...form, isCurrent: e.target.checked })} />
               <span className="fieldLabel">Currently studying here</span>
             </label>
-            <label className="field fieldFull">
-              <span className="fieldLabel">Qualification Evidence</span>
-              <span className="fieldHint">
-                Upload one PDF containing all your qualifications. It is shared by every qualification you add.
-              </span>
-              <input
-                className="input"
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={(e) => {
-                  stageCertificate(e.target.files?.[0] ?? null);
-                  e.currentTarget.value = "";
-                }}
-                disabled={saving}
-                required={!sharedCertUrl && !form.certificateUrl.trim() && !pendingCertFile}
-              />
-              {pendingCertFile && (
-                <span className="fieldHint" style={{ color: "var(--accent)" }}>
-                  Selected: {pendingCertFile.name} — will be uploaded on Save
-                </span>
-              )}
-              <UploadedDocumentCard
-                title="Qualification Evidence"
-                url={pendingCertLocalUrl || sharedCertUrl || form.certificateUrl}
-                token={token}
-                fallbackText="No file uploaded yet."
-                hint={(pendingCertLocalUrl || sharedCertUrl || form.certificateUrl) ? "Uploading another file replaces it for all your qualifications." : undefined}
-                previewKey="qualification-evidence-edit"
-                previewMode="external"
-                externalPreviewOpen={certDocPreview?.key === "qualification-evidence-edit"}
-                onToggleExternalPreview={(blobUrl, key) =>
-                  setCertDocPreview((prev) =>
-                    prev?.key === key ? null : { url: blobUrl, title: "Qualification Evidence", key },
-                  )
-                }
-              />
-              {certDocPreview?.url ? (
-                <div className="field fieldFull" style={{ marginTop: 6 }}>
-                  <div className="readLabel">{certDocPreview.title} Preview</div>
-                  <div className="uploadedDocPreview" style={{ marginTop: 4 }}>
-                    {(() => {
-                      const kind = getInlinePreviewKind(certDocPreview.url);
-                      if (kind === "image") return <img className="uploadedDocPreviewImage" src={certDocPreview.url} alt={certDocPreview.title} />;
-                      if (kind === "pdf") return <iframe className="uploadedDocPreviewFrame" src={certDocPreview.url} title={certDocPreview.title} />;
-                      return <span className="uploadedDocCardHint">Preview is not available for this file type. Use Download.</span>;
-                    })()}
-                  </div>
-                </div>
-              ) : null}
-              {fieldErrors.certificateUrl && <span className="fieldError">{fieldErrors.certificateUrl}</span>}
-            </label>
           </div>
           <div className="stepperActions">
             {editId && (
-              <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); resetCertStaging(); }}>Cancel</button>
+              <button className="btn btnGhost" type="button" onClick={() => { setEditId(null); setForm(empty); setFieldErrors({}); }}>Cancel</button>
             )}
             <button className={editId ? "btn btnGhost btnSm stepperSaveBtn" : "btn btnPrimary btnSm addActionBtn"} onClick={onSave} disabled={saving} type="button">
               {saving ? "Saving…" : editId ? "Update Education" : "Add Education"}
