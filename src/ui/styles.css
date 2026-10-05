@@ -2612,6 +2612,18 @@ input[type="radio"][required]:checked {
   font-size: 15px;
 }
 
+/* Numbered heading above each education / experience / reference entry. */
+.profileRecordHeading {
+  margin: 4px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.candidateProfilePanel .profileRecordHeading {
+  font-size: 14px;
+}
+
 /* ── Read-only grid ────────────────────────────── */
 
 .profileReadGrid {

@@ -2035,6 +2035,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
                     return (
                       <div key={`${userId}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Education {idx + 1}{qualification ? ` (${qualification})` : ""}
+                        </div>
                         <div className="profileReadGrid" style={{ marginTop: 0 }}>
                           <ReadField label="Institution" value={institution} />
                           <ReadField label="Qualification" value={qualification} />
@@ -2068,6 +2071,9 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                     const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
                     return (
                       <div key={`${userId}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Experience {idx + 1}{jobTitle && jobTitle !== "—" ? ` (${jobTitle})` : ""}
+                        </div>
                         <div className="profileReadGrid" style={{ marginTop: 0 }}>
                           <ReadField label="Job Title" value={jobTitle} />
                           <ReadField label="Company" value={companyName} />
@@ -2097,14 +2103,22 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                 {references.length === 0 ? (
                   <p className="pageText">No references listed.</p>
                 ) : (
-                  references.map((ref, idx) => (
-                    <div key={`${userId}-ref-${idx}`} className="profileReadGrid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                      <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
-                      <ReadField label="Relationship" value={readValue(ref, "relationship")} />
-                      <ReadField label="Email" value={readValue(ref, "email")} />
-                      <ReadField label="Phone" value={readValue(ref, "phone")} />
-                    </div>
-                  ))
+                  references.map((ref, idx) => {
+                    const refName = String(readValue(ref, "full_name", "fullName", "name") ?? "").trim();
+                    return (
+                      <div key={`${userId}-ref-${idx}`} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
+                        <div className="profileRecordHeading">
+                          Reference {idx + 1}{refName ? ` (${refName})` : ""}
+                        </div>
+                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
+                          <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
+                          <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                          <ReadField label="Email" value={readValue(ref, "email")} />
+                          <ReadField label="Phone" value={readValue(ref, "phone")} />
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -3193,6 +3207,11 @@ function PersonalDetailsSection({
           <EditField label="Nationality" value={String(d.nationality ?? "")} onChange={() => {}} disabled />
           <EditField label="ID Type" value={String(d.id_type ?? "")} onChange={() => {}} disabled />
           <EditField label="ID Number" value={String(d.id_number ?? "")} onChange={() => {}} disabled />
+          <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
+          <label className="field fieldCheckbox">
+            <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
+            <span className="fieldLabel">Disability status</span>
+          </label>
           <div className="field fieldFull">
             <div className="uploadedDocsGrid">
               <UploadedDocumentCard
@@ -3291,11 +3310,6 @@ function PersonalDetailsSection({
               </div>
             </div>
           ) : null}
-          <EditField label="Marital Status" value={String(d.marital_status ?? "")} onChange={() => {}} disabled />
-          <label className="field fieldCheckbox">
-            <input type="checkbox" checked={Boolean(d.disability_status)} disabled />
-            <span className="fieldLabel">Disability status</span>
-          </label>
         </div>
       </div>
     );
@@ -3460,6 +3474,33 @@ function PersonalDetailsSection({
           required
           error={fieldErrors.idNumber}
         />
+        <label className="field">
+          <span className="fieldLabel">Marital Status</span>
+          <select
+            className="input"
+            value={form.maritalStatus}
+            onChange={(e) => set("maritalStatus", e.target.value)}
+            required
+          >
+            <option value="">Select</option>
+            <option value="Single">Single</option>
+            <option value="Married">Married</option>
+            <option value="Divorced">Divorced</option>
+            <option value="Widowed">Widowed</option>
+            <option value="Separated">Separated</option>
+          </select>
+          {fieldErrors.maritalStatus && (
+            <span className="fieldError">{fieldErrors.maritalStatus}</span>
+          )}
+        </label>
+        <label className="field fieldCheckbox">
+          <input
+            type="checkbox"
+            checked={form.disabilityStatus}
+            onChange={(e) => set("disabilityStatus", e.target.checked)}
+          />
+          <span className="fieldLabel">Disability status</span>
+        </label>
         <div className="field fieldFull">
           <div className="uploadedDocsGrid">
             <label className="field">
@@ -3656,33 +3697,6 @@ function PersonalDetailsSection({
             </div>
           </div>
         ) : null}
-        <label className="field">
-          <span className="fieldLabel">Marital Status</span>
-          <select
-            className="input"
-            value={form.maritalStatus}
-            onChange={(e) => set("maritalStatus", e.target.value)}
-            required
-          >
-            <option value="">Select</option>
-            <option value="Single">Single</option>
-            <option value="Married">Married</option>
-            <option value="Divorced">Divorced</option>
-            <option value="Widowed">Widowed</option>
-            <option value="Separated">Separated</option>
-          </select>
-          {fieldErrors.maritalStatus && (
-            <span className="fieldError">{fieldErrors.maritalStatus}</span>
-          )}
-        </label>
-        <label className="field fieldCheckbox">
-          <input
-            type="checkbox"
-            checked={form.disabilityStatus}
-            onChange={(e) => set("disabilityStatus", e.target.checked)}
-          />
-          <span className="fieldLabel">Disability status</span>
-        </label>
       </div>
       <div className="stepperActions">
         <button className="btn btnGhost btnSm stepperSaveBtn" onClick={onSave} disabled={saving} type="button">

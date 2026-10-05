@@ -113,7 +113,8 @@ const mapStatusFilter = (status: string) => {
   const normalized = String(status).toLowerCase();
   if (normalized === 'active') return ['active', 'APPROVED'];
   if (normalized === 'closed') return ['closed', 'CLOSED'];
-  if (normalized === 'draft') return ['draft', 'DRAFT'];
+  // Jobs awaiting approval count as drafts (matches the Jobs page summary cards).
+  if (normalized === 'draft') return ['draft', 'DRAFT', 'pending', 'PENDING'];
   // If the caller sends an unknown status, keep it as-is.
   return [status];
 };
