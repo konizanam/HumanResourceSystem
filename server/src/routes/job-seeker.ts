@@ -2,6 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db";
 import { findNationality } from "../utils/nationalities";
+import { DocumentService } from "../services/document.service";
+
+const documentService = new DocumentService();
 import { authenticate, authorizePermission } from "../middleware/auth";
 
 export const jobSeekerRouter = Router();
@@ -445,6 +448,7 @@ jobSeekerRouter.delete("/education/:id", async (req, res, next) => {
     if (rowCount === 0) {
       return res.status(404).json({ error: { message: "Education record not found" } });
     }
+    await documentService.pruneQualificationEvidence(userId);
     return res.json({ message: "Education record deleted" });
   } catch (err) {
     return next(err);

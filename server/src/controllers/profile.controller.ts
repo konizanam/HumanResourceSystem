@@ -1,6 +1,9 @@
 // src/controllers/profile.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { ProfileService } from '../services/profile.service';
+import { DocumentService } from '../services/document.service';
+
+const documentService = new DocumentService();
 
 export class ProfileController {
   private profileService: ProfileService;
@@ -205,6 +208,7 @@ export class ProfileController {
     try {
       const userId = req.user!.userId;
       const education = await this.profileService.createEducation(userId, req.body);
+      await documentService.pruneQualificationEvidence(userId);
 
       res.status(201).json({
         status: 'success',
@@ -220,6 +224,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       const education = await this.profileService.updateEducation(educationId, userId, req.body);
+      await documentService.pruneQualificationEvidence(userId);
 
       res.json({
         status: 'success',
@@ -235,6 +240,7 @@ export class ProfileController {
       const userId = req.user!.userId;
       const educationId = String((req.params as any).educationId);
       await this.profileService.deleteEducation(educationId, userId);
+      await documentService.pruneQualificationEvidence(userId);
 
       res.status(204).send();
     } catch (error) {
