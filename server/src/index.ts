@@ -350,9 +350,31 @@ async function migrateNationalities() {
   );
 }
 
+// last_login was never written on sign-in; backfill it from the latest
+// recorded login (audit log) or session start for each user.
+async function backfillLastLogin() {
+  await query(
+    `UPDATE users u
+        SET last_login = l.latest
+       FROM (
+         SELECT user_id, MAX(ts) AS latest
+           FROM (
+             SELECT user_id, created_at AS ts FROM audit_logs WHERE action_type = 'AUTH_LOGIN_SUCCESS'
+             UNION ALL
+             SELECT user_id, created_at AS ts FROM user_sessions
+           ) logins
+          WHERE user_id IS NOT NULL AND ts IS NOT NULL
+          GROUP BY user_id
+       ) l
+      WHERE u.id = l.user_id
+        AND (u.last_login IS NULL OR u.last_login < l.latest)`,
+  );
+}
+
 async function start() {
   await ensureSchema();
   await migrateNationalities();
+  await backfillLastLogin();
 
   // Start the server
   const server = app.listen(PORT, () => {

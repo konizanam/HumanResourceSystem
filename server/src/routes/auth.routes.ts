@@ -368,6 +368,10 @@ function tokenFingerprint(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+async function recordLastLogin(userId: string) {
+  await query("UPDATE users SET last_login = NOW() WHERE id = $1", [userId]);
+}
+
 async function persistUserSession(params: {
   userId: string;
   token: string;
@@ -668,6 +672,7 @@ authRouter.get("/activate", async (req, res, next) => {
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
     });
+    await recordLastLogin(userId);
 
     // Best-effort: send an activation confirmation email.
     try {
@@ -1073,6 +1078,7 @@ authRouter.post("/2fa/verify", async (req, res, next) => {
       ipAddress,
       userAgent,
     });
+    await recordLastLogin(challenge.userId);
 
     res.locals.auditUserId = challenge.userId;
     res.locals.auditAction = "AUTH_LOGIN_SUCCESS";
