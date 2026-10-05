@@ -140,7 +140,8 @@ export function ReportsPage() {
   const canViewReports = hasPermission("MANAGE_USERS", "VIEW_AUDIT_LOGS", "VIEW_APPLICANTS_REPORT");
 
   const [reportType, setReportType] = useState<ReportType>("job_seekers");
-  const [loading, setLoading] = useState(true);
+  // Report currently being run via its Run Report button (nothing loads on page open).
+  const [runningReport, setRunningReport] = useState<ReportKey | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
@@ -316,17 +317,12 @@ export function ReportsPage() {
     setDirectoryGenderByUserId((prev) => ({ ...prev, ...nextMap }));
   }, [accessToken, directoryGenderByUserId]);
 
-  const loadAdminStatsAndApplications = useCallback(async () => {
-    if (!accessToken) return;
-    if (!canViewApplicantsReport) {
+  const loadJobsList = useCallback(async () => {
+    if (!accessToken || !canViewApplicantsReport) {
       setAllJobs([]);
-      setAllApplications([]);
-      return;
+      return [];
     }
-    setLoadingApplications(true);
-    const jobsPromise = listJobs(accessToken, { page: 1, limit: 100, my_jobs: !canManageUsers });
-
-    const jobsPage1 = await jobsPromise;
+    const jobsPage1 = await listJobs(accessToken, { page: 1, limit: 100, my_jobs: !canManageUsers });
     const jobs = Array.isArray(jobsPage1.jobs) ? [...jobsPage1.jobs] : [];
     const jobsPages = Math.max(1, Number(jobsPage1.pagination?.pages ?? 1));
 
@@ -336,54 +332,48 @@ export function ReportsPage() {
     }
 
     setAllJobs(jobs);
-
-    const apps: JobApplication[] = [];
-    const uniqueById = new Map<string, JobApplication>();
-
-    await Promise.all(
-      jobs.map(async (job) => {
-        const jobId = String(job.id ?? "").trim();
-        if (!jobId) return;
-
-        const first = await listJobApplicationsForJob(accessToken, jobId, { page: 1, limit: APP_PAGE_SIZE });
-        const pages = Math.max(1, Number(first.pagination?.pages ?? 1));
-
-        const firstApps = Array.isArray(first.applications) ? first.applications : [];
-        for (const app of firstApps) uniqueById.set(String(app.id), app);
-
-        for (let page = 2; page <= pages; page++) {
-          const next = await listJobApplicationsForJob(accessToken, jobId, { page, limit: APP_PAGE_SIZE });
-          const nextApps = Array.isArray(next.applications) ? next.applications : [];
-          for (const app of nextApps) uniqueById.set(String(app.id), app);
-        }
-      }),
-    );
-
-    for (const app of uniqueById.values()) apps.push(app);
-    setAllApplications(apps);
-    setLoadingApplications(false);
+    return jobs;
   }, [accessToken, canManageUsers, canViewApplicantsReport]);
 
-  useEffect(() => {
+  const loadAdminStatsAndApplications = useCallback(async () => {
     if (!accessToken) return;
-    let active = true;
+    if (!canViewApplicantsReport) {
+      setAllJobs([]);
+      setAllApplications([]);
+      return;
+    }
+    setLoadingApplications(true);
+    try {
+      const jobs = await loadJobsList();
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        await Promise.all([loadDirectoryReport(), loadAdminStatsAndApplications()]);
-      } catch (e) {
-        if (active) setError((e as any)?.message ?? "Failed to load report data");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
+      const apps: JobApplication[] = [];
+      const uniqueById = new Map<string, JobApplication>();
 
-    return () => {
-      active = false;
-    };
-  }, [accessToken, canManageUsers, canViewApplicantsReport]);
+      await Promise.all(
+        jobs.map(async (job) => {
+          const jobId = String(job.id ?? "").trim();
+          if (!jobId) return;
+
+          const first = await listJobApplicationsForJob(accessToken, jobId, { page: 1, limit: APP_PAGE_SIZE });
+          const pages = Math.max(1, Number(first.pagination?.pages ?? 1));
+
+          const firstApps = Array.isArray(first.applications) ? first.applications : [];
+          for (const app of firstApps) uniqueById.set(String(app.id), app);
+
+          for (let page = 2; page <= pages; page++) {
+            const next = await listJobApplicationsForJob(accessToken, jobId, { page, limit: APP_PAGE_SIZE });
+            const nextApps = Array.isArray(next.applications) ? next.applications : [];
+            for (const app of nextApps) uniqueById.set(String(app.id), app);
+          }
+        }),
+      );
+
+      for (const app of uniqueById.values()) apps.push(app);
+      setAllApplications(apps);
+    } finally {
+      setLoadingApplications(false);
+    }
+  }, [accessToken, canViewApplicantsReport, loadJobsList]);
 
   const metrics = useMemo(() => {
     const total = rows.length;
@@ -1337,26 +1327,25 @@ export function ReportsPage() {
     );
   }
 
+  // Each report loads only the data it needs, and only when Run Report is clicked.
   async function runReport(report: ReportKey) {
-    if (report === "directory") {
-      await loadDirectoryReport();
+    if (runningReport) return;
+    setRunningReport(report);
+    setError(null);
+    try {
+      if (report === "directory" || report === "monthly_signups") {
+        await loadDirectoryReport();
+      } else if (report === "applicants_by_job") {
+        await loadJobsList();
+      } else {
+        await loadAdminStatsAndApplications();
+      }
+      setRanReports((prev) => ({ ...prev, [report]: true }));
+    } catch (e) {
+      setError((e as any)?.message ?? "Failed to run report");
+    } finally {
+      setRunningReport(null);
     }
-    if (report === "applications_by_status" || report === "hiring_funnel" || report === "jobs_without_applicants" || report === "company_hiring_performance") {
-      await loadAdminStatsAndApplications();
-    }
-    setRanReports((prev) => ({ ...prev, [report]: true }));
-  }
-
-  if (loading) {
-    return (
-      <div className="page">
-        <div className="companiesHeader"><h1 className="pageTitle">Reports &amp; Statistics</h1></div>
-        <div className="placeholderSpinnerWrap" role="status" aria-live="polite">
-          <span className="placeholderSpinner" aria-hidden="true" />
-          <span className="srOnly">Loading</span>
-        </div>
-      </div>
-    );
   }
 
   if (!canViewReports) {
@@ -1395,8 +1384,9 @@ export function ReportsPage() {
                   type="button"
                   className={reportButtonClass("applicants_by_job")}
                   onClick={() => void runReport("applicants_by_job")}
+                  disabled={runningReport !== null}
                 >
-                  Run Report
+                  {runningReport === "applicants_by_job" ? "Running..." : "Run Report"}
                 </button>
                 <button
                   type="button"
@@ -1622,8 +1612,9 @@ export function ReportsPage() {
                   type="button"
                   className={reportButtonClass("applications_by_status")}
                   onClick={() => void runReport("applications_by_status")}
+                  disabled={runningReport !== null}
                 >
-                  Run Report
+                  {runningReport === "applications_by_status" ? "Running..." : "Run Report"}
                 </button>
                 <button
                   type="button"
@@ -1801,9 +1792,9 @@ export function ReportsPage() {
           {openReports.directory ? (
           <div className="reportsCardActions">
             <button type="button" className={reportButtonClass("directory")} onClick={() => toggleReport("directory")}>{openReports.directory ? "Collapse" : "Expand"}</button>
-            <button type="button" className={reportButtonClass("directory")} onClick={() => void runReport("directory")} disabled={loading}>Run Report</button>
-            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryPdf} disabled={loading || rows.length === 0}>Export Directory PDF</button>
-            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryExcel} disabled={loading || rows.length === 0}>Export Directory Excel</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={() => void runReport("directory")} disabled={runningReport !== null}>{runningReport === "directory" ? "Running..." : "Run Report"}</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryPdf} disabled={runningReport === "directory" || rows.length === 0}>Export Directory PDF</button>
+            <button type="button" className={reportButtonClass("directory")} onClick={exportDirectoryExcel} disabled={runningReport === "directory" || rows.length === 0}>Export Directory Excel</button>
           </div>
           ) : null}
         </div>
@@ -1980,7 +1971,7 @@ export function ReportsPage() {
           {openReports.monthly_signups ? (
           <div className="reportsCardActions">
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => toggleReport("monthly_signups")}>{openReports.monthly_signups ? "Collapse" : "Expand"}</button>
-            <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => void runReport("monthly_signups")}>Run Report</button>
+            <button type="button" className={reportButtonClass("monthly_signups")} onClick={() => void runReport("monthly_signups")} disabled={runningReport !== null}>{runningReport === "monthly_signups" ? "Running..." : "Run Report"}</button>
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsPdf} disabled={registrationByMonth.length === 0}>Export Monthly PDF</button>
             <button type="button" className={reportButtonClass("monthly_signups")} onClick={exportMonthlySignupsExcel} disabled={registrationByMonth.length === 0}>Export Monthly Excel</button>
           </div>
@@ -2026,7 +2017,7 @@ export function ReportsPage() {
               {openReports.hiring_funnel ? (
               <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => toggleReport("hiring_funnel")}>{openReports.hiring_funnel ? "Collapse" : "Expand"}</button>
-                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => void runReport("hiring_funnel")}>Run Report</button>
+                <button type="button" className={reportButtonClass("hiring_funnel")} onClick={() => void runReport("hiring_funnel")} disabled={runningReport !== null}>{runningReport === "hiring_funnel" ? "Running..." : "Run Report"}</button>
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelPdf} disabled={funnelRows.rows.length === 0}>Export Funnel PDF</button>
                 <button type="button" className={reportButtonClass("hiring_funnel")} onClick={exportFunnelExcel} disabled={funnelRows.rows.length === 0}>Export Funnel Excel</button>
               </div>
@@ -2086,7 +2077,7 @@ export function ReportsPage() {
               {openReports.jobs_without_applicants ? (
               <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => toggleReport("jobs_without_applicants")}>{openReports.jobs_without_applicants ? "Collapse" : "Expand"}</button>
-                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => void runReport("jobs_without_applicants")}>Run Report</button>
+                <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={() => void runReport("jobs_without_applicants")} disabled={runningReport !== null}>{runningReport === "jobs_without_applicants" ? "Running..." : "Run Report"}</button>
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsPdf} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs PDF</button>
                 <button type="button" className={reportButtonClass("jobs_without_applicants")} onClick={exportJobsWithoutApplicantsExcel} disabled={jobsWithoutApplicantsRows.length === 0}>Export Jobs Excel</button>
               </div>
@@ -2158,7 +2149,7 @@ export function ReportsPage() {
               {openReports.company_hiring_performance ? (
               <div className="reportsCardActions">
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => toggleReport("company_hiring_performance")}>{openReports.company_hiring_performance ? "Collapse" : "Expand"}</button>
-                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => void runReport("company_hiring_performance")}>Run Report</button>
+                <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={() => void runReport("company_hiring_performance")} disabled={runningReport !== null}>{runningReport === "company_hiring_performance" ? "Running..." : "Run Report"}</button>
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformancePdf} disabled={companyHiringPerformanceRows.length === 0}>Export Performance PDF</button>
                 <button type="button" className={reportButtonClass("company_hiring_performance")} onClick={exportCompanyPerformanceExcel} disabled={companyHiringPerformanceRows.length === 0}>Export Performance Excel</button>
               </div>
