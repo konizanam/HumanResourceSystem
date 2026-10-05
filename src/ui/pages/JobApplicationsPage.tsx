@@ -14,6 +14,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/usePermissions";
+import { ProfileRecord } from "../components/ProfileRecord";
 
 type StageKey =
   | "longlisted"
@@ -1325,7 +1326,7 @@ export function JobApplicationsPage() {
                 ) : (
                   education.map((edu, idx) => {
                     const institution = String(readValue(edu, "institution_name", "institution") ?? "—");
-                    const qualification = String(readValue(edu, "qualification") ?? "");
+                    const qualification = String(readValue(edu, "qualification") ?? "").trim();
                     const fieldOfStudy = String(readValue(edu, "field_of_study", "fieldOfStudy") ?? "");
                     const grade = String(readValue(edu, "grade") ?? "");
                     const isCurrent = Boolean(readValue(edu, "is_current", "isCurrent"));
@@ -1334,19 +1335,24 @@ export function JobApplicationsPage() {
                     const start = startRaw ? startRaw.split("T")[0] : "";
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
                     return (
-                      <div key={`${app.id}-edu-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < education.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Education {idx + 1}{qualification ? ` (${qualification})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Institution" value={institution} />
-                          <ReadField label="Qualification" value={qualification} />
-                          {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
-                          {grade ? <ReadField label="Grade" value={grade} /> : null}
-                          {start ? <ReadField label="Start Date" value={start} /> : null}
-                          {end ? <ReadField label="End Date" value={end} /> : null}
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-edu-${idx}`}
+                        index={idx}
+                        title={qualification || institution}
+                        summary={
+                          <>
+                            <ReadField label="Institution" value={institution} />
+                            {fieldOfStudy ? <ReadField label="Field of Study" value={fieldOfStudy} /> : null}
+                          </>
+                        }
+                        details={
+                          <>
+                            {grade ? <ReadField label="Grade" value={grade} /> : null}
+                            {start ? <ReadField label="Start Date" value={start} /> : null}
+                            {end ? <ReadField label="End Date" value={end} /> : null}
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
@@ -1360,7 +1366,7 @@ export function JobApplicationsPage() {
                   <p className="pageText">No experience records.</p>
                 ) : (
                   experience.map((exp, idx) => {
-                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "—");
+                    const jobTitle = String(readValue(exp, "job_title", "jobTitle", "position") ?? "").trim();
                     const companyName = String(readValue(exp, "company_name", "companyName", "company") ?? "—");
                     const employmentType = String(readValue(exp, "employment_type", "employmentType") ?? "");
                     const isCurrent = Boolean(readValue(exp, "is_current", "isCurrent"));
@@ -1368,26 +1374,33 @@ export function JobApplicationsPage() {
                     const endRaw = String(readValue(exp, "end_date", "endDate") ?? "");
                     const start = startRaw ? startRaw.split("T")[0] : "";
                     const end = isCurrent ? "Present" : (endRaw ? endRaw.split("T")[0] : "");
+                    const period = [start, end].filter(Boolean).join(" – ");
+                    const noticePeriod = String(readValue(exp, "notice_period", "noticePeriod") ?? "").trim();
                     const responsibilities = String(readValue(exp, "responsibilities", "description") ?? "");
                     return (
-                      <div key={`${app.id}-exp-${idx}`} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < experience.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Experience {idx + 1}{jobTitle && jobTitle !== "—" ? ` (${jobTitle})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Job Title" value={jobTitle} />
-                          <ReadField label="Company" value={companyName} />
-                          {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
-                          {start ? <ReadField label="Start Date" value={start} /> : null}
-                          {end ? <ReadField label="End Date" value={end} /> : null}
-                          {responsibilities ? (
-                            <div className="readFieldFull">
-                              <span className="readLabel">Responsibilities</span>
-                              <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-exp-${idx}`}
+                        index={idx}
+                        title={jobTitle || companyName}
+                        summary={
+                          <>
+                            <ReadField label="Company" value={companyName} />
+                            {period ? <ReadField label="Period" value={period} /> : null}
+                          </>
+                        }
+                        details={
+                          <>
+                            {employmentType ? <ReadField label="Employment Type" value={employmentType} /> : null}
+                            {isCurrent && noticePeriod ? <ReadField label="Notice Period" value={noticePeriod} /> : null}
+                            {responsibilities ? (
+                              <div className="readFieldFull">
+                                <span className="readLabel">Responsibilities</span>
+                                <span className="readValue" style={{ whiteSpace: "pre-wrap" }}>{responsibilities}</span>
+                              </div>
+                            ) : null}
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
@@ -1403,17 +1416,18 @@ export function JobApplicationsPage() {
                   references.map((ref, idx) => {
                     const refName = String(readValue(ref, "full_name", "fullName", "name") ?? "").trim();
                     return (
-                      <div key={`${app.id}-ref-${idx}`} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: idx < references.length - 1 ? "1px solid var(--stroke)" : "none" }}>
-                        <div className="profileRecordHeading">
-                          Reference {idx + 1}{refName ? ` (${refName})` : ""}
-                        </div>
-                        <div className="profileReadGrid" style={{ marginTop: 0 }}>
-                          <ReadField label="Name" value={readValue(ref, "full_name", "fullName", "name")} />
-                          <ReadField label="Relationship" value={readValue(ref, "relationship")} />
-                          <ReadField label="Email" value={readValue(ref, "email")} />
-                          <ReadField label="Phone" value={readValue(ref, "phone")} />
-                        </div>
-                      </div>
+                      <ProfileRecord
+                        key={`${app.id}-ref-${idx}`}
+                        index={idx}
+                        title={refName || "Reference"}
+                        summary={
+                          <>
+                            <ReadField label="Relationship" value={readValue(ref, "relationship")} />
+                            <ReadField label="Email" value={readValue(ref, "email")} />
+                            <ReadField label="Phone" value={readValue(ref, "phone")} />
+                          </>
+                        }
+                      />
                     );
                   })
                 )}
