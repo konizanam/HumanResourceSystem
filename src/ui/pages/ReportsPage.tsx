@@ -279,7 +279,9 @@ export function ReportsPage() {
   const loadDirectoryGenders = useCallback(async (userIds: string[]) => {
     if (!accessToken || userIds.length === 0) return;
 
-    const toFetch = userIds.filter((id) => !directoryGenderByUserId[id]);
+    // Users without a gender are cached as "", so check presence rather than
+    // truthiness — otherwise they are refetched on every state update.
+    const toFetch = userIds.filter((id) => !Object.prototype.hasOwnProperty.call(directoryGenderByUserId, id));
     if (toFetch.length === 0) return;
 
     const nextMap: Record<string, string> = {};
