@@ -1064,7 +1064,6 @@ export async function forgotPassword(email: string) {
   });
   return (await res.json()) as {
     message?: string;
-    maskedEmail?: string;
     resetToken?: string;
   };
 }
@@ -1981,6 +1980,9 @@ export type AdminUser = {
   company_name?: string | null;
   phone?: string | null;
   login_count?: number;
+  // job seeker personal details (list endpoint)
+  gender?: string | null;
+  nationality?: string | null;
   // detail fields
   jobs_posted?: number;
   applications_submitted?: number;

@@ -69,26 +69,6 @@ function hasActivationFlag(location: { search: string; hash: string }): boolean 
   );
 }
 
-function maskEmail(rawEmail: string): string {
-  const value = String(rawEmail ?? "").trim();
-  const atIndex = value.indexOf("@");
-  if (atIndex <= 0 || atIndex === value.length - 1) return value;
-
-  const localPart = value.slice(0, atIndex);
-  const domainPart = value.slice(atIndex + 1);
-  const domainLabels = domainPart.split(".");
-  const domainName = domainLabels.shift() ?? "";
-  const tld = domainLabels.length ? `.${domainLabels.join(".")}` : "";
-
-  const maskSegment = (segment: string): string => {
-    if (segment.length <= 1) return "*";
-    if (segment.length === 2) return `${segment[0]}*`;
-    return `${segment[0]}${"*".repeat(Math.max(1, segment.length - 2))}${segment[segment.length - 1]}`;
-  };
-
-  return `${maskSegment(localPart)}@${maskSegment(domainName)}${tld}`;
-}
-
 type AuthErrorContext = "login" | "verify2fa" | "resend2fa" | "forgot";
 
 function resolveAuthErrorMessage(error: unknown, context: AuthErrorContext): string {
@@ -627,10 +607,9 @@ export function LoginPage() {
                       setBusy(true);
                       setForgotMessage(null);
                       try {
-                        const response = await forgotPassword(value);
-                        const safeEmail = response?.maskedEmail || maskEmail(value);
+                        await forgotPassword(value);
                         setForgotMessage(
-                          `If an account exists for ${safeEmail}, a reset link has been sent.`
+                          `If an account exists for ${value}, a reset link has been sent.`
                         );
                       } catch (err) {
                         setForgotMessage(resolveAuthErrorMessage(err, "forgot"));
@@ -653,7 +632,7 @@ export function LoginPage() {
           ) : (
             <>
               <div className="hintBox hintBoxCentered" role="note" aria-live="polite">
-                Enter the 6-digit authentication code sent to {maskEmail(pending?.userEmail ?? email)}.
+                Enter the 6-digit authentication code sent to {pending?.userEmail ?? email}.
                 <br />
                 {countdownSeconds > 0
                   ? `Code expires in ${countdownLabel}.`

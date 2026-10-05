@@ -61,26 +61,6 @@ async function isMainCompanyConfigured(): Promise<boolean> {
   return result.rows.length > 0;
 }
 
-function maskEmailAddress(rawEmail: string): string {
-  const value = String(rawEmail ?? "").trim();
-  const atIndex = value.indexOf("@");
-  if (atIndex <= 0 || atIndex === value.length - 1) return value;
-
-  const localPart = value.slice(0, atIndex);
-  const domainPart = value.slice(atIndex + 1);
-  const domainLabels = domainPart.split(".");
-  const domainName = domainLabels.shift() ?? "";
-  const tld = domainLabels.length ? `.${domainLabels.join(".")}` : "";
-
-  const maskSegment = (segment: string): string => {
-    if (segment.length <= 1) return "*";
-    if (segment.length === 2) return `${segment[0]}*`;
-    return `${segment[0]}${"*".repeat(Math.max(1, segment.length - 2))}${segment[segment.length - 1]}`;
-  };
-
-  return `${maskSegment(localPart)}@${maskSegment(domainName)}${tld}`;
-}
-
 function createTwoFactorChallenge(input: {
   userId: string;
   email: string;
@@ -1217,14 +1197,12 @@ authRouter.post("/forgot-password", async (req, res, next) => {
   try {
     const { email } = forgotSchema.parse(req.body);
     const normalizedEmail = String(email).trim().toLowerCase();
-    const maskedEmail = maskEmailAddress(normalizedEmail);
     const user = await findUserByEmail(normalizedEmail);
 
     // Always return success to avoid leaking whether email exists
     if (!user) {
       return res.json({
         message: "If the email exists, a reset link has been sent.",
-        maskedEmail,
       });
     }
 
@@ -1267,7 +1245,6 @@ authRouter.post("/forgot-password", async (req, res, next) => {
 
     return res.json({
       message: "If the email exists, a reset link has been sent.",
-      maskedEmail,
       // Include token in response for development only:
       ...(process.env.NODE_ENV !== "production" && { resetToken }),
     });
