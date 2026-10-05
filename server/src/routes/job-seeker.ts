@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db";
+import { findNationality } from "../utils/nationalities";
 import { authenticate, authorizePermission } from "../middleware/auth";
 
 export const jobSeekerRouter = Router();
@@ -179,7 +180,20 @@ const personalDetailsSchema = z.object({
   middleName: z.string().max(100).optional().nullable(),
   gender: z.string().max(50).optional().nullable(),
   dateOfBirth: z.string().optional().nullable(),
-  nationality: z.string().max(100).optional().nullable(),
+  nationality: z
+    .string()
+    .max(100)
+    .optional()
+    .nullable()
+    .transform((value, ctx) => {
+      if (value == null || value.trim() === "") return null;
+      const nationality = findNationality(value);
+      if (!nationality) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Select a nationality from the list (e.g. Namibian)" });
+        return z.NEVER;
+      }
+      return nationality;
+    }),
   idType: z.string().max(50).optional().nullable(),
   idNumber: z.string().max(100).optional().nullable(),
   maritalStatus: z.string().max(50).optional().nullable(),

@@ -1,6 +1,7 @@
 // src/utils/validation.ts
 import { body, validationResult } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
+import { NATIONALITIES, findNationality } from './nationalities';
 
 export const validateRequest = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
@@ -53,7 +54,13 @@ export const personalDetailsValidation = [
     .withMessage('Date of birth is required')
     .isISO8601()
     .toDate(),
-  body('nationality').notEmpty().withMessage('Nationality is required').trim(),
+  body('nationality')
+    .notEmpty()
+    .withMessage('Nationality is required')
+    .trim()
+    .customSanitizer((value) => findNationality(value) ?? value)
+    .isIn(NATIONALITIES)
+    .withMessage('Select a nationality from the list (e.g. Namibian)'),
   body('id_type').optional().trim().notEmpty().withMessage('ID Type cannot be empty'),
   body('id_number').optional().trim().notEmpty().withMessage('ID/Passport Number cannot be empty'),
   body('marital_status').optional().trim(),

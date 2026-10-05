@@ -7,6 +7,7 @@ import app from './app';
 import dotenv from 'dotenv';
 import path from 'path';
 import { query } from './config/database';
+import { COUNTRY_NATIONALITIES } from './utils/nationalities';
 
 // Load environment variables (only in development — production uses platform env vars)
 if (process.env.NODE_ENV !== 'production') {
@@ -332,8 +333,48 @@ async function ensureSchema() {
   );
 }
 
+// Older profiles stored the country name (e.g. "Namibia") as nationality;
+// convert those to the listed nationality (e.g. "Namibian").
+async function migrateNationalities() {
+  const params: string[] = [];
+  const values = COUNTRY_NATIONALITIES.map(([country, nationality]) => {
+    params.push(country.toLowerCase(), nationality);
+    return `($${params.length - 1}, $${params.length})`;
+  });
+  await query(
+    `UPDATE job_seeker_personal_details d
+        SET nationality = m.nationality
+       FROM (VALUES ${values.join(", ")}) AS m(country, nationality)
+      WHERE LOWER(TRIM(d.nationality)) = m.country`,
+    params,
+  );
+}
+
+// last_login was never written on sign-in; backfill it from the latest
+// recorded login (audit log) or session start for each user.
+async function backfillLastLogin() {
+  await query(
+    `UPDATE users u
+        SET last_login = l.latest
+       FROM (
+         SELECT user_id, MAX(ts) AS latest
+           FROM (
+             SELECT user_id, created_at AS ts FROM audit_logs WHERE action_type = 'AUTH_LOGIN_SUCCESS'
+             UNION ALL
+             SELECT user_id, created_at AS ts FROM user_sessions
+           ) logins
+          WHERE user_id IS NOT NULL AND ts IS NOT NULL
+          GROUP BY user_id
+       ) l
+      WHERE u.id = l.user_id
+        AND (u.last_login IS NULL OR u.last_login < l.latest)`,
+  );
+}
+
 async function start() {
   await ensureSchema();
+  await migrateNationalities();
+  await backfillLastLogin();
 
   // Start the server
   const server = app.listen(PORT, () => {

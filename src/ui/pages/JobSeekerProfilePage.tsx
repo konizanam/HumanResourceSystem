@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useAuth } from "../auth/AuthContext";
 import { COUNTRY_NAMES } from "../utils/countries";
+import { NATIONALITIES, findNationality, normalizeNationality } from "../utils/nationalities";
 import { NAMIBIA_REGIONS, NAMIBIA_TOWNS_CITIES } from "../utils/namibia";
 import {
   CALLING_CODE_OPTIONS,
@@ -2850,7 +2851,7 @@ function PersonalDetailsSection({
     phone: "",
     gender: (d.gender as string) ?? "",
     dateOfBirth: (d.date_of_birth as string) ?? "",
-    nationality: (d.nationality as string) ?? "",
+    nationality: normalizeNationality(d.nationality as string),
     idType: (d.id_type as string) ?? "",
     idNumber: (d.id_number as string) ?? "",
     idDocumentUrl: (d.id_document_url as string) ?? "",
@@ -2905,8 +2906,11 @@ function PersonalDetailsSection({
   const nationalitySuggestions = useMemo(() => {
     const q = form.nationality.trim().toLowerCase();
     if (!q) return [];
-    const matches = COUNTRY_NAMES.filter((c) => c.toLowerCase().startsWith(q));
-    return matches.slice(0, 8);
+    // Already a listed nationality — nothing left to suggest.
+    if (findNationality(q) === form.nationality) return [];
+    const startsWith = NATIONALITIES.filter((n) => n.toLowerCase().startsWith(q));
+    const contains = NATIONALITIES.filter((n) => !n.toLowerCase().startsWith(q) && n.toLowerCase().includes(q));
+    return [...startsWith, ...contains].slice(0, 8);
   }, [form.nationality]);
 
   useEffect(() => {
@@ -2946,7 +2950,7 @@ function PersonalDetailsSection({
       phone: accountContact.phone,
       gender: (nd.gender as string) ?? "",
       dateOfBirth: (nd.date_of_birth as string)?.split("T")[0] ?? "",
-      nationality: (nd.nationality as string) ?? "",
+      nationality: normalizeNationality(nd.nationality as string),
       idType: (nd.id_type as string) ?? "",
       idNumber: (nd.id_number as string) ?? "",
       idDocumentUrl: (nd.id_document_url as string) ?? "",
@@ -3093,6 +3097,7 @@ function PersonalDetailsSection({
     if (!form.gender) errs.gender = "Gender is required";
     if (!form.dateOfBirth) errs.dateOfBirth = "Date of birth is required";
     if (!form.nationality.trim()) errs.nationality = "Nationality is required";
+    else if (!findNationality(form.nationality)) errs.nationality = "Select a nationality from the list (e.g. Namibian)";
     if (!form.idType) errs.idType = "ID Type is required";
     if (!form.idNumber.trim()) errs.idNumber = "ID Number is required";
     if (!form.idDocumentUrl.trim() && !pendingIdDocFile) errs.idDocumentUrl = "Identification document is required";
@@ -3406,8 +3411,13 @@ function PersonalDetailsSection({
               setNationalityOpen(true);
             }}
             onFocus={() => setNationalityOpen(true)}
-            onBlur={() => setNationalityOpen(false)}
-            placeholder="Start typing (e.g. Namibia)"
+            onBlur={() => {
+              setNationalityOpen(false);
+              // Snap a correctly typed nationality to its listed spelling.
+              const listed = findNationality(form.nationality);
+              if (listed && listed !== form.nationality) set("nationality", listed);
+            }}
+            placeholder="Start typing (e.g. Namibian)"
             required
           />
           {nationalityOpen && nationalitySuggestions.length > 0 && (

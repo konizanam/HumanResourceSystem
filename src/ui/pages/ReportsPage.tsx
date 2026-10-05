@@ -2,7 +2,7 @@ import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } f
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import { writeStyledWorkbook } from "../utils/styledExcel";
 import {
   type Company,
   type AdminUser,
@@ -150,6 +150,7 @@ export function ReportsPage() {
   const [sortBy, setSortBy] = useState<SortBy>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("DESC");
   const [directoryGenderFilter, setDirectoryGenderFilter] = useState<string>("");
+  const [directoryNationalityFilter, setDirectoryNationalityFilter] = useState<string>("");
 
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string>("");
@@ -182,6 +183,7 @@ export function ReportsPage() {
   const [jobApplicantsToDate, setJobApplicantsToDate] = useState<string>("");
 
   const [directoryGenderByUserId, setDirectoryGenderByUserId] = useState<Record<string, string>>({});
+  const [directoryNationalityByUserId, setDirectoryNationalityByUserId] = useState<Record<string, string>>({});
 
   const [applicantsPage, setApplicantsPage] = useState(1);
   const [directoryPage, setDirectoryPage] = useState(1);
@@ -279,10 +281,13 @@ export function ReportsPage() {
   const loadDirectoryGenders = useCallback(async (userIds: string[]) => {
     if (!accessToken || userIds.length === 0) return;
 
-    const toFetch = userIds.filter((id) => !directoryGenderByUserId[id]);
+    // Users without a gender are cached as "", so check presence rather than
+    // truthiness — otherwise they are refetched on every state update.
+    const toFetch = userIds.filter((id) => !Object.prototype.hasOwnProperty.call(directoryGenderByUserId, id));
     if (toFetch.length === 0) return;
 
     const nextMap: Record<string, string> = {};
+    const nextNationalityMap: Record<string, string> = {};
     const batchSize = 8;
 
     for (let index = 0; index < toFetch.length; index += batchSize) {
@@ -292,18 +297,21 @@ export function ReportsPage() {
           try {
             const profile = await getJobSeekerFullProfile(accessToken, userId);
             const gender = normalizeGender(String((profile.personalDetails as any)?.gender ?? ""));
-            return { userId, gender };
+            const nationality = String((profile.personalDetails as any)?.nationality ?? "").trim();
+            return { userId, gender, nationality };
           } catch {
-            return { userId, gender: "" };
+            return { userId, gender: "", nationality: "" };
           }
         }),
       );
 
       results.forEach((result) => {
         nextMap[result.userId] = result.gender;
+        nextNationalityMap[result.userId] = result.nationality;
       });
     }
 
+    setDirectoryNationalityByUserId((prev) => ({ ...prev, ...nextNationalityMap }));
     setDirectoryGenderByUserId((prev) => ({ ...prev, ...nextMap }));
   }, [accessToken, directoryGenderByUserId]);
 
@@ -405,13 +413,24 @@ export function ReportsPage() {
 
   const directoryFilteredRows = useMemo(() => {
     if (reportType !== "job_seekers") return rows;
-    if (!directoryGenderFilter) return rows;
+    if (!directoryGenderFilter && !directoryNationalityFilter) return rows;
 
     return rows.filter((row) => {
       const key = String(row.id ?? "");
-      return normalizeGender(directoryGenderByUserId[key]) === directoryGenderFilter;
+      if (directoryGenderFilter && normalizeGender(directoryGenderByUserId[key]) !== directoryGenderFilter) return false;
+      if (directoryNationalityFilter && (directoryNationalityByUserId[key] ?? "").toLowerCase() !== directoryNationalityFilter.toLowerCase()) return false;
+      return true;
     });
-  }, [rows, reportType, directoryGenderFilter, directoryGenderByUserId]);
+  }, [rows, reportType, directoryGenderFilter, directoryNationalityFilter, directoryGenderByUserId, directoryNationalityByUserId]);
+
+  const directoryNationalityOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    Object.values(directoryNationalityByUserId).forEach((value) => {
+      const trimmed = value.trim();
+      if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+    });
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [directoryNationalityByUserId]);
 
   const applicationsFilteredBase = useMemo(() => {
     const searchQuery = applicationFilterSearch.trim().toLowerCase();
@@ -806,6 +825,7 @@ export function ReportsPage() {
         Email: row.email ?? "—",
         Phone: row.phone ?? "—",
         Gender: titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown"),
+        Nationality: directoryNationalityByUserId[String(row.id ?? "")] || "—",
         Status: statusLabel(row),
         Verified: row.email_verified ? "Yes" : "No",
         "Created At": formatDate(row.created_at),
@@ -854,30 +874,40 @@ export function ReportsPage() {
 
   function exportDirectoryExcel() {
     const reportRows = buildDirectoryExportRows();
-    const workbook = XLSX.utils.book_new();
-
-    const reportSheet = XLSX.utils.json_to_sheet(reportRows);
-    XLSX.utils.book_append_sheet(workbook, reportSheet, "Records");
-
-    const summarySheet = XLSX.utils.json_to_sheet([
-      { Metric: "Report Type", Value: reportType === "job_seekers" ? "Job Seekers" : "Companies" },
-      { Metric: "Generated At", Value: formatDate(lastGeneratedAt) },
-      { Metric: "Total Records", Value: metrics.total },
-      { Metric: "Active", Value: metrics.active },
-      { Metric: "Blocked", Value: metrics.blocked },
-      { Metric: "Verified", Value: metrics.verifiedUsers },
-      { Metric: "Unverified", Value: metrics.unverifiedUsers },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-
-    const monthlySheet = XLSX.utils.json_to_sheet(registrationByMonth.map((item) => ({
-      Month: item.month,
-      Count: item.count,
-    })));
-    XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly Signups");
+    const reportLabel = reportType === "job_seekers" ? "Job Seekers" : "Companies";
+    const exportedAt = new Date().toLocaleString("en-GB");
 
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `${reportType}-report-${stamp}.xlsx`);
+    writeStyledWorkbook(`${reportType}-report-${stamp}.xlsx`, [
+      {
+        name: "Records",
+        options: {
+          title: `${reportLabel} Directory Report`,
+          summary: [
+            ["Report Type", reportLabel],
+            ["Generated At", formatDate(lastGeneratedAt)],
+            ["Total Records", metrics.total],
+            ["Active", metrics.active],
+            ["Blocked", metrics.blocked],
+            ["Verified", metrics.verifiedUsers],
+            ["Unverified", metrics.unverifiedUsers],
+            ["Exported", exportedAt],
+          ],
+          description:
+            `This spreadsheet lists ${reportLabel.toLowerCase()} matching the selected report filters, ` +
+            "with account status, verification and activity details.",
+          rows: reportRows,
+        },
+      },
+      {
+        name: "Monthly Signups",
+        options: {
+          title: `${reportLabel} Monthly Signups`,
+          summary: [["Exported", exportedAt]],
+          rows: registrationByMonth.map((item) => ({ Month: item.month, Count: item.count })),
+        },
+      },
+    ]);
   }
 
   function exportDirectoryPdf() {
@@ -915,20 +945,25 @@ export function ReportsPage() {
     const rows = buildApplicantReportRows();
     if (rows.length === 0) return;
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applicants");
-
-    const summary = XLSX.utils.json_to_sheet([
-      { Metric: "Report", Value: "Applicants Report By Job" },
-      { Metric: "Job", Value: selectedJobTitle || selectedJobId },
-      { Metric: "Company", Value: selectedJobCompany || "—" },
-      { Metric: "Total Applicants", Value: filteredJobApplicantRows.length },
-      { Metric: "Generated At", Value: formatDate(new Date().toISOString()) },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, summary, "Summary");
-
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `job-applicants-${stamp}.xlsx`);
+    writeStyledWorkbook(`job-applicants-${stamp}.xlsx`, [
+      {
+        name: "Applicants",
+        options: {
+          title: "Applicants Report By Job",
+          summary: [
+            ["Job", selectedJobTitle || selectedJobId],
+            ["Company", selectedJobCompany || "—"],
+            ["Total Applicants", filteredJobApplicantRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          description:
+            `This spreadsheet provides an overview of applicants for the role "${selectedJobTitle || "—"}", ` +
+            "including their background, qualifications and work history.",
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportApplicantsPdf() {
@@ -981,10 +1016,23 @@ export function ReportsPage() {
       };
     });
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applications");
+    const statusLabel = titleStatus(selectedStatus);
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `applications-${selectedStatus}-${stamp}.xlsx`);
+    writeStyledWorkbook(`applications-${selectedStatus}-${stamp}.xlsx`, [
+      {
+        name: "Applications",
+        options: {
+          title: `${statusLabel} Applications`,
+          summary: [
+            ["Status", statusLabel],
+            ["Total Applications", rows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          description: `This spreadsheet lists all applications currently in the "${statusLabel}" stage across jobs.`,
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportStatusPdf() {
@@ -1035,9 +1083,19 @@ export function ReportsPage() {
   function exportMonthlySignupsExcel() {
     const rows = registrationByMonth.map((item) => ({ Month: item.month, Count: item.count }));
     if (rows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Monthly Signups");
-    XLSX.writeFile(workbook, `directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Monthly Signups",
+        options: {
+          title: "Monthly Signups",
+          summary: [
+            ["Report Type", reportType === "job_seekers" ? "Job Seekers" : "Companies"],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportMonthlySignupsPdf() {
@@ -1067,9 +1125,16 @@ export function ReportsPage() {
 
   function exportFunnelExcel() {
     if (funnelRows.rows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(funnelRows.rows), "Hiring Funnel");
-    XLSX.writeFile(workbook, `hiring-funnel-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`hiring-funnel-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Hiring Funnel",
+        options: {
+          title: "Hiring Funnel",
+          summary: [["Exported", new Date().toLocaleString("en-GB")]],
+          rows: funnelRows.rows,
+        },
+      },
+    ]);
   }
 
   function exportFunnelPdf() {
@@ -1098,9 +1163,19 @@ export function ReportsPage() {
 
   function exportJobsWithoutApplicantsExcel() {
     if (jobsWithoutApplicantsRows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(jobsWithoutApplicantsRows), "Jobs Without Applicants");
-    XLSX.writeFile(workbook, `jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Jobs Without Applicants",
+        options: {
+          title: "Jobs Without Applicants",
+          summary: [
+            ["Total Jobs", jobsWithoutApplicantsRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows: jobsWithoutApplicantsRows,
+        },
+      },
+    ]);
   }
 
   function exportJobsWithoutApplicantsPdf() {
@@ -1129,9 +1204,19 @@ export function ReportsPage() {
 
   function exportCompanyPerformanceExcel() {
     if (companyHiringPerformanceRows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(companyHiringPerformanceRows), "Company Performance");
-    XLSX.writeFile(workbook, `company-hiring-performance-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`company-hiring-performance-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Company Performance",
+        options: {
+          title: "Company Hiring Performance",
+          summary: [
+            ["Total Companies", companyHiringPerformanceRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows: companyHiringPerformanceRows,
+        },
+      },
+    ]);
   }
 
   function exportCompanyPerformancePdf() {
@@ -1739,6 +1824,20 @@ export function ReportsPage() {
                 </select>
               </div>
               <div style={{ minWidth: 150, flex: "1 1 150px" }}>
+                <label className="fieldLabel">Nationality</label>
+                <select
+                  className="input"
+                  value={directoryNationalityFilter}
+                  onChange={(e) => setDirectoryNationalityFilter(e.target.value)}
+                  disabled={reportType !== "job_seekers"}
+                >
+                  <option value="">All</option>
+                  {directoryNationalityOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ minWidth: 150, flex: "1 1 150px" }}>
                 <label className="fieldLabel">Verified</label>
                 <select className="input" value={verified} onChange={(e) => setVerified(e.target.value as "" | "true" | "false") }>
                   <option value="">All</option>
@@ -1790,6 +1889,7 @@ export function ReportsPage() {
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Gender</th>
+                        <th>Nationality</th>
                         <th>Status</th>
                         <th>Verified</th>
                         <th>Created</th>
@@ -1811,7 +1911,7 @@ export function ReportsPage() {
                 </thead>
                 <tbody>
                   {pagedDirectoryRows.total === 0 ? (
-                    <tr><td colSpan={8}>No records found for the selected filters.</td></tr>
+                    <tr><td colSpan={reportType === "job_seekers" ? 9 : 8}>No records found for the selected filters.</td></tr>
                   ) : (
                     pagedDirectoryRows.rows.map((row) => (
                       <tr key={row.id}>
@@ -1821,6 +1921,7 @@ export function ReportsPage() {
                             <td>{row.email ?? "—"}</td>
                             <td>{row.phone ?? "—"}</td>
                             <td>{titleStatus(normalizeGender(directoryGenderByUserId[String(row.id ?? "")]) || "unknown")}</td>
+                            <td>{directoryNationalityByUserId[String(row.id ?? "")] || "—"}</td>
                             <td>{statusLabel(row)}</td>
                             <td>{row.email_verified ? "Yes" : "No"}</td>
                             <td>{formatDate(row.created_at)}</td>
