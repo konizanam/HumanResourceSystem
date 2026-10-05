@@ -167,6 +167,26 @@ const EMPTY_FORM: JobFormState = {
   screening_questions: [],
 };
 
+// Groups raw job statuses (legacy and schema values) the way the Status filter
+// and the summary cards do: Active, Draft (incl. pending approval), Closed.
+function jobStatusGroup(status: unknown): "active" | "draft" | "closed" | "" {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (value === "active" || value === "approved" || value === "open") return "active";
+  if (value === "draft" || value === "pending") return "draft";
+  if (value === "closed" || value === "inactive" || value === "expired") return "closed";
+  return "";
+}
+
+function jobStatusLabel(status: unknown): string {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (value === "pending") return "Pending approval";
+  const group = jobStatusGroup(status);
+  if (group === "active") return "Active";
+  if (group === "draft") return "Draft";
+  if (group === "closed") return "Closed";
+  return String(status ?? "").trim() || "—";
+}
+
 function blankScreeningQuestion(): FormScreeningQuestion {
   return {
     question_text: "",
@@ -871,6 +891,10 @@ export function JobsPage() {
 
       if (!matchesQuery) return false;
 
+      // Keep the list in step with the Status filter even if the API returns
+      // jobs outside it.
+      if (!isJobSeekerView && statusFilter && jobStatusGroup(job.status) !== statusFilter) return false;
+
       if (filterCategory) {
         if (String(categoryName).toLowerCase() !== filterCategory.toLowerCase()) return false;
       }
@@ -895,7 +919,7 @@ export function JobsPage() {
 
       return true;
     });
-  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, jobs, resolveJobCategoryName, resolveJobCompanyName, resolveJobWorkMode, search]);
+  }, [filterCategory, filterEmploymentType, filterExperienceLevel, filterLocation, filterRemote, isJobSeekerView, jobs, resolveJobCategoryName, resolveJobCompanyName, resolveJobWorkMode, search, statusFilter]);
 
   const seekerFilterOptions = useMemo(() => {
     const categories = new Set<string>();
@@ -975,10 +999,10 @@ export function JobsPage() {
     let appliedJobs = 0;
 
     for (const job of displayedJobs) {
-      const status = String(job.status ?? "").trim().toLowerCase();
-      if (status === "active" || status === "approved" || status === "open") openJobs += 1;
-      else if (status === "draft" || status === "pending") draftJobs += 1;
-      else if (status === "closed" || status === "inactive" || status === "expired") closedJobs += 1;
+      const statusGroup = jobStatusGroup(job.status);
+      if (statusGroup === "active") openJobs += 1;
+      else if (statusGroup === "draft") draftJobs += 1;
+      else if (statusGroup === "closed") closedJobs += 1;
 
       const workMode = resolveJobWorkMode(job);
       if (workMode === "remote" || workMode === "hybrid") remoteJobs += 1;
@@ -2134,7 +2158,7 @@ export function JobsPage() {
                         <div className="profileReadGrid">
                           <ReadField label="Employment Type" value={job.employment_type ?? "—"} />
                           <ReadField label="Experience Level" value={job.experience_level ?? "—"} />
-                          <ReadField label="Status" value={job.status ?? "—"} />
+                          <ReadField label="Status" value={jobStatusLabel(job.status)} />
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <span className="readLabel">Description</span>
@@ -2212,7 +2236,7 @@ export function JobsPage() {
                       <ReadField label="Company" value={companyName} />
                       <ReadField label="Category" value={categoryName} />
                       <ReadField label="Location" value={job.location ?? "—"} />
-                      <ReadField label="Status" value={job.status ?? "—"} />
+                      <ReadField label="Status" value={jobStatusLabel(job.status)} />
                       <ReadField
                         label="Due Date"
                         value={job.application_deadline ? new Date(job.application_deadline).toLocaleDateString("en-GB") : "—"}
@@ -2303,7 +2327,7 @@ export function JobsPage() {
                           />
                           <ReadField label="Salary Range" value={`${job.salary_min ?? "—"} - ${job.salary_max ?? "—"}`} />
                           <ReadField label="Deadline" value={job.application_deadline ? new Date(job.application_deadline).toLocaleString("en-GB") : "—"} />
-                          <ReadField label="Status" value={job.status} />
+                          <ReadField label="Status" value={jobStatusLabel(job.status)} />
                         </div>
                         <div style={{ marginTop: 12 }}>
                           <span className="readLabel">Description</span>
