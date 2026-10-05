@@ -2,7 +2,7 @@ import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } f
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import { writeStyledWorkbook } from "../utils/styledExcel";
 import {
   type Company,
   type AdminUser,
@@ -874,30 +874,40 @@ export function ReportsPage() {
 
   function exportDirectoryExcel() {
     const reportRows = buildDirectoryExportRows();
-    const workbook = XLSX.utils.book_new();
-
-    const reportSheet = XLSX.utils.json_to_sheet(reportRows);
-    XLSX.utils.book_append_sheet(workbook, reportSheet, "Records");
-
-    const summarySheet = XLSX.utils.json_to_sheet([
-      { Metric: "Report Type", Value: reportType === "job_seekers" ? "Job Seekers" : "Companies" },
-      { Metric: "Generated At", Value: formatDate(lastGeneratedAt) },
-      { Metric: "Total Records", Value: metrics.total },
-      { Metric: "Active", Value: metrics.active },
-      { Metric: "Blocked", Value: metrics.blocked },
-      { Metric: "Verified", Value: metrics.verifiedUsers },
-      { Metric: "Unverified", Value: metrics.unverifiedUsers },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-
-    const monthlySheet = XLSX.utils.json_to_sheet(registrationByMonth.map((item) => ({
-      Month: item.month,
-      Count: item.count,
-    })));
-    XLSX.utils.book_append_sheet(workbook, monthlySheet, "Monthly Signups");
+    const reportLabel = reportType === "job_seekers" ? "Job Seekers" : "Companies";
+    const exportedAt = new Date().toLocaleString("en-GB");
 
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `${reportType}-report-${stamp}.xlsx`);
+    writeStyledWorkbook(`${reportType}-report-${stamp}.xlsx`, [
+      {
+        name: "Records",
+        options: {
+          title: `${reportLabel} Directory Report`,
+          summary: [
+            ["Report Type", reportLabel],
+            ["Generated At", formatDate(lastGeneratedAt)],
+            ["Total Records", metrics.total],
+            ["Active", metrics.active],
+            ["Blocked", metrics.blocked],
+            ["Verified", metrics.verifiedUsers],
+            ["Unverified", metrics.unverifiedUsers],
+            ["Exported", exportedAt],
+          ],
+          description:
+            `This spreadsheet lists ${reportLabel.toLowerCase()} matching the selected report filters, ` +
+            "with account status, verification and activity details.",
+          rows: reportRows,
+        },
+      },
+      {
+        name: "Monthly Signups",
+        options: {
+          title: `${reportLabel} Monthly Signups`,
+          summary: [["Exported", exportedAt]],
+          rows: registrationByMonth.map((item) => ({ Month: item.month, Count: item.count })),
+        },
+      },
+    ]);
   }
 
   function exportDirectoryPdf() {
@@ -935,20 +945,25 @@ export function ReportsPage() {
     const rows = buildApplicantReportRows();
     if (rows.length === 0) return;
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applicants");
-
-    const summary = XLSX.utils.json_to_sheet([
-      { Metric: "Report", Value: "Applicants Report By Job" },
-      { Metric: "Job", Value: selectedJobTitle || selectedJobId },
-      { Metric: "Company", Value: selectedJobCompany || "—" },
-      { Metric: "Total Applicants", Value: filteredJobApplicantRows.length },
-      { Metric: "Generated At", Value: formatDate(new Date().toISOString()) },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, summary, "Summary");
-
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `job-applicants-${stamp}.xlsx`);
+    writeStyledWorkbook(`job-applicants-${stamp}.xlsx`, [
+      {
+        name: "Applicants",
+        options: {
+          title: "Applicants Report By Job",
+          summary: [
+            ["Job", selectedJobTitle || selectedJobId],
+            ["Company", selectedJobCompany || "—"],
+            ["Total Applicants", filteredJobApplicantRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          description:
+            `This spreadsheet provides an overview of applicants for the role "${selectedJobTitle || "—"}", ` +
+            "including their background, qualifications and work history.",
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportApplicantsPdf() {
@@ -1001,10 +1016,23 @@ export function ReportsPage() {
       };
     });
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Applications");
+    const statusLabel = titleStatus(selectedStatus);
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `applications-${selectedStatus}-${stamp}.xlsx`);
+    writeStyledWorkbook(`applications-${selectedStatus}-${stamp}.xlsx`, [
+      {
+        name: "Applications",
+        options: {
+          title: `${statusLabel} Applications`,
+          summary: [
+            ["Status", statusLabel],
+            ["Total Applications", rows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          description: `This spreadsheet lists all applications currently in the "${statusLabel}" stage across jobs.`,
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportStatusPdf() {
@@ -1055,9 +1083,19 @@ export function ReportsPage() {
   function exportMonthlySignupsExcel() {
     const rows = registrationByMonth.map((item) => ({ Month: item.month, Count: item.count }));
     if (rows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Monthly Signups");
-    XLSX.writeFile(workbook, `directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`directory-monthly-signups-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Monthly Signups",
+        options: {
+          title: "Monthly Signups",
+          summary: [
+            ["Report Type", reportType === "job_seekers" ? "Job Seekers" : "Companies"],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows,
+        },
+      },
+    ]);
   }
 
   function exportMonthlySignupsPdf() {
@@ -1087,9 +1125,16 @@ export function ReportsPage() {
 
   function exportFunnelExcel() {
     if (funnelRows.rows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(funnelRows.rows), "Hiring Funnel");
-    XLSX.writeFile(workbook, `hiring-funnel-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`hiring-funnel-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Hiring Funnel",
+        options: {
+          title: "Hiring Funnel",
+          summary: [["Exported", new Date().toLocaleString("en-GB")]],
+          rows: funnelRows.rows,
+        },
+      },
+    ]);
   }
 
   function exportFunnelPdf() {
@@ -1118,9 +1163,19 @@ export function ReportsPage() {
 
   function exportJobsWithoutApplicantsExcel() {
     if (jobsWithoutApplicantsRows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(jobsWithoutApplicantsRows), "Jobs Without Applicants");
-    XLSX.writeFile(workbook, `jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`jobs-without-applicants-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Jobs Without Applicants",
+        options: {
+          title: "Jobs Without Applicants",
+          summary: [
+            ["Total Jobs", jobsWithoutApplicantsRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows: jobsWithoutApplicantsRows,
+        },
+      },
+    ]);
   }
 
   function exportJobsWithoutApplicantsPdf() {
@@ -1149,9 +1204,19 @@ export function ReportsPage() {
 
   function exportCompanyPerformanceExcel() {
     if (companyHiringPerformanceRows.length === 0) return;
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(companyHiringPerformanceRows), "Company Performance");
-    XLSX.writeFile(workbook, `company-hiring-performance-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    writeStyledWorkbook(`company-hiring-performance-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Company Performance",
+        options: {
+          title: "Company Hiring Performance",
+          summary: [
+            ["Total Companies", companyHiringPerformanceRows.length],
+            ["Exported", new Date().toLocaleString("en-GB")],
+          ],
+          rows: companyHiringPerformanceRows,
+        },
+      },
+    ]);
   }
 
   function exportCompanyPerformancePdf() {
