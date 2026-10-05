@@ -2678,6 +2678,7 @@ export function JobSeekerProfilePage({ forcedMode }: { forcedMode?: "self" | "di
                 setEditResetToken((t) => t + 1);
               } else {
                 setEditingStep(activeStep);
+                setEditResetToken((t) => t + 1);
               }
               clearMessages();
             }}
@@ -3755,6 +3756,8 @@ function AddressSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  // "Add" was clicked: hide the record list and any open record, show only the form.
+  const addOnly = editing && !editId;
   const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [ipCountryCode, setIpCountryCode] = useState<string | null>(null);
@@ -3878,7 +3881,7 @@ function AddressSection({
 
   return (
     <>
-      {items.length > 0 ? (
+      {addOnly ? null : items.length > 0 ? (
         <div className="recordList">
           {items.map((a) => (
             <div key={a.id as string} className="recordCard">
@@ -3890,7 +3893,7 @@ function AddressSection({
                 {Boolean(a.is_primary) && <span className="chipBadge">Primary</span>}
               </div>
               <div className="recordActions">
-                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(a.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId((prev) => (prev === String(a.id) ? null : String(a.id))); setEditId(null); }} type="button">{viewId === String(a.id) ? "Collapse" : "View"}</button>
                 <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(a); }} type="button">Edit</button>
                 <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(a.id as string)} type="button">Delete</button>
               </div>
@@ -3901,7 +3904,7 @@ function AddressSection({
         <EmptyState label="No addresses added yet." />
       ) : null}
 
-      {viewItem && (
+      {!addOnly && viewItem && (
         <div className="editForm">
           <h4 className="editFormTitle">View Address</h4>
           <div className="editGrid">
@@ -3917,7 +3920,7 @@ function AddressSection({
             </label>
           </div>
           <div className="stepperActions">
-            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Collapse</button>
           </div>
         </div>
       )}
@@ -4126,6 +4129,8 @@ function EducationSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  // "Add" was clicked: hide the record list and any open record, show only the form.
+  const addOnly = editing && !editId;
   const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -4208,7 +4213,7 @@ function EducationSection({
 
   return (
     <>
-      {items.length > 0 ? (
+      {addOnly ? null : items.length > 0 ? (
         <div className="recordList">
           {items.map((e) => (
             <div key={e.id as string} className="recordCard">
@@ -4223,7 +4228,7 @@ function EducationSection({
                 </span>
               </div>
               <div className="recordActions">
-                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(e.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId((prev) => (prev === String(e.id) ? null : String(e.id))); setEditId(null); }} type="button">{viewId === String(e.id) ? "Collapse" : "View"}</button>
                 <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(e); }} type="button">Edit</button>
                 <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
               </div>
@@ -4234,7 +4239,7 @@ function EducationSection({
         <EmptyState label="No education records added yet." />
       ) : null}
 
-      {viewItem && (() => {
+      {!addOnly && viewItem && (() => {
         return (
           <div className="editForm">
             <h4 className="editFormTitle">View Education</h4>
@@ -4251,7 +4256,7 @@ function EducationSection({
               </label>
             </div>
             <div className="stepperActions">
-              <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+              <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Collapse</button>
             </div>
           </div>
         );
@@ -4445,6 +4450,8 @@ function ExperienceSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  // "Add" was clicked: hide the record list and any open record, show only the form.
+  const addOnly = editing && !editId;
   const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -4508,7 +4515,7 @@ function ExperienceSection({
 
   return (
     <>
-      {items.length > 0 ? (
+      {addOnly ? null : items.length > 0 ? (
         <div className="recordList">
           {items.map((e) => (
             <div key={e.id as string} className="recordCard">
@@ -4523,7 +4530,7 @@ function ExperienceSection({
                 </span>
               </div>
               <div className="recordActions">
-                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(e.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId((prev) => (prev === String(e.id) ? null : String(e.id))); setEditId(null); }} type="button">{viewId === String(e.id) ? "Collapse" : "View"}</button>
                 <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(e); }} type="button">Edit</button>
                 <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(e.id as string)} type="button">Delete</button>
               </div>
@@ -4534,7 +4541,7 @@ function ExperienceSection({
         <EmptyState label="No experience records added yet." />
       ) : null}
 
-      {viewItem && (
+      {!addOnly && viewItem && (
         <div className="editForm">
           <h4 className="editFormTitle">View Experience</h4>
           <div className="editGrid">
@@ -4556,7 +4563,7 @@ function ExperienceSection({
             </label>
           </div>
           <div className="stepperActions">
-            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Collapse</button>
           </div>
         </div>
       )}
@@ -4736,6 +4743,8 @@ function ReferencesSection({
   };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  // "Add" was clicked: hide the record list and any open record, show only the form.
+  const addOnly = editing && !editId;
   const [viewId, setViewId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -4797,7 +4806,7 @@ function ReferencesSection({
 
   return (
     <>
-      {items.length > 0 ? (
+      {addOnly ? null : items.length > 0 ? (
         <div className="recordList">
           {items.map((r) => (
             <div key={r.id as string} className="recordCard">
@@ -4810,7 +4819,7 @@ function ReferencesSection({
                 </span>
               </div>
               <div className="recordActions">
-                <button className="btn btnGhost btnSm" onClick={() => { setViewId(String(r.id)); setEditId(null); }} type="button">View</button>
+                <button className="btn btnGhost btnSm" onClick={() => { setViewId((prev) => (prev === String(r.id) ? null : String(r.id))); setEditId(null); }} type="button">{viewId === String(r.id) ? "Collapse" : "View"}</button>
                 <button className="btn btnGhost btnSm" onClick={() => { setViewId(null); startEdit(r); }} type="button">Edit</button>
                 <button className="btn btnDanger btnSm" onClick={() => setConfirmDeleteId(r.id as string)} type="button">Delete</button>
               </div>
@@ -4821,7 +4830,7 @@ function ReferencesSection({
         <EmptyState label="No references added yet." />
       ) : null}
 
-      {viewItem && (
+      {!addOnly && viewItem && (
         <div className="editForm">
           <h4 className="editFormTitle">View Reference</h4>
           <div className="editGrid">
@@ -4832,7 +4841,7 @@ function ReferencesSection({
             <EditField label="Phone" value={String(viewItem.phone ?? "")} onChange={() => {}} disabled />
           </div>
           <div className="stepperActions">
-            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Close</button>
+            <button className="btn btnGhost" type="button" onClick={() => setViewId(null)}>Collapse</button>
           </div>
         </div>
       )}
