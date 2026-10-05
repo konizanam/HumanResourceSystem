@@ -554,7 +554,9 @@ router.get('/users',
           id, email, first_name, last_name, role, is_active, is_blocked,
           blocked_at, block_reason, email_verified, last_login, created_at,
           company_name, phone,
-          (SELECT COUNT(*) FROM user_sessions WHERE user_id = users.id) as login_count
+          (SELECT COUNT(*) FROM user_sessions WHERE user_id = users.id) as login_count,
+          (SELECT pd.gender FROM job_seeker_personal_details pd WHERE pd.user_id = users.id) as gender,
+          (SELECT pd.nationality FROM job_seeker_personal_details pd WHERE pd.user_id = users.id) as nationality
          FROM users
          ${whereClause}
          ORDER BY ${sort_by} ${sort_order}

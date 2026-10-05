@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { writeStyledWorkbook } from "../utils/styledExcel";
+import { normalizeNationality } from "../utils/nationalities";
 import {
   type Company,
   type AdminUser,
@@ -297,7 +298,7 @@ export function ReportsPage() {
           try {
             const profile = await getJobSeekerFullProfile(accessToken, userId);
             const gender = normalizeGender(String((profile.personalDetails as any)?.gender ?? ""));
-            const nationality = String((profile.personalDetails as any)?.nationality ?? "").trim();
+            const nationality = normalizeNationality(String((profile.personalDetails as any)?.nationality ?? ""));
             return { userId, gender, nationality };
           } catch {
             return { userId, gender: "", nationality: "" };
@@ -727,9 +728,31 @@ export function ReportsPage() {
     setCompanyPerformancePage(1);
   }, [companyPerformanceSearch, companyHiringPerformanceRows.length]);
 
+  // Seed gender/nationality straight from the users list. Runs only when the
+  // rows change, so it cannot retrigger the fallback loader below.
   useEffect(() => {
     if (reportType !== "job_seekers") return;
-    const ids = rows.map((row) => String(row.id ?? "")).filter(Boolean);
+    const listed = rows.filter((row) => row.id && (row.gender !== undefined || row.nationality !== undefined));
+    if (listed.length === 0) return;
+    const genders: Record<string, string> = {};
+    const nationalities: Record<string, string> = {};
+    listed.forEach((row) => {
+      const key = String(row.id);
+      genders[key] = normalizeGender(String(row.gender ?? ""));
+      nationalities[key] = normalizeNationality(row.nationality);
+    });
+    setDirectoryGenderByUserId((prev) => ({ ...prev, ...genders }));
+    setDirectoryNationalityByUserId((prev) => ({ ...prev, ...nationalities }));
+  }, [reportType, rows]);
+
+  useEffect(() => {
+    if (reportType !== "job_seekers") return;
+    // The users list includes gender/nationality (seeded above); only fall
+    // back to fetching each profile when the API predates those fields.
+    const ids = rows
+      .filter((row) => row.gender === undefined && row.nationality === undefined)
+      .map((row) => String(row.id ?? ""))
+      .filter(Boolean);
     void loadDirectoryGenders(ids);
   }, [reportType, rows, directoryGenderFilter, loadDirectoryGenders]);
 
