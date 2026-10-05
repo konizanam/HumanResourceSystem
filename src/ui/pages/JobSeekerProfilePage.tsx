@@ -3600,7 +3600,6 @@ function PersonalDetailsSection({
             </label>
             <label className="field">
               <span className="fieldLabel">Qualifications</span>
-              <span className="fieldHint">One PDF containing all your qualifications. It is used for every qualification you add.</span>
               <input
                 className="input"
                 type="file"
