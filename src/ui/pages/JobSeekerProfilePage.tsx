@@ -4145,6 +4145,12 @@ function EducationSection({
     setPendingCertLocalUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
   }
 
+  // One qualification file covers all of the user's qualifications; every
+  // education entry links to it.
+  const sharedCertUrl = String(
+    latestQualificationEvidence?.download_url ?? latestQualificationEvidence?.file_url ?? "",
+  ).trim();
+
   async function onSave() {
     const errs: Record<string, string> = {};
     if (!form.institutionName.trim()) errs.institutionName = "Institution is required";
@@ -4153,7 +4159,7 @@ function EducationSection({
     if (!form.startDate) errs.startDate = "Start date is required";
     if (!form.isCurrent && !form.endDate) errs.endDate = "End date is required";
     if (!form.grade.trim()) errs.grade = "Grade is required";
-    if (!form.certificateUrl.trim() && !pendingCertFile) errs.certificateUrl = "Qualification evidence is required";
+    if (!sharedCertUrl && !form.certificateUrl.trim() && !pendingCertFile) errs.certificateUrl = "Qualification evidence is required";
 
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -4161,7 +4167,7 @@ function EducationSection({
     setSaving(true);
     setError(null);
     try {
-      let certUrl = form.certificateUrl;
+      let certUrl = sharedCertUrl || form.certificateUrl;
       if (pendingCertFile) {
         const up = await uploadJobSeekerDocument(token, pendingCertFile, "qualification_evidence", "Qualification evidence");
         certUrl = String(up.url ?? "").trim();
@@ -4437,6 +4443,9 @@ function EducationSection({
             </label>
             <label className="field fieldFull">
               <span className="fieldLabel">Qualification Evidence</span>
+              <span className="fieldHint">
+                Upload one PDF containing all your qualifications. It is shared by every qualification you add.
+              </span>
               <input
                 className="input"
                 type="file"
@@ -4446,7 +4455,7 @@ function EducationSection({
                   e.currentTarget.value = "";
                 }}
                 disabled={saving}
-                required={!form.certificateUrl.trim() && !pendingCertFile}
+                required={!sharedCertUrl && !form.certificateUrl.trim() && !pendingCertFile}
               />
               {pendingCertFile && (
                 <span className="fieldHint" style={{ color: "var(--accent)" }}>
@@ -4455,10 +4464,10 @@ function EducationSection({
               )}
               <UploadedDocumentCard
                 title="Qualification Evidence"
-                url={pendingCertLocalUrl || form.certificateUrl}
+                url={pendingCertLocalUrl || sharedCertUrl || form.certificateUrl}
                 token={token}
                 fallbackText="No file uploaded yet."
-                hint={(pendingCertLocalUrl || form.certificateUrl) ? "Upload another file to replace the current one." : undefined}
+                hint={(pendingCertLocalUrl || sharedCertUrl || form.certificateUrl) ? "Uploading another file replaces it for all your qualifications." : undefined}
                 previewKey="qualification-evidence-edit"
                 previewMode="external"
                 externalPreviewOpen={certDocPreview?.key === "qualification-evidence-edit"}

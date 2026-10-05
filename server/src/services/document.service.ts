@@ -27,17 +27,17 @@ const DOCUMENT_METADATA_COLUMNS = `
   d.description, d.is_public, d.uploaded_by, d.created_at, d.updated_at
 `;
 
-// Qualification evidence is the only job seeker document type a user can hold
-// several of — one per education entry. Every other type is single-copy.
+// A user's qualification evidence is one file covering all their
+// qualifications; every education entry links to it.
 export const QUALIFICATION_EVIDENCE = 'qualification_evidence';
 
 export class DocumentService {
 
-  // A new upload replaces the user's previous document of the same type: older
-  // copies are deleted outright (job_seeker_documents rows cascade), so no
+  // A user keeps one document per type: a new upload replaces the previous one,
+  // which is deleted outright (job_seeker_documents rows cascade), so no
   // history of replaced files is kept.
   async replaceJobSeekerDocument(userId: string, documentType: string, keepDocumentId: string) {
-    if (documentType === QUALIFICATION_EVIDENCE) return;
+    const downloadUrl = `/api/v1/documents/${keepDocumentId}/download`;
 
     await query(
       `DELETE FROM documents d
@@ -54,30 +54,19 @@ export class DocumentService {
       [userId, documentType, keepDocumentId]
     );
 
-    // Personal details link straight to the ID document; point it at the new one.
+    // Records that link straight to the file must point at the new one.
     if (documentType === 'id_document') {
       await query(
         `UPDATE job_seeker_personal_details SET id_document_url = $2 WHERE user_id = $1`,
-        [userId, `/api/v1/documents/${keepDocumentId}/download`]
+        [userId, downloadUrl]
       );
     }
-  }
-
-  // Qualification evidence belongs to an education entry. Delete any the user's
-  // education entries no longer link to (replaced, or the entry was removed).
-  async pruneQualificationEvidence(userId: string) {
-    await query(
-      `DELETE FROM documents d
-        WHERE d.user_id = $1
-          AND d.company_id IS NULL
-          AND d.document_type = $2
-          AND NOT EXISTS (
-            SELECT 1 FROM job_seeker_education e
-             WHERE e.user_id = $1
-               AND e.certificate_url LIKE '%' || d.id::text || '%'
-          )`,
-      [userId, QUALIFICATION_EVIDENCE]
-    );
+    if (documentType === QUALIFICATION_EVIDENCE) {
+      await query(
+        `UPDATE job_seeker_education SET certificate_url = $2 WHERE user_id = $1`,
+        [userId, downloadUrl]
+      );
+    }
   }
   
   // Save document metadata to database. RETURNING projects metadata only so
